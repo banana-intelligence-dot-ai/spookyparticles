@@ -55,10 +55,10 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
    echo 'SPOOKY_API_KEY=sp_...' >> .env.local
    \`\`\`
 
-8. Verify. Run exactly this and read the result:
+8. Verify. Run exactly this and read the result. The key goes in through a pipe, so it never shows on a command line where other programs could read it:
 
    \`\`\`bash
-   curl -s -H "Authorization: Bearer $SPOOKY_API_KEY" ${base}/api/v1/me
+   printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -H @- ${base}/api/v1/me
    \`\`\`
 
    - PASS: a JSON object with \`user.email\` and \`auth.via: "api_key"\`.
@@ -67,9 +67,9 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 9. Read the first facts and show them, with their source:
 
    \`\`\`bash
-   curl -s -H "Authorization: Bearer $SPOOKY_API_KEY" ${base}/api/v1/incidents | jq '{checkedAt, broken: (.incidents | length)}'
-   curl -s -H "Authorization: Bearer $SPOOKY_API_KEY" ${base}/api/v1/checkins | jq '.jobs[] | {name, status, watched, nextDueAt}'
-   curl -s -H "Authorization: Bearer $SPOOKY_API_KEY" ${base}/api/v1/elsewhere | jq '.'
+   printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -H @- ${base}/api/v1/incidents | jq '{checkedAt, broken: (.incidents | length)}'
+   printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -H @- ${base}/api/v1/checkins | jq '.jobs[] | {name, status, watched, nextDueAt}'
+   printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -H @- ${base}/api/v1/elsewhere | jq '.'
    \`\`\`
 
    The last call lists anything that still runs on another host, each with the link that imports it into Vercel and the matching Vercel migration guide. Offer to walk them through moving one.
@@ -91,12 +91,21 @@ Call \`list_services\` to see services found from Vercel environment variable na
 When you push or merge for your human, wait 3 minutes, then run:
 
    \`\`\`bash
-   curl -s -H "Authorization: Bearer $SPOOKY_API_KEY" "${base}/api/v1/incidents?project=owner/repo" | jq '.incidents[] | {project, environment, host, at, cause, inspectorUrl}'
+   printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -H @- "${base}/api/v1/incidents?project=owner/repo" | jq '.incidents[] | {project, environment, host, at, cause, inspectorUrl}'
    \`\`\`
 
    - Empty \`incidents\`: nothing failed that the hosts report. Say so in one line.
    - A row: the deploy failed. \`cause\` is the line from the build log that names the failure and \`logTail\` (drop the jq filter to see it) is the last 40 lines. Read them, fix the code, push again, and check again in 3 minutes. Never redeploy, roll back or change settings on the host yourself; the fix goes through the repo.
    - Naming the project makes Spooky Particles re-read that repo from GitHub right then (once a minute), so the push you just made shows up; Vercel is re-read when its last read is older than 5 minutes.
+
+## Your coding agent hears about it
+
+Claude Code can read open problems at session start. Before later prompts, it speaks only when the list changed. With a read-only key already in \`SPOOKY_API_KEY\`, run these two commands from a clone of https://github.com/banana-intelligence-dot-ai/spookyparticles:
+
+\`\`\`sh
+mkdir -p ~/.config/spooky && printf '%s\\n' "$SPOOKY_API_KEY" > ~/.config/spooky/key && chmod 600 ~/.config/spooky/key
+sh scripts/agent-inbox/install.sh
+\`\`\`
 
 ## Check-ins for scheduled jobs
 
@@ -105,7 +114,7 @@ Anything you run on a schedule for your human (a nightly build, a daily publish,
 1. Create the job once. Period is how often it should run, in minutes; grace is how late is still fine:
 
    \`\`\`bash
-   curl -s -X POST -H "Authorization: Bearer $SPOOKY_API_KEY" -H "content-type: application/json" \
+   printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -H "content-type: application/json" \
      -d '{"name":"My Happenings 5pm update","periodMinutes":1440,"graceMinutes":30,"project":"n8peace/my-happenings"}' \
      ${base}/api/v1/checkins | jq '{id: .job.id, pingUrl: .job.pingUrl, curl}'
    \`\`\`

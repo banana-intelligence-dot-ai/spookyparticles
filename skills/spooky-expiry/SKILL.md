@@ -9,7 +9,7 @@ Covers Standard item 10: nothing breaks on a date by surprise: domains, certific
 
 ## Check
 
-1. If the person uses Spooky, call the MCP tool `list_expirations` (or `GET https://spookyparticles.com/api/v1/expirations` with `Authorization: Bearer $SPOOKY_API_KEY`). It lists Vercel Node.js runtime deprecations and Vercel domain registration expiries, soonest first, and domains whose date is unknown. Domains registered somewhere else show as unknown.
+1. If the person uses Spooky, call the MCP tool `list_expirations` (or `GET https://spookyparticles.com/api/v1/expirations` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). It lists Vercel Node.js runtime deprecations and Vercel domain registration expiries, soonest first, and domains whose date is unknown. Domains registered somewhere else show as unknown.
 2. **Node version.** Read `engines.node` in `package.json`, and any `.nvmrc` or `.node-version` file. Compare with the Node.js versions Vercel supports: https://vercel.com/docs/functions/runtimes/node-js/node-js-versions. A version with a deprecation date is a date to act on.
 3. **Domains.** `vercel domains ls` shows domains bought through Vercel and their expiry. For a domain bought elsewhere, ask the person where it is registered and whether it renews by itself.
 4. **Certificates.** Vercel renews certificates by itself for domains that point at Vercel. `vercel certs ls` lists them. A custom certificate the person uploaded does not renew by itself.

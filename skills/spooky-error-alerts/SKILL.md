@@ -11,7 +11,7 @@ Spooky alerts when a project has 10 or more server errors (5xx) and they are 20%
 
 ## Check
 
-1. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`). If checks for this project show the reason `needs_read_token`, Spooky cannot read its traffic, so error spikes are not watched.
+1. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). If checks for this project show the reason `needs_read_token`, Spooky cannot read its traffic, so error spikes are not watched.
 2. Call `GET https://spookyparticles.com/api/v1/alert-channels`. At least one channel should be listed.
 3. In the code, look for errors that are swallowed. A route that catches every error and answers 200 hides failures from any monitor. Search for `catch` blocks in route handlers that return a success status.
 

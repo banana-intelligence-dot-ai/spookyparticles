@@ -12,7 +12,7 @@ Old packages collect known security holes. An update bot opens each update as a 
 ## Check
 
 1. Look for any of these in the repo: `.github/dependabot.yml`, `.github/dependabot.yaml`, `renovate.json`, `renovate.json5`, `.github/renovate.json`, `.renovaterc`, or a `renovate` key in `package.json`. If one exists, the item is met. Do not add a second bot.
-2. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`). The check `deps_not_updated` is `open` when Spooky found no bot file. For a private repo it shows `unknown` with reason `private_repo`, because Spooky does not read files in private repos.
+2. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). The check `deps_not_updated` is `open` when Spooky found no bot file. For a private repo it shows `unknown` with reason `private_repo`, because Spooky does not read files in private repos.
 
 ## Fix
 

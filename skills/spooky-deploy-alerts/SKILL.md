@@ -11,7 +11,7 @@ Spooky reads the deploy results of every connected project and alerts when a pro
 
 ## Check
 
-1. If the person uses Spooky, call the MCP tool `list_projects` (or `GET https://spookyparticles.com/api/v1/projects` with `Authorization: Bearer $SPOOKY_API_KEY`). The project should be listed with its latest deployment state and time. If it is missing, Spooky is not watching it.
+1. If the person uses Spooky, call the MCP tool `list_projects` (or `GET https://spookyparticles.com/api/v1/projects` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). The project should be listed with its latest deployment state and time. If it is missing, Spooky is not watching it.
 2. Call `GET https://spookyparticles.com/api/v1/alert-channels`. At least one channel should be listed.
 3. Call `whats_broken` (or `GET /api/v1/incidents?project=<name>`). It lists failed deployments now, each with the log line that names the failure.
 4. Without Spooky: `vercel ls <project> --prod` shows recent production deploys and their state. `vercel inspect <deployment url> --logs` shows a build log.

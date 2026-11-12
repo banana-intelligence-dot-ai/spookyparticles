@@ -9,7 +9,6 @@ export const PUBLIC_PAGES: { path: string; changeFrequency: "weekly" | "monthly"
   { path: "/how/apps-across-hosts-and-logins", changeFrequency: "monthly", priority: 0.8 },
   { path: "/how/email-into-an-ops-record", changeFrequency: "monthly", priority: 0.8 },
   { path: "/releases", changeFrequency: "weekly", priority: 0.6 },
-  { path: "/setup.md", changeFrequency: "monthly", priority: 0.6 },
   { path: "/privacy", changeFrequency: "yearly", priority: 0.3 },
   { path: "/terms", changeFrequency: "yearly", priority: 0.3 },
 ];

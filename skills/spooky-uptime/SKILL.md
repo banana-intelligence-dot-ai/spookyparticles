@@ -13,7 +13,7 @@ Spooky fetches each connected project's production address every 5 minutes. It a
 
 1. Find the production address. Run `vercel project ls` or read the project's domains in the Vercel dashboard. Note it down.
 2. Fetch it the way a visitor would: `curl -s -o /dev/null -w "%{http_code}\n" https://<production address>`. A 200 is good. A 401 or a login page means the live site is behind a login, so no outside check can read it.
-3. If the person uses Spooky, call `GET https://spookyparticles.com/api/v1/projects` with `Authorization: Bearer $SPOOKY_API_KEY` (or the MCP tool `list_projects`). Find the project. Read `uptime`:
+3. If the person uses Spooky, call `GET https://spookyparticles.com/api/v1/projects` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line (or the MCP tool `list_projects`). Find the project. Read `uptime`:
    - `uptime.state` is `up`, `down`, `protected` or `unknown`.
    - `uptime.lastCheckedAt` should be within the last 10 minutes.
    - `uptime` is null when Spooky has not watched this project yet.

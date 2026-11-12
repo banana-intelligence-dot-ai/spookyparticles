@@ -15,7 +15,7 @@ Spooky reads Vercel cron jobs and their run history on its own, with no code cha
    - `crons` in `vercel.json`.
    - `schedule:` triggers in `.github/workflows/*.yml`.
    - Any other cron config the repo has (a host's config file, a `crontab` line in the docs).
-2. If the person uses Spooky, call the MCP tool `list_jobs` (or `GET https://spookyparticles.com/api/v1/checkins` with `Authorization: Bearer $SPOOKY_API_KEY`). Each job shows `status`, `lastCheckIn` and `nextDue`. Vercel cron jobs appear on their own once the team is connected.
+2. If the person uses Spooky, call the MCP tool `list_jobs` (or `GET https://spookyparticles.com/api/v1/checkins` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). Each job shows `status`, `lastCheckIn` and `nextDue`. Vercel cron jobs appear on their own once the team is connected.
 3. A schedule off Vercel with no matching job in the list is not watched.
 
 ## Fix
@@ -25,8 +25,8 @@ For each schedule off Vercel that is not watched:
 1. Create a check-in job. This needs a Spooky key with the write scope:
 
    ```bash
-   curl -fsS -X POST https://spookyparticles.com/api/v1/checkins \
-     -H "Authorization: Bearer $SPOOKY_API_KEY" -H "Content-Type: application/json" \
+   printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -fsS -X POST https://spookyparticles.com/api/v1/checkins \
+     -H @- -H "Content-Type: application/json" \
      -d '{"name":"<job name>","periodMinutes":<minutes between runs>,"project":"<vercel project>"}'
    ```
 

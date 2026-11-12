@@ -11,7 +11,7 @@ Spooky finds services from environment variable names and Vercel Marketplace ins
 
 ## Check
 
-1. If the person uses Spooky, call the MCP tool `list_services` (or `GET https://spookyparticles.com/api/v1/services` with `Authorization: Bearer $SPOOKY_API_KEY`). For each service, read:
+1. If the person uses Spooky, call the MCP tool `list_services` (or `GET https://spookyparticles.com/api/v1/services` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). For each service, read:
    - `projects`: which projects use it.
    - `monthlyCostUsd` and `costSource` (`vercel billing`, `recorded by you` or `recorded by agent`), or `costNote` when the cost is unknown.
    - `usage.state`: `in_use`, `idle` or `unknown`, with `usage.basis` saying why.
@@ -25,8 +25,8 @@ Spooky finds services from environment variable names and Vercel Marketplace ins
 - **Right after the agent signs a project up for a service,** record it. This needs a Spooky key with the write scope. Use the MCP tool `record_service`, or:
 
   ```bash
-  curl -fsS -X POST https://spookyparticles.com/api/v1/services \
-    -H "Authorization: Bearer $SPOOKY_API_KEY" -H "Content-Type: application/json" \
+  printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -fsS -X POST https://spookyparticles.com/api/v1/services \
+    -H @- -H "Content-Type: application/json" \
     -d '{"project":"<vercel project>","service":"<service name>","monthlyCostUsd":0,"note":"free plan, signed up for email sending"}'
   ```
 

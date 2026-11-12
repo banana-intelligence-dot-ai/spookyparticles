@@ -1,17 +1,63 @@
-/** The same current deployment incidents for REST and MCP readers. */
+/** The same current deployment and job incidents for REST and MCP readers. */
+import { jobIssue, listJobs, type JobIssue } from "./checkins";
 import { refreshRepoQuietly } from "./github-refresh";
 import { failedDeployments } from "./projects";
 import { resyncHostsQuietlyFor } from "./sync";
 
 const WINDOW_MS = 30 * 86_400_000;
 
-export async function incidentsFor(userId: string, project = "") {
+export type DeployIncident = {
+  kind: "deploy_failed";
+  project: string;
+  environment: string | null;
+  host: string | null;
+  state: string | null;
+  at: string | null;
+  url: string | null;
+  cause: string | null;
+  logTail: string[];
+  inspectorUrl: string | null;
+  commit: { sha: string; ref: string | null; message: string | null } | null;
+  source: string;
+};
+
+export type JobIncident = {
+  kind: "job";
+  name: string;
+  project: string | null;
+  status: string;
+  issue: JobIssue;
+  lastCheckIn: string | null;
+  lastNote: string | null;
+  nextDue: string | null;
+  url: "/app/jobs";
+};
+
+export type Incident = DeployIncident | JobIncident;
+
+export type IncidentsReport = {
+  incidents: Incident[];
+  checkedAt: string;
+  repoRefreshed: boolean;
+  note: string;
+};
+
+export function matchesIncidentProject(project: string | null, narrowedTo: string): boolean {
+  const candidate = project?.trim().toLowerCase();
+  const name = narrowedTo.trim().toLowerCase();
+  if (!name) return true;
+  if (!candidate) return false;
+  return candidate === name || candidate.endsWith(`/${name}`) || candidate === name.split("/").pop();
+}
+
+export async function incidentsFor(userId: string, project = ""): Promise<IncidentsReport> {
   const name = project.trim().toLowerCase();
   const refreshed = name ? await refreshRepoQuietly(userId, name) : "skipped";
   await resyncHostsQuietlyFor(userId);
   const now = Date.now();
-  const failed = (await failedDeployments(userId)).filter((d) => d.at && now - Date.parse(d.at) <= WINDOW_MS);
-  const incidents = failed
+  const [deployments, jobs] = await Promise.all([failedDeployments(userId), listJobs(userId)]);
+  const failed = deployments.filter((d) => d.at && now - Date.parse(d.at) <= WINDOW_MS);
+  const deployIncidents = failed
     .map((d) => {
       const projectName = d.name.replace(/\s+\(.*\)$/, "");
       return {
@@ -27,15 +73,90 @@ export async function incidentsFor(userId: string, project = "") {
         inspectorUrl: d.inspectorUrl,
         commit: d.sha ? { sha: d.sha, ref: d.ref ?? null, message: d.message ?? null } : null,
         source: d.cause ? `${d.provider ?? "host"} build log` : d.provider === "Vercel" ? "Vercel deployments" : "GitHub deployments",
-      };
+      } satisfies DeployIncident;
     })
-    .filter((i) => !name || i.project.toLowerCase() === name || i.project.toLowerCase().endsWith(`/${name}`) || i.project.toLowerCase() === name.split("/").pop());
+    .filter((incident) => matchesIncidentProject(incident.project, name));
+  const jobIncidents = jobs.flatMap((job): JobIncident[] => {
+    const issue = jobIssue(job);
+    if (!issue || !matchesIncidentProject(job.project, name)) return [];
+    return [{
+      kind: "job",
+      name: job.name,
+      project: job.project,
+      status: job.status,
+      issue,
+      lastCheckIn: job.lastPingAt,
+      lastNote: oneLine(job.lastNote) || null,
+      nextDue: job.nextDueAt,
+      url: "/app/jobs",
+    }];
+  });
   return {
-    incidents,
+    incidents: [...deployIncidents, ...jobIncidents],
     checkedAt: new Date(now).toISOString(),
     repoRefreshed: refreshed === "refreshed",
     note: name
       ? "The named repo was re-read from GitHub just now (at most once a minute); Vercel is re-read when its last read is over 5 minutes old."
       : "Hosts are re-read when this is called and the last read is over 5 minutes old; name a project to re-read its repo right now.",
   };
+}
+
+function oneLine(value: string | null | undefined): string {
+  if (!value) return "";
+  return value
+    .replace(/\/api\/ping\/[A-Za-z0-9_-]+/gi, "/api/ping/[redacted]")
+    .replace(/\bsp_[A-Za-z0-9_-]+\b/g, "[redacted]")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function absoluteUrl(origin: string, value: string | null | undefined): string {
+  if (!value) return "No link was reported.";
+  try {
+    return oneLine(new URL(value, origin).toString());
+  } catch {
+    return oneLine(value);
+  }
+}
+
+function jobProblem(issue: JobIssue): string {
+  if (issue === "failed") return "failed";
+  if (issue === "quiet") return "went quiet";
+  return "never checked in";
+}
+
+/** Renders an agent-ready inbox without reading state or including private check-in links. */
+export function formatIncidentsText(report: Pick<IncidentsReport, "incidents">, project: string, origin: string): string {
+  if (report.incidents.length === 0) return "";
+  const safeProject = oneLine(project) || "your projects";
+  const blocks = report.incidents.map((incident) => {
+    if (incident.kind === "job") {
+      const when = incident.issue === "never_checked_in"
+        ? "never checked in"
+        : `last check-in ${oneLine(incident.lastCheckIn) || "unknown"}; next due ${oneLine(incident.nextDue) || "unknown"}`;
+      return [
+        `Job ${jobProblem(incident.issue)}: ${oneLine(incident.name) || "Unnamed job"}${incident.project ? ` (${oneLine(incident.project)})` : ""}`,
+        `When: ${when}`,
+        `Last note: ${oneLine(incident.lastNote) || "No note was reported."}`,
+        `Link: ${absoluteUrl(origin, incident.url)}`,
+      ].join("\n");
+    }
+    return [
+      `Deploy failed: ${oneLine(incident.project) || "Unknown project"}${incident.environment ? ` (${oneLine(incident.environment)}${incident.host ? ` on ${oneLine(incident.host)}` : ""})` : ""}`,
+      `When: ${oneLine(incident.at) || "unknown"}`,
+      `Build log: ${oneLine(incident.cause) || "No build log line was reported."}`,
+      `Link: ${absoluteUrl(origin, incident.inspectorUrl ?? incident.url)}`,
+    ].join("\n");
+  });
+  const confirm = new URL("/api/v1/incidents", origin);
+  confirm.searchParams.set("project", oneLine(project));
+  confirm.searchParams.set("format", "text");
+  return [
+    `Spooky Particles: ${report.incidents.length} open problems for ${safeProject}`,
+    "",
+    blocks.join("\n\n"),
+    "",
+    `Fix the cause, then confirm with: printf 'Authorization: Bearer %s\\n' \"$SPOOKY_API_KEY\" | curl -fsS -H @- \"${confirm.toString()}\"`,
+    "",
+  ].join("\n");
 }

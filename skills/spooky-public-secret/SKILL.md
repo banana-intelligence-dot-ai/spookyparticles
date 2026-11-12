@@ -11,7 +11,7 @@ Any variable with a public prefix is copied into the scripts every visitor downl
 
 ## Check
 
-1. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`). Look for the check `secret_in_public_code` with state `open`. Its evidence names the kind of key and where it was found, never the key.
+1. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). Look for the check `secret_in_public_code` with state `open`. Its evidence names the kind of key and where it was found, never the key.
 2. In the repo, list variable names with a public prefix that look secret. Look at names only, never values:
 
    ```bash

@@ -11,7 +11,7 @@ A plain or encrypted Vercel variable can be read back by anyone on the team or b
 
 ## Check
 
-1. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`). The check `secret_not_sensitive` is `open` when a secret-looking variable is stored as plain or encrypted in Production or Preview. Its evidence `names` lists the variable names, never values.
+1. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). The check `secret_not_sensitive` is `open` when a secret-looking variable is stored as plain or encrypted in Production or Preview. Its evidence `names` lists the variable names, never values.
 2. Without Spooky, list variable names and types with the Vercel CLI, logged in as the person:
 
    ```bash

@@ -13,7 +13,7 @@ A Vercel cron job is a public web address that Vercel calls on a schedule. Anyon
 
 1. Read `crons` in `vercel.json`. Each entry has a `path`. Find the route file for each path, for example `app/api/cron/daily/route.ts` for `/api/cron/daily`.
 2. Each route should answer 401 unless the `Authorization` header equals `Bearer ` plus `process.env.CRON_SECRET`, and should refuse every request when `CRON_SECRET` is not set.
-3. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`). The check `cron_unguarded` is `open` when the project has schedules and no `CRON_SECRET` for production. Spooky cannot see the code, so it checks the variable only.
+3. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). The check `cron_unguarded` is `open` when the project has schedules and no `CRON_SECRET` for production. Spooky cannot see the code, so it checks the variable only.
 
 ## Fix
 

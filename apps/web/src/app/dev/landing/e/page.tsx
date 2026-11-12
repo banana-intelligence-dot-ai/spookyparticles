@@ -77,7 +77,7 @@ function Session() {
         <Say>Read setup.md. Three things need you: one sign-in, your inboxes, and a key that reads by default. I never see a password.</Say>
         <Tool cmd="open spookyparticles.com" result="you signed in with GitHub, installed on 3 accounts" />
         <Tool cmd="open spookyparticles.com/app · Connect Gmail" result="you connected 2 inboxes" />
-        <Tool cmd='curl -s -H "Authorization: Bearer $SPOOKY_API_KEY" …/api/v1/me' result="PASS · auth.via: api_key" />
+        <Tool cmd={`printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -H @- …/api/v1/me`} result="PASS · auth.via: api_key" />
         <Tool cmd="curl … /api/v1/findings" result="3 findings" />
         <li className="pl-5">
           <div className="overflow-hidden rounded-lg border border-line-1">

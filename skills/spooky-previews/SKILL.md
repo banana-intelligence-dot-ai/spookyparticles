@@ -11,7 +11,7 @@ Every pull request gets a preview link. Without protection, anyone who has the l
 
 ## Check
 
-1. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`). Look for the check `previews_open`. `open` means previews are public. `unknown` with reason `needs_read_token` means Spooky could not read the setting.
+1. If the person uses Spooky, call the MCP tool `list_findings` (or `GET https://spookyparticles.com/api/v1/checks` with `Authorization: Bearer $SPOOKY_API_KEY`, piped in with `curl -H @-` so the key never sits on a command line). Look for the check `previews_open`. `open` means previews are public. `unknown` with reason `needs_read_token` means Spooky could not read the setting.
 2. Without Spooky, read the project with the Vercel CLI, logged in as the person: `vercel api /v9/projects/<project name>`. Look at `ssoProtection`, `passwordProtection` and `trustedIps`. If all three are null, previews are open.
 3. Or open a recent preview link in a private browser window. If it loads without asking you to log in, it is open.
 

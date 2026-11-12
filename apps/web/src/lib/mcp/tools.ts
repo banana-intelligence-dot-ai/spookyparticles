@@ -45,7 +45,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
         const [report, jobs] = await Promise.all([incidentsFor(userId), listJobs(userId)]);
         return {
           checkedAt: report.checkedAt,
-          failedDeploys: report.incidents,
+          failedDeploys: report.incidents.filter((incident) => incident.kind === "deploy_failed"),
           failedRuns: jobs.filter((job) => jobIssue(job) === "failed").map((job) => ({
             name: job.name, project: job.project, at: job.lastPingAt, cause: job.lastNote,
           })),
@@ -129,7 +129,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
         const incidents = await incidentsFor(userId, name);
         const page = await projectPageFor(userId, name);
         if (!page) throw new Error("Unknown project");
-        return { project: page.project.name, deployments: page.deployments, domains: page.domains, recentFailures: incidents.incidents };
+        return { project: page.project.name, deployments: page.deployments, domains: page.domains, recentFailures: incidents.incidents.filter((incident) => incident.kind === "deploy_failed") };
       },
     }),
     list_jobs: tool({
