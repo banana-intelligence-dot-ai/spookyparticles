@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alertThreshold, expirations } from "./expirations";
+import { alertThreshold, expirations, mergeExpirations } from "./expirations";
 
 const node = (kind: "project" | "domain", name: string, attributes: Record<string, unknown>) => ({ kind, name, attributes });
 
@@ -23,5 +23,23 @@ describe("expirations", () => {
     expect(alertThreshold({ kind: "domain", name: "a", date: "2026-10-01", daysLeft: 1, autoRenew: true })).toBe(1);
     expect(alertThreshold({ kind: "node_runtime", name: "Node.js 20.x", project: "p", date: "2026-10-01", daysLeft: 30 })).toBe(30);
     expect(alertThreshold({ kind: "node_runtime", name: "Node.js 20.x", project: "p", date: "2026-10-01", daysLeft: -1 })).toBe(null);
+  });
+
+  it("merges tracked and Spooky key dates in order, including expired rows", () => {
+    const items = mergeExpirations(
+      [node("project", "site", { provider: "vercel", node_version: "20.x" })],
+      [{ id: "tracked", kind: "api_key", name: "news-factory", provider: "Anthropic", hint: "a1b2", project: "news", expiresOn: "2026-09-08" }],
+      [{ id: "spooky", name: "Claude", prefix: "sp_ab12", expiresAt: new Date("2026-08-31T00:00:00Z") }],
+      new Date("2026-09-01T12:00:00Z"),
+    );
+    expect(items.map((item) => [item.kind, item.date, item.daysLeft])).toEqual([
+      ["spooky_key", "2026-08-31", -1],
+      ["api_key", "2026-09-08", 7],
+      ["node_runtime", "2026-10-01", 30],
+    ]);
+    expect(items[1]).toMatchObject({ id: "tracked", provider: "Anthropic", hint: "a1b2", project: "news" });
+    expect(alertThreshold(items[0])).toBe(null);
+    expect(alertThreshold(items[1])).toBe(7);
+    expect(alertThreshold({ ...items[0], daysLeft: 30 })).toBe(30);
   });
 });

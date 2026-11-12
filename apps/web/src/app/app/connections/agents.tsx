@@ -19,6 +19,7 @@ export type AgentKey = {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  expiresAt?: string | null;
 };
 
 export type NewKey = {
@@ -27,6 +28,7 @@ export type NewKey = {
   prefix: string;
   scopes: string[];
   key: string;
+  expiresAt?: string | null;
 };
 export type KeyAccess = "read" | "write";
 
@@ -56,12 +58,13 @@ export function ConnectedAgents({
   /** True when this is the page's one primary action (the accent). */
   primary: boolean;
   /** Creates a key. Resolves to the new key, or an error message. */
-  onCreate: (name: string, access: KeyAccess) => Promise<NewKey | string>;
+  onCreate: (name: string, access: KeyAccess, expiresOn: string | null) => Promise<NewKey | string>;
   onRevoke: (id: string) => Promise<string | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("Claude Code");
   const [access, setAccess] = useState<KeyAccess>("read");
+  const [expiresOn, setExpiresOn] = useState("");
   const [busy, setBusy] = useState(false);
   const [made, setMade] = useState<NewKey | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,11 +72,11 @@ export function ConnectedAgents({
   const [revoking, setRevoking] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<Record<string, string>>({});
 
-  const live = (keys ?? []).filter((k) => !k.revokedAt);
+  const live = (keys ?? []).filter((k) => !k.revokedAt && (!k.expiresAt || Date.parse(k.expiresAt) > now));
   const create = async () => {
     setBusy(true);
     setError(null);
-    const r = await onCreate(name.trim() || "Claude Code", access);
+    const r = await onCreate(name.trim() || "Claude Code", access, expiresOn || null);
     setBusy(false);
     if (typeof r === "string") setError(r);
     else setMade(r);
@@ -195,6 +198,16 @@ export function ConnectedAgents({
                         wrap
                       />
                     </div>
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-[12px] text-fg-2">Expires (optional)</span>
+                      <input
+                        type="date"
+                        min={new Date(now + 86_400_000).toISOString().slice(0, 10)}
+                        value={expiresOn}
+                        onChange={(e) => setExpiresOn(e.target.value)}
+                        className="h-11 rounded-lg border border-line-2 bg-transparent px-3 text-[14px] text-fg hover:border-line-3 focus:border-line-3 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:h-9"
+                      />
+                    </label>
                     <div className="flex gap-2">
                       <button
                         type="submit"
@@ -231,6 +244,7 @@ export function ConnectedAgents({
         <ul className={`overflow-hidden ${surface}`}>
           {keys.map((k) => {
             const revoked = Boolean(k.revokedAt);
+            const expired = Boolean(k.expiresAt && Date.parse(k.expiresAt) <= now);
             return (
               <li
                 key={k.id}
@@ -248,6 +262,8 @@ export function ConnectedAgents({
                         <span title={absoluteTime(k.revokedAt!)}>
                           Revoked {relativeTime(k.revokedAt!, now)}
                         </span>
+                      ) : expired ? (
+                        <span title={absoluteTime(k.expiresAt!)}>Expired</span>
                       ) : k.lastUsedAt ? (
                         <span title={absoluteTime(k.lastUsedAt)}>
                           Used {relativeTime(k.lastUsedAt, now)}
@@ -266,6 +282,7 @@ export function ConnectedAgents({
                     {k.scopes.some((x) => x !== "read")
                       ? ` · ${k.scopes.map((x) => SCOPE_WORD[x] ?? x).join(", ")}`
                       : ""}
+                    {k.expiresAt ? ` · expires ${new Date(k.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}` : ""}
                   </p>
                   {revokeError[k.id] ? (
                     <p className="mt-1 text-[12px] text-red">

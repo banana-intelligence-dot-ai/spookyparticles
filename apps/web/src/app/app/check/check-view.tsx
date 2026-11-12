@@ -12,8 +12,8 @@ import { Empty, PageHeader, SectionTitle, buttonStyles, surface } from "@/compon
 import { apiSend, useApi } from "@/components/use-api";
 import { REASON_TEXT } from "@/lib/checks/catalog";
 import { prLabel } from "@/lib/checks/handoff";
-import type { Expiration } from "@/lib/expirations/expirations";
 import { ago } from "../project-model";
+import { ExpirationsPanel, type ExpirationReport } from "./expirations-panel";
 
 export type Check = {
   id: string | null;
@@ -50,7 +50,6 @@ const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { m
 const foundIn = (sources: string[]) => sources.includes("vercel") ? "Seen in Vercel settings" : sources.includes("vercel_billing") ? "On your Vercel bill" : "Recorded by your agent";
 /** The basis, without the leading "In use:" or "Idle:" that the label already says. */
 const usageReason = (basis: string) => basis.replace(/^(In use|Idle|Unknown): /, "").replace(/\.$/, "");
-type ExpirationReport = { items: Expiration[]; unknownDomains: { name: string; reason: string }[] };
 
 const isOpen = (c: Check) => c.state === "open" && !c.dismissedAt;
 const reported = (c: Check) => c.source === "reported";
@@ -270,6 +269,7 @@ export function CheckScreen({
   busy = null,
   onDismiss = null,
   onRestore = null,
+  onExpirationReload,
 }: {
   report: CheckReport | null;
   error: string | null;
@@ -282,6 +282,7 @@ export function CheckScreen({
   busy?: string | null;
   onDismiss?: ((c: Check) => void) | null;
   onRestore?: ((c: Check) => void) | null;
+  onExpirationReload?: () => Promise<void>;
 }) {
   const projects = report?.ready ? report.projects : [];
   const needsLook = projects.filter((p) => p.checks.some(isOpen));
@@ -430,30 +431,7 @@ export function CheckScreen({
         </div>)}
       </section>
 
-      <section className="mt-12" aria-labelledby="check-expirations">
-        <SectionTitle id="check-expirations" count={expirationReport ? expirationReport.items.length + expirationReport.unknownDomains.length : undefined}>Expirations</SectionTitle>
-        {expirationError ? <p role="alert" className="text-[14px] text-red">Could not load expirations.</p> : null}
-        {!expirationReport && !expirationError ? <p className="text-[14px] text-fg-3">Loading…</p> : null}
-        {expirationReport && !expirationReport.items.length && !expirationReport.unknownDomains.length ? <Empty title="No expirations yet">Known dates from Vercel will appear here.</Empty> : null}
-        {expirationReport && (expirationReport.items.length || expirationReport.unknownDomains.length) ? (
-          <div className={`divide-y divide-line-1 overflow-hidden ${surface}`}>
-            {expirationReport.items.map((item) => (
-              <div key={`${item.kind}:${item.project ?? ""}:${item.name}:${item.date}`} className="flex min-h-12 flex-wrap items-center gap-x-4 gap-y-0.5 px-4 py-2.5 sm:px-5">
-                <span className="min-w-0 flex-1 font-mono text-[14px] text-fg">{item.project ? `${item.project}: ` : ""}{item.name}</span>
-                <span className="text-[12px] text-fg-3">{item.kind === "domain" ? item.autoRenew ? "Auto-renew on" : "Domain" : "Runtime"}</span>
-                <time dateTime={item.date} className="num text-[12px] text-fg-2">{item.date}</time>
-                <span className="num w-20 text-right text-[12px] text-fg">{item.daysLeft < 0 ? `${Math.abs(item.daysLeft)}d ago` : `${item.daysLeft}d left`}</span>
-              </div>
-            ))}
-            {expirationReport.unknownDomains.map((domain) => (
-              <div key={domain.name} className="flex min-h-12 flex-wrap items-center gap-x-4 gap-y-0.5 px-4 py-2.5 sm:px-5">
-                <span className="min-w-0 flex-1 font-mono text-[14px] text-fg">{domain.name}</span>
-                <span className="text-[12px] text-fg-3">{domain.reason}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </section>
+      <ExpirationsPanel report={expirationReport} error={expirationError} reload={onExpirationReload} />
     </>
   );
 }
@@ -480,7 +458,7 @@ export function CheckView() {
 
   return (
     <div className="max-w-4xl">
-      <CheckScreen report={report.data} error={report.error} now={now} services={services.data} servicesError={services.error} expirationReport={expirationReport.data} expirationError={expirationReport.error} actionError={actionError} busy={busy} onDismiss={(c) => void change(c, false)} onRestore={(c) => void change(c, true)} />
+      <CheckScreen report={report.data} error={report.error} now={now} services={services.data} servicesError={services.error} expirationReport={expirationReport.data} expirationError={expirationReport.error} actionError={actionError} busy={busy} onDismiss={(c) => void change(c, false)} onRestore={(c) => void change(c, true)} onExpirationReload={expirationReport.reload} />
     </div>
   );
 }

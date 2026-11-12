@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createRequireActor, type ActorDeps } from "./actor";
+import { createRequireActor, isKeyUsable, type ActorDeps } from "./actor";
 import { sha256Hex } from "./crypto";
 import { ApiError } from "./http";
 
@@ -10,7 +10,7 @@ function deps(overrides: Partial<ActorDeps> = {}): ActorDeps {
     getSessionUserId: vi.fn(async () => null),
     findApiKeyByHash: vi.fn(async (hash: string) =>
       hash === sha256Hex(KEY)
-        ? { id: "key1", userId: "u_key", scopes: ["read" as const], revokedAt: null }
+        ? { id: "key1", userId: "u_key", scopes: ["read" as const], revokedAt: null, expiresAt: null }
         : null,
     ),
     touchApiKey: vi.fn(async () => undefined),
@@ -32,6 +32,12 @@ async function expectApiError(p: Promise<unknown>, status: number, code: string)
 }
 
 describe("requireActor", () => {
+  it("checks key expiry against the supplied clock", () => {
+    const now = new Date("2026-11-12T12:00:00Z");
+    expect(isKeyUsable({ revokedAt: null, expiresAt: new Date("2026-11-13T00:00:00Z") }, now)).toBe(true);
+    expect(isKeyUsable({ revokedAt: null, expiresAt: new Date("2026-11-12T00:00:00Z") }, now)).toBe(false);
+  });
+
   it("resolves a session user with every scope", async () => {
     const d = deps({ getSessionUserId: vi.fn(async () => "u_session") });
     const actor = await createRequireActor(d)(req(), "approve");
@@ -67,7 +73,14 @@ describe("requireActor", () => {
 
   it("rejects revoked keys", async () => {
     const d = deps({
-      findApiKeyByHash: vi.fn(async () => ({ id: "k", userId: "u", scopes: ["read" as const], revokedAt: new Date() })),
+      findApiKeyByHash: vi.fn(async () => ({ id: "k", userId: "u", scopes: ["read" as const], revokedAt: new Date(), expiresAt: null })),
+    });
+    await expectApiError(createRequireActor(d)(req({ authorization: `Bearer ${KEY}` })), 401, "invalid_api_key");
+  });
+
+  it("rejects expired keys", async () => {
+    const d = deps({
+      findApiKeyByHash: vi.fn(async () => ({ id: "k", userId: "u", scopes: ["read" as const], revokedAt: null, expiresAt: new Date("2026-11-12T00:00:00Z") })),
     });
     await expectApiError(createRequireActor(d)(req({ authorization: `Bearer ${KEY}` })), 401, "invalid_api_key");
   });

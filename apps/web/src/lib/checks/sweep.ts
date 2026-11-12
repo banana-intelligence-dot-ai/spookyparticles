@@ -1,9 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { getInstallationToken } from "@/lib/connections";
 import { gh } from "@/lib/github-sync";
 import { siteTargets } from "@/lib/vercel-monitor";
-import { expirations } from "@/lib/expirations/expirations";
+import { expirations, spookyKeyExpirations, trackedExpirations } from "@/lib/expirations/expirations";
 import { notifyExpiration } from "@/lib/alerts/expiration";
 import { scanPublicSite } from "./public-scan";
 import { DEPENDENCY_FILES, depsRule, type Decision } from "./rules";
@@ -14,16 +14,25 @@ const DAY = 86_400_000;
 const MAX_REPO_READS = 10;
 export async function sweepChecks(now = new Date()): Promise<{ scanned: number; repos: number; ready: boolean }> {
   const db = getDb();
-  const [projects, domains, links, repos, accounts, connections] = await Promise.all([
+  const [projects, domains, links, repos, accounts, connections, tracked, expiringKeys] = await Promise.all([
     db.select().from(schema.nodes).where(eq(schema.nodes.kind, "project")),
     db.select().from(schema.nodes).where(eq(schema.nodes.kind, "domain")),
     db.select({ fromNodeId: schema.edges.fromNodeId, toNodeId: schema.edges.toNodeId, kind: schema.edges.kind }).from(schema.edges),
     db.select().from(schema.nodes).where(eq(schema.nodes.kind, "repo")),
     db.select().from(schema.nodes).where(eq(schema.nodes.kind, "provider_account")),
     db.select().from(schema.connections).where(eq(schema.connections.provider, "github")),
+    db.select({ id: schema.trackedExpirations.id, userId: schema.trackedExpirations.userId, kind: schema.trackedExpirations.kind, name: schema.trackedExpirations.name, provider: schema.trackedExpirations.provider, hint: schema.trackedExpirations.hint, project: schema.trackedExpirations.project, expiresOn: schema.trackedExpirations.expiresOn }).from(schema.trackedExpirations),
+    db.select({ id: schema.apiKeys.id, userId: schema.apiKeys.userId, name: schema.apiKeys.name, prefix: schema.apiKeys.prefix, expiresAt: schema.apiKeys.expiresAt }).from(schema.apiKeys).where(and(isNull(schema.apiKeys.revokedAt), isNotNull(schema.apiKeys.expiresAt))),
   ]);
   for (const node of [...projects, ...domains]) {
     for (const item of expirations([node], now)) await notifyExpiration(node.userId, item, node.id);
+  }
+  for (const row of tracked) {
+    for (const item of trackedExpirations([row], now)) await notifyExpiration(row.userId, item, row.id);
+  }
+  for (const row of expiringKeys) {
+    if (!row.expiresAt) continue;
+    for (const item of spookyKeyExpirations([{ ...row, expiresAt: row.expiresAt }], now)) await notifyExpiration(row.userId, item, row.id);
   }
   const byUser = new Map<string, Awaited<ReturnType<typeof readChecks>>>();
   for (const p of projects) if (!byUser.has(p.userId)) byUser.set(p.userId, await readChecks(p.userId));

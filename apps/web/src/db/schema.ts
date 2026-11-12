@@ -14,6 +14,8 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
+  date,
   index,
   integer,
   jsonb,
@@ -723,8 +725,35 @@ export const apiKeys = pgTable(
     createdAt: now("created_at"),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (t) => [index("api_keys_user_idx").on(t.userId)],
+);
+
+export const trackedExpirations = pgTable(
+  "tracked_expirations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"api_key" | "token" | "certificate" | "other">().notNull(),
+    name: text("name").notNull(),
+    provider: text("provider"),
+    hint: text("hint"),
+    project: text("project"),
+    expiresOn: date("expires_on").notNull(),
+    createdAt: now("created_at"),
+    updatedAt: now("updated_at"),
+  },
+  (t) => [
+    index("tracked_expirations_user_expires_idx").on(t.userId, t.expiresOn),
+    check("tracked_expirations_kind_check", sql`${t.kind} in ('api_key', 'token', 'certificate', 'other')`),
+    check("tracked_expirations_name_check", sql`char_length(${t.name}) between 1 and 80`),
+    check("tracked_expirations_provider_check", sql`${t.provider} is null or char_length(${t.provider}) <= 40`),
+    check("tracked_expirations_hint_check", sql`${t.hint} is null or char_length(${t.hint}) <= 6`),
+    check("tracked_expirations_project_check", sql`${t.project} is null or char_length(${t.project}) <= 120`),
+  ],
 );
 
 /** Optional mirror of analytics events (ARCHITECTURE 5c). */

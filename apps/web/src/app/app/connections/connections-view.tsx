@@ -114,10 +114,11 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
   const createKey = async (
     name: string,
     access: KeyAccess,
+    expiresOn: string | null,
   ): Promise<NewKey | string> => {
     const r = await apiPost<{ apiKey?: NewKey } & Partial<NewKey>>(
       "/api/v1/api-keys",
-      { name, scopes: access === "write" ? ["read", "write"] : ["read"] },
+      { name, scopes: access === "write" ? ["read", "write"] : ["read"], expiresOn },
     );
     if (!r.ok || !r.data) return r.error ?? "That key wasn't made. Try again.";
     const k = (r.data.apiKey ?? r.data) as NewKey;

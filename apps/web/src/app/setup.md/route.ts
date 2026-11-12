@@ -86,6 +86,16 @@ claude mcp add --transport http spooky ${base}/api/mcp --header "Authorization: 
 
 Call \`list_services\` to see services found from Vercel environment variable names, Vercel billing, and sign-ups your agent recorded. Each service has its category, projects, last seen time, \`monthlyCostUsd\` with \`costSource\` ("vercel billing", "recorded by you" or "recorded by agent") or a \`costNote\` saying why it is unknown, and \`usage\`: "in_use" when a project using it had a production deploy or requests in the last 30 days, "idle" when none did, or "unknown" when an older deploy may still get requests we cannot read, with the basis in plain words. \`shares\` lists projects that each use a different service of the same kind and could share one. \`bill\` has the whole Vercel bill for the last 30 days per account, read only with a pasted token whose role may see billing: each project's total in \`usd\` with its \`products\`, Vercel's own included, and \`unassigned\` for charges tied to no project, such as the plan. Amounts are Vercel's effective cost (the plan fee spread per day, usage the plan's credit covered included); \`chargedUsd\` is what Vercel billed beyond the plan. Suggestions only; never move or cancel a service on your own. A write key can call \`record_service\` with \`project\`, \`service\`, and optional \`monthlyCostUsd\` and \`note\` after a sign-up. Never put secrets in the note. REST clients use GET or POST \`${base}/api/v1/services\`.
 
+## Add an expiration date
+
+Record the date an API key, token, certificate or other credential expires so Spooky can warn at 30, 7 and 1 days. Send only its name, provider, optional last 4 characters, optional project and date. Never send the key or token value. Needs a write key.
+
+\`\`\`bash
+printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @- -H "content-type: application/json" \\
+  -d '{"kind":"api_key","provider":"Anthropic","name":"news-factory","hint":"a1b2","project":"news-factory","expiresOn":"2027-08-19"}' \\
+  ${base}/api/v1/expirations
+\`\`\`
+
 ## After a push
 
 When you push or merge for your human, wait 3 minutes, then run:

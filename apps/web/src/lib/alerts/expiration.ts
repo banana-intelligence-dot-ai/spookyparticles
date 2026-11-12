@@ -10,6 +10,16 @@ export function expirationAlertKey(item: Expiration, threshold: 30 | 7 | 1, node
   return `expiration:${item.kind}:${nodeId}:${item.date}:${threshold}`;
 }
 
+const trackedKind = (kind: Expiration["kind"]) => kind === "api_key" || kind === "spooky_key" ? "key" : kind;
+export function expirationAlertText(item: Expiration): string {
+  if (["api_key", "token", "certificate", "other", "spooky_key"].includes(item.kind)) {
+    const hint = item.hint ? item.kind === "spooky_key" ? ` (${item.hint}…)` : ` (…${item.hint})` : "";
+    const project = item.project ? ` for ${item.project}` : "";
+    return `${item.provider ? `${item.provider} ` : ""}${trackedKind(item.kind)} ${item.name}${hint}${project} expires in ${item.daysLeft} ${item.daysLeft === 1 ? "day" : "days"}, on ${item.date}.`;
+  }
+  return `${item.kind === "domain" ? item.name : `${item.project}: ${item.name}`} reaches its Vercel ${item.kind === "domain" ? "registration expiry" : "runtime deprecation"} date on ${item.date}.${item.autoRenew ? " Auto-renew is on." : ""}`;
+}
+
 /** Claim before sending, as deploy-failed does, so racing sweeps send once. */
 export async function notifyExpiration(userId: string, item: Expiration, nodeId: string): Promise<"sent" | "skipped" | "failed"> {
   const threshold = alertThreshold(item);
@@ -18,8 +28,8 @@ export async function notifyExpiration(userId: string, item: Expiration, nodeId:
     const db = getDb();
     const [person] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, userId)).limit(1);
     const key = expirationAlertKey(item, threshold, nodeId);
-    const subject = `${item.project ?? item.name}: ${item.kind === "domain" ? "domain registration" : item.name} expires in ${item.daysLeft} ${item.daysLeft === 1 ? "day" : "days"}`;
-    const text = `${item.kind === "domain" ? item.name : `${item.project}: ${item.name}`} reaches its Vercel ${item.kind === "domain" ? "registration expiry" : "runtime deprecation"} date on ${item.date}.${item.autoRenew ? " Auto-renew is on." : ""}`;
+    const text = expirationAlertText(item);
+    const subject = text.replace(/\.$/, "");
     const link = new URL("/app/check", appUrl()).toString();
     // Claim the key first, as job alerts do, so racing sweeps send once.
     const [row] = await db.insert(schema.alerts).values({ userId, kind: "expiration", key, channel: "channels", to: person?.email ?? "", subject, payload: { item, threshold } }).onConflictDoNothing({ target: [schema.alerts.userId, schema.alerts.key] }).returning({ id: schema.alerts.id });

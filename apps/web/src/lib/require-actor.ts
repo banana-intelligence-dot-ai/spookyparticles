@@ -16,6 +16,7 @@ export const requireActor = createRequireActor({
         userId: schema.apiKeys.userId,
         scopes: schema.apiKeys.scopes,
         revokedAt: schema.apiKeys.revokedAt,
+        expiresAt: schema.apiKeys.expiresAt,
       })
       .from(schema.apiKeys)
       .where(and(eq(schema.apiKeys.hashedKey, hash), isNull(schema.apiKeys.revokedAt)))

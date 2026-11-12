@@ -32,7 +32,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
   const userId = actor.userId;
   const read: ToolRegistry = {
     list_expirations: tool({
-      description: "List known Vercel runtime deprecations and domain registration expiries, soonest first, plus domains whose date is unknown.",
+      description: "List every known expiry date, including Vercel runtimes, domains, tracked credentials and Spooky agent keys, soonest first, plus domains whose date is unknown.",
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => expirationsFor(userId),

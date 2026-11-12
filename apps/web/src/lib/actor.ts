@@ -20,12 +20,16 @@ export type ActorDeps = {
   getSessionUserId: (headers: Headers) => Promise<string | null>;
   findApiKeyByHash: (
     hash: string,
-  ) => Promise<{ id: string; userId: string; scopes: ApiKeyScope[]; revokedAt: Date | null } | null>;
+  ) => Promise<{ id: string; userId: string; scopes: ApiKeyScope[]; revokedAt: Date | null; expiresAt: Date | null } | null>;
   touchApiKey: (id: string) => Promise<void>;
 };
 
 export const API_KEY_PREFIX = "sp_";
 const ALL_SCOPES: ApiKeyScope[] = ["read", "write", "approve"];
+
+export function isKeyUsable(row: { revokedAt: Date | null; expiresAt: Date | null }, now = new Date()): boolean {
+  return !row.revokedAt && (!row.expiresAt || row.expiresAt.getTime() > now.getTime());
+}
 
 export function createRequireActor(deps: ActorDeps) {
   return async function requireActor(req: Request, scope: ApiKeyScope = "read"): Promise<Actor> {
@@ -36,7 +40,7 @@ export function createRequireActor(deps: ActorDeps) {
         throw new ApiError(401, "invalid_api_key", "Expected Authorization: Bearer sp_...");
       }
       const row = await deps.findApiKeyByHash(sha256Hex(m[1]));
-      if (!row || row.revokedAt) throw new ApiError(401, "invalid_api_key", "Unknown or revoked API key");
+      if (!row || !isKeyUsable(row)) throw new ApiError(401, "invalid_api_key", "Unknown, revoked or expired API key");
       if (!row.scopes.includes(scope)) {
         throw new ApiError(403, "insufficient_scope", `This key lacks the "${scope}" scope`);
       }
