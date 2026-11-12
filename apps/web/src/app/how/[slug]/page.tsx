@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: page.title,
     description: page.description,
     alternates: { canonical: `/how/${page.slug}` },
-    openGraph: { type: "article", title: page.title, description: page.description, publishedTime: page.published, modifiedTime: page.checked },
+    openGraph: { type: "article", siteName: "spooky particles", url: `/how/${page.slug}`, images: ["/opengraph-image"], title: page.title, description: page.description, publishedTime: page.published, modifiedTime: page.checked },
   };
 }
 

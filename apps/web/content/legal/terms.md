@@ -4,7 +4,7 @@ Last updated: 10 November 2026
 
 ## Summary
 
-Spooky Particles (spookyparticles.com) is a service from Banana Intelligence LLC. It maps your Vercel projects, schedules, domains and deployments, alongside GitHub repositories and Actions runs, using read-only access. Optional Gmail bills and renewals can provide spend figures. It is a beta, so it is provided as-is. You must be allowed to connect each account you connect. Our liability is capped. You can stop using it and delete your data at any time. By using the Service you agree to these Terms and to our [Privacy Policy](privacy-policy.md).
+Spooky Particles (spookyparticles.com) is a service from Banana Intelligence LLC. It maps your Vercel projects, schedules, domains and deployments, alongside GitHub repositories and Actions runs, using read-only access. Optional Gmail bills and renewals can provide spend figures. It is a beta, so it is provided as-is. You must be allowed to connect each account you connect. Our liability is capped. You can stop using it and delete your data at any time. By using the Service you agree to these Terms and to our [Privacy Policy](/privacy).
 
 ## 1. Who we are and what this covers
 

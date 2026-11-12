@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description:
     "Spooky Particles watches Vercel schedules and failed deploys, then alerts you when something breaks. Read-only, with GitHub and your coding agent in the loop.",
   alternates: { canonical: "./" },
-  openGraph: { siteName: "spooky particles", type: "website" },
+  openGraph: { siteName: "spooky particles", type: "website", url: "./" },
   twitter: { card: "summary_large_image" },
 };
 

@@ -17,7 +17,7 @@ export type HowPage = {
 export const HOW_PAGES: HowPage[] = [
   {
     slug: "apps-across-hosts-and-logins",
-    title: "How Spooky maps Vercel and your other apps",
+    title: "How Spooky maps Vercel and other apps",
     description:
       "How Vercel and GitHub build one map of projects, schedules, deploys and domains. See what each read-only connection can show.",
     published: "2026-11-03",
