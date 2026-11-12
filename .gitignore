@@ -1,0 +1,28 @@
+*.sparseimage
+*.dmg
+*.zip
+conversations.json
+
+# Secrets
+.env
+.env*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+.next/
+.vercel/
+coverage/
+*.tsbuildinfo
+.workflow-data/
+.swc/
+
+# Archived app
+app/node_modules/
+app/dist/
+
+# impeccable critique snapshots (local tooling output)
+.impeccable/
+
+# macOS
+.DS_Store

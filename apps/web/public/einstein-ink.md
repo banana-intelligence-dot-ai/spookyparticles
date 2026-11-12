@@ -1,0 +1,1 @@
+einstein-ink.png: edge-line drawing made from Ferdinand Schmutzer's 1921 portrait of Albert Einstein (public domain; source https://commons.wikimedia.org/wiki/File:Einstein_1921_by_F_Schmutzer_-_restoration.jpg). White strokes on transparent, pre-faded at the edges. Used only as a low-contrast background behind the landing hero; never in the logo, product name or buttons.

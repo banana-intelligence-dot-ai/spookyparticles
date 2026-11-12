@@ -1,0 +1,47 @@
+{
+  "name": "@spooky/tier0",
+  "version": "0.1.0",
+  "description": "Tier 0 email filter for Spooky Particles: known billing senders, receipt and ops subject patterns, Gmail search queries, header classifier. Metadata only, no model, no bodies.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./senders": {
+      "types": "./dist/senders.d.ts",
+      "default": "./dist/senders.js"
+    },
+    "./patterns": {
+      "types": "./dist/patterns.d.ts",
+      "default": "./dist/patterns.js"
+    },
+    "./queries": {
+      "types": "./dist/queries.d.ts",
+      "default": "./dist/queries.js"
+    },
+    "./classify": {
+      "types": "./dist/classify.d.ts",
+      "default": "./dist/classify.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test \"test/*.test.ts\"",
+    "stats": "node --experimental-strip-types scripts/stats.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

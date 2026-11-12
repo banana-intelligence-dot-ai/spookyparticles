@@ -1,0 +1,247 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Dark is the default and the brand. Light is designed (below),
+ * not inverted, and opt-in per subtree with data-theme="system" until it is turned on
+ * for the whole app (put the attribute on <html> and set viewport colorScheme "dark light").
+ * One accent (signal green, under 10% of pixels) for the one primary action per screen.
+ * Green as status means live and nothing else; money is plain ink. Amber needs you, red is broken.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #0c0d0f;
+  --bg-deep: #070707;
+  --fg: #f2f2ef;
+  --fg-2: #9b9da3;
+  --fg-3: #80848b; /* Lifted to clear 4.5:1 on --bg at 12px. */
+  --code: #b9bbc0;
+  --line-1: rgb(255 255 255 / 0.07);
+  --line-2: rgb(255 255 255 / 0.1);
+  --line-3: rgb(255 255 255 / 0.14);
+  --raised: rgb(255 255 255 / 0.024);
+  --raised-2: rgb(255 255 255 / 0.04);
+  --accent: oklch(0.78 0.14 150);
+  --accent-ink: #08130c;
+  /* Green means live, and only live. Same hue as the accent, which marks the one primary action. */
+  --live: oklch(0.74 0.13 150);
+  --amber: #d9a441;
+  --red: #e06c5f;
+  /* 1px top highlight on raised surfaces; light comes from above. */
+  --highlight: rgb(255 255 255 / 0.05);
+  /* The pointer light: light, not color. */
+  --lamp: rgb(255 255 255 / 0.06);
+}
+
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] {
+    color-scheme: light;
+    --bg: #f5f4f0;
+    --bg-deep: #efeee9;
+    --fg: #15161a;
+    --fg-2: #50535a;
+    --fg-3: #6b6e75;
+    --code: #3a3d44;
+    --line-1: rgb(21 22 26 / 0.07);
+    --line-2: rgb(21 22 26 / 0.11);
+    --line-3: rgb(21 22 26 / 0.18);
+    --raised: rgb(255 255 255 / 0.62);
+    --raised-2: rgb(21 22 26 / 0.04);
+    --accent: oklch(0.5 0.12 150);
+    --accent-ink: #ffffff;
+    --live: oklch(0.55 0.13 150);
+    --amber: oklch(0.58 0.15 58);
+    --red: #b0453a;
+    --highlight: rgb(255 255 255 / 0.9);
+    --lamp: rgb(255 255 255 / 0.7);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-deep: var(--bg-deep);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-code: var(--code);
+  --color-line-1: var(--line-1);
+  --color-line-2: var(--line-2);
+  --color-line-3: var(--line-3);
+  --color-raised: var(--raised);
+  --color-raised-2: var(--raised-2);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-live: var(--live);
+  --color-amber: var(--amber);
+  --color-red: var(--red);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+html,
+body,
+[data-theme] {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--accent) 35%, transparent);
+  color: var(--fg);
+}
+
+:root {
+  caret-color: var(--accent);
+}
+
+/* The outline follows each element's own radius; never override it here. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* A sync in progress: the one moving thing on the screen. */
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.orbit {
+  transform-origin: center;
+  animation: orbit 1.6s linear infinite;
+}
+
+/* Rolling digits: each column slides to its digit when the value changes. */
+.ticker-col {
+  transition: transform 520ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A landing repo row opening on a phone: its ties settle in under it. */
+@keyframes ties-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.ties-in {
+  animation: ties-in 220ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ties-in {
+    animation-name: fade-in;
+    animation-duration: 160ms;
+  }
+  .orbit {
+    animation: none;
+  }
+  .ticker-col {
+    transition: none;
+  }
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The landing page's material. A deeper black than the app, one vignette that darkens the
+ * edges (never a glow), and a fine grain at 2.5% so the black reads as a surface, not a void.
+ * Both layers are fixed, static and ignore the pointer.
+ */
+.field {
+  background: var(--bg-deep);
+}
+.field::before,
+.field::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.field::before {
+  background: radial-gradient(120% 90% at 50% 20%, transparent 55%, rgb(0 0 0 / 0.55) 100%);
+}
+.field::after {
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27180%27%20height%3D%27180%27%3E%3Cfilter%20id%3D%27n%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%270.9%27%20numOctaves%3D%272%27%20stitchTiles%3D%27stitch%27%2F%3E%3CfeColorMatrix%20values%3D%270%200%200%200%201%20%200%200%200%200%201%20%200%200%200%200%201%20%200%200%200%201.4%200%27%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%27100%25%27%20height%3D%27100%25%27%20filter%3D%27url%28%23n%29%27%2F%3E%3C%2Fsvg%3E");
+  background-size: 180px 180px;
+}
+
+/*
+ * A real surface on the field: barely lifted from the black, a 1px light edge on top where the
+ * light lands, a hairline around, and a soft contact shadow under it.
+ */
+.slab {
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.035), rgb(255 255 255 / 0.015) 40%, rgb(255 255 255 / 0.01));
+  border: 1px solid rgb(255 255 255 / 0.08);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.07),
+    0 1px 1px rgb(0 0 0 / 0.5),
+    0 24px 64px -32px rgb(0 0 0 / 0.9);
+}
+
+/* The hero trace's pen at "now": it breathes once every two seconds. Still under reduced motion. */
+@keyframes pen-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+.trace-pen {
+  animation: pen-breathe 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .trace-pen {
+    animation: none;
+  }
+}
+@keyframes dot-in {
+  from {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+}
+.trace-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dot-in 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .trace-dot {
+    animation: none;
+  }
+}
+@keyframes ring-out {
+  from {
+    transform: scale(0.3);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0.18;
+  }
+}
+.trace-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ring-out 700ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .trace-ring {
+    animation: none;
+  }
+}
