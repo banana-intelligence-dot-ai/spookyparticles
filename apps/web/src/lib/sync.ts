@@ -47,7 +47,7 @@ export async function startSync(c: Connection, actor: string) {
     c.provider === "gmail"
       ? await start(backfillGmail, [{ connectionId: c.id, syncRunId: run.id }])
       : c.provider === "vercel"
-        ? await start(vercelInventory, [{ connectionId: c.id, syncRunId: run.id }])
+        ? await start(vercelInventory, [{ connectionId: c.id, syncRunId: run.id, billing: actor !== "system:watch" || new Date().getUTCMinutes() < 5 }])
         : await start(githubInventory, [{ connectionId: c.id, syncRunId: run.id, resumeAfterRepoId }]);
   await db.update(schema.syncRuns).set({ workflowRunId: wf.runId }).where(eq(schema.syncRuns.id, run.id));
   await appendAudit({
@@ -62,8 +62,8 @@ export async function startSync(c: Connection, actor: string) {
 
 /** Hosts are re-read this often while someone (a person or their agent) is looking, or by the cron. */
 const HOST_RESYNC_MS = 5 * 60_000;
-/** GitHub repos and deployments: a little slower, since a run costs a few API calls per repo. */
-const GITHUB_RESYNC_MS = 10 * 60_000;
+/** GitHub repos: slower, since a run costs API calls and workflow steps per repo. Failed deploys come from Vercel, every 5 minutes. */
+const GITHUB_RESYNC_MS = 30 * 60_000;
 const lastHostKick = new Map<string, number>();
 
 /**

@@ -79,11 +79,16 @@ export function Status({ value, label }: { value: string | null | undefined; lab
 const button =
   "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-[14px] font-medium whitespace-nowrap transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-8 sm:px-3.5";
 
+/** Ink on the page color. */
+const inkButton = `${button} bg-fg text-bg hover:bg-fg/90`;
+
 export const buttonStyles = {
   /** Moves the user forward (install, connect). The accent marks progress, never a repair. */
   primary: `${button} bg-accent text-accent-ink hover:brightness-110`,
   /** Repairs something (reconnect, fix an install). Ink, so green keeps meaning "healthy". */
-  repair: `${button} bg-fg text-bg hover:bg-fg/90`,
+  repair: inkButton,
+  /** The landing page's sign-in: ink, so the hero's green stays a status light. */
+  ink: inkButton,
   secondary: `${button} border border-line-2 text-fg hover:border-line-3 hover:bg-raised-2`,
   ghost: `${button} text-fg-2 hover:bg-raised-2 hover:text-fg`,
   danger: `${button} border border-line-2 text-fg-2 hover:border-red/50 hover:text-red`,

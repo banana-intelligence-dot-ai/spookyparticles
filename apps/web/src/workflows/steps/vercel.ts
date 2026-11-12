@@ -180,8 +180,9 @@ async function linkedRepoNodeId(userId: string, project: VercelProject): Promise
  * Edges from any other repo to this project or its deployments are removed, so a
  * relink on Vercel moves the project rather than leaving it under the old repo.
  */
-export async function syncVercelProject(input: { connectionId: string; userId: string; accountNodeId: string; scope: VercelScope; project: SyncProject; registrations: VercelRegistration[] | null }) {
-  "use step";
+type ProjectSyncInput = { connectionId: string; userId: string; accountNodeId: string; scope: VercelScope; project: SyncProject; registrations: VercelRegistration[] | null };
+
+async function syncOneVercelProject(input: ProjectSyncInput) {
   const { project, scope } = input;
   const { c, token } = await open(input.connectionId, input.userId);
   const userId = c.userId;
@@ -385,9 +386,17 @@ export async function syncVercelBilling(input: { connectionId: string; userId: s
   return { services: billed.length, state: "read" as const };
 }
 
-export async function setVercelProgress(syncRunId: string, scanned: number) {
+/**
+ * Several projects in one step. The watcher re-reads every project every 5 minutes, and each
+ * workflow step is billed as events, so one step per project cost far more than the reads.
+ * A failure retries the batch; every write is an upsert, so a retry is safe.
+ */
+export async function syncVercelProjects(input: Omit<ProjectSyncInput, "project"> & { projects: SyncProject[]; syncRunId: string; scannedBefore: number }) {
   "use step";
-  await getDb().update(schema.syncRuns).set({ scanned, updatedAt: new Date() }).where(eq(schema.syncRuns.id, syncRunId));
+  const { projects, syncRunId, scannedBefore, ...rest } = input;
+  for (const project of projects) await syncOneVercelProject({ ...rest, project });
+  await getDb().update(schema.syncRuns).set({ scanned: scannedBefore + projects.length, updatedAt: new Date() }).where(eq(schema.syncRuns.id, syncRunId));
+  return projects.length;
 }
 
 /** Done. When a scope had more projects than the run read, the run says so instead of claiming the whole account. */

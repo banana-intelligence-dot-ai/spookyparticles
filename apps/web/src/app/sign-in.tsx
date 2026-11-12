@@ -25,9 +25,14 @@ function writeLast(p: Provider) {
   }
 }
 
-/** `large` is the landing page’s 44px buttons; elsewhere the app's 32px controls. */
-export function SignIn({ large = false, vercelEnabled = false }: { large?: boolean; vercelEnabled?: boolean }) {
-  const size = large ? " max-sm:w-full sm:h-11! sm:px-5!" : "";
+/**
+ * `large` is the landing page’s 44px buttons; elsewhere the app's 32px controls. `inline` lets the
+ * buttons join the parent's flex row, with the older-accounts link and errors on a line of their own.
+ */
+export function SignIn({ large = false, ink = false, inline = false, vercelEnabled = false }: { large?: boolean; ink?: boolean; inline?: boolean; vercelEnabled?: boolean }) {
+  const ownLine = inline ? " order-last basis-full text-center max-[820px]:text-left" : "";
+  const size = large ? " max-sm:w-full sm:h-11! sm:px-5! sm:text-[15px]!" : "";
+  const primary = ink ? buttonStyles.ink : buttonStyles.primary;
   const { data: session, isPending } = authClient.useSession();
   const [busy, setBusy] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +58,7 @@ export function SignIn({ large = false, vercelEnabled = false }: { large?: boole
 
   if (!isPending && session) {
     return (
-      <Link href={returnTo} className={buttonStyles.primary + size}>
+      <Link href={returnTo} className={primary + size}>
         Open Spooky Particles
       </Link>
     );
@@ -74,16 +79,16 @@ export function SignIn({ large = false, vercelEnabled = false }: { large?: boole
   };
 
   return (
-    <div>
+    <div className={inline ? "contents" : undefined}>
       <div className="flex flex-wrap items-center gap-2">
         {vercelEnabled ? (
-          <button type="button" className={buttonStyles.primary + size} disabled={busy !== null} onClick={() => go("vercel")}>
+          <button type="button" className={primary + size} disabled={busy !== null} onClick={() => go("vercel")}>
             <VercelMark />
             {busy === "vercel" ? "Redirecting…" : "Continue with Vercel"}
             {last === "vercel" && busy !== "vercel" ? <span className="font-normal opacity-70">· last time</span> : null}
           </button>
         ) : null}
-        {!vercelEnabled || showOlder ? <button type="button" className={(vercelEnabled ? buttonStyles.secondary : buttonStyles.primary) + size} disabled={busy !== null} onClick={() => go("github")}>
+        {!vercelEnabled || showOlder ? <button type="button" className={(vercelEnabled ? buttonStyles.secondary : primary) + size} disabled={busy !== null} onClick={() => go("github")}>
           <GitHubMark />
           {busy === "github" ? "Redirecting…" : "Continue with GitHub"}
           {last === "github" && busy !== "github" ? <span className="font-normal opacity-70">· last time</span> : null}
@@ -95,11 +100,11 @@ export function SignIn({ large = false, vercelEnabled = false }: { large?: boole
         </button> : null}
       </div>
       {vercelEnabled && !showOlder ? (
-        <button type="button" className="mt-3 text-[14px] text-fg-2 underline underline-offset-2 hover:text-fg" onClick={() => setShowOlder(true)}>
+        <button type="button" className={"mt-3 text-[14px] text-fg-2 underline underline-offset-2 hover:text-fg" + ownLine} onClick={() => setShowOlder(true)}>
           Signed up before November 10? Use GitHub or Google
         </button>
       ) : null}
-      {error ? <p className="mt-3 text-[14px] text-red">{error}</p> : null}
+      {error ? <p className={"mt-3 text-[14px] text-red" + ownLine}>{error}</p> : null}
     </div>
   );
 }

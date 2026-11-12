@@ -5,7 +5,7 @@ import { ImageResponse } from "next/og";
 import { layoutSky } from "@/components/constellation/layout";
 import { sampleSky } from "@/components/constellation/sample";
 
-export const alt = "spooky particles: when an app you shipped quietly stops, your coding agent gets the evidence.";
+export const alt = "spooky particles: know when it breaks, keep your agents going.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -31,10 +31,10 @@ export default async function OpengraphImage() {
           <div style={{ fontFamily: "Geist Mono", fontSize: 28 }}>spooky particles</div>
           <div style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ fontFamily: "Geist Mono", fontSize: 38, lineHeight: 1.16, letterSpacing: -1 }}>
-              When an app you shipped quietly stops, your coding agent gets the evidence.
+              Know when it breaks. Keep your agents going.
             </div>
             <div style={{ fontFamily: "Geist", fontSize: 22, color: "#9b9da3", marginTop: 28 }}>
-              Every Vercel deploy and schedule, checked every 5 minutes.
+              Entangle your coding agent with every app you ship on Vercel.
             </div>
           </div>
           <div style={{ fontFamily: "Geist", fontSize: 20, color: "#80848b" }}>A Banana Intelligence product</div>
