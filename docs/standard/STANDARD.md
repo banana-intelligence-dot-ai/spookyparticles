@@ -4,7 +4,7 @@ Version 1, 2026-11-11.
 
 A project meets the standard when all twelve items below are true. Each item says what done looks like, how Spooky checks it (read-only, never a change), and the skill an agent runs to make it true. A skill always ends in a pull request or in steps for a person. Nothing merges itself.
 
-Today one skill, `spooky` (served at /skill.md), covers every live finding. Each item is getting its own small skill.
+Each item has its own skill in the [`skills`](../../skills) folder. Any coding agent can install one and run it. The `spooky` skill (served at /skill.md) works through Spooky's live findings one at a time.
 
 Status says what Spooky can check today. "Live" means it runs on real accounts now. "Planned" means the item is part of the standard, but the check is not built yet.
 
@@ -12,9 +12,9 @@ Status says what Spooky can check today. "Live" means it runs on real accounts n
 
 | # | Done means | How Spooky checks | Skill | Status |
 |---|---|---|---|---|
-| 1 | Someone hears within 10 minutes when the live site stops answering | Fetches the production address every 5 minutes; alerts after two failures, again on recovery | none needed, on by default | Live |
-| 2 | Someone hears when a production deploy fails | Reads deploy results for every connected project | none needed, on by default | Live |
-| 3 | Someone hears when server errors spike | 10 or more 5xx and 20% of production traffic over 15 minutes | none needed, on by default | Live (needs a read token) |
+| 1 | Someone hears within 10 minutes when the live site stops answering | Fetches the production address every 5 minutes; alerts after two failures, again on recovery | `spooky-uptime`: checks the watch is on and an alert channel exists | Live |
+| 2 | Someone hears when a production deploy fails | Reads deploy results for every connected project | `spooky-deploy-alerts`: checks the watch, fixes a failing build | Live |
+| 3 | Someone hears when server errors spike | 10 or more 5xx and 20% of production traffic over 15 minutes | `spooky-error-alerts`: checks the read token and alert channel | Live (needs a read token) |
 | 4 | Every scheduled job is watched, and a missed or failed run raises an alert | Reads each project's schedules and their run history; check-in links for jobs off Vercel | `spooky-checkin`: adds one check-in line to a job | Live |
 
 ## Close the doors

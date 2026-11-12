@@ -42,6 +42,8 @@ Other agents: an HTTP MCP server at `https://spookyparticles.com/api/mcp` with t
 
 A report never marks a finding fixed. Spooky marks it fixed only when its own next check passes.
 
+Each finding belongs to one item of the Spooky Standard, and each item has its own skill with fuller check, fix and proof steps: https://github.com/banana-intelligence-dot-ai/spookyparticles/tree/main/skills. For example, `cron_unguarded` is `spooky-cron-guard`, `secret_in_public_code` is `spooky-public-secret`, `previews_open` is `spooky-previews`, `secret_not_sensitive` is `spooky-sensitive`, and `deps_not_updated` is `spooky-deps`.
+
 ## Rules
 
 - Pull requests only. Never merge. Never push to the default branch. Never turn on auto-merge.
