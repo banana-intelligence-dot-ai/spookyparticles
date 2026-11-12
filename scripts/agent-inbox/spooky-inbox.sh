@@ -6,14 +6,37 @@ if [ -z "${HOME:-}" ]; then
   exit 0
 fi
 
-api_key=${SPOOKY_API_KEY:-}
+# Read the key fresh on every run, so a session started before a key rotation still works:
+# the key file first, then the export line in a shell profile, then the inherited environment.
+profile_key() {
+  for profile in "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    [ -r "$profile" ] || continue
+    line=$(grep -E '^[[:space:]]*export[[:space:]]+SPOOKY_API_KEY=' "$profile" 2>/dev/null | tail -n 1)
+    [ -n "$line" ] || continue
+    value=${line#*SPOOKY_API_KEY=}
+    case "$value" in
+      \"*) value=${value#\"}; value=${value%%\"*} ;;
+      \'*) value=${value#\'}; value=${value%%\'*} ;;
+      *) value=${value%%[[:space:]]*} ;;
+    esac
+    # Never evaluate a reference like $OTHER or a command; fall through to the environment instead.
+    case "$value" in *'$'*|*'`'*|'') continue ;; esac
+    printf '%s' "$value"
+    return 0
+  done
+  return 1
+}
+
+api_key=
+key_file="$HOME/.config/spooky/key"
+if [ -r "$key_file" ]; then
+  IFS= read -r api_key < "$key_file" || [ -n "$api_key" ] || api_key=
+fi
 if [ -z "$api_key" ]; then
-  key_file="$HOME/.config/spooky/key"
-  if [ ! -r "$key_file" ]; then
-    exit 0
-  fi
-  api_key=
-  IFS= read -r api_key < "$key_file" || [ -n "$api_key" ] || exit 0
+  api_key=$(profile_key) || api_key=
+fi
+if [ -z "$api_key" ]; then
+  api_key=${SPOOKY_API_KEY:-}
 fi
 carriage_return=$(printf '\r')
 api_key=${api_key%"$carriage_return"}
@@ -61,11 +84,19 @@ if [ -z "$base_url" ]; then
 fi
 
 # The key goes in on stdin, so it never shows in a process list.
-body=$(printf 'Authorization: Bearer %s\n' "$api_key" | curl -fsS -m 3 -G \
+response=$(printf 'Authorization: Bearer %s\n' "$api_key" | curl -sS -m 3 -G \
   -H @- \
   --data-urlencode "project=$project" \
   --data-urlencode "format=text" \
+  -w '\n%{http_code}' \
   "$base_url/api/v1/incidents" 2>/dev/null) || exit 0
+status=$(printf '%s' "$response" | tail -n 1)
+body=$(printf '%s' "$response" | sed '$d')
+case "$status" in
+  2??) ;;
+  401) body="Spooky: the API key was rejected (revoked or expired). Put the new key in ~/.config/spooky/key or ~/.zshrc; the next prompt picks it up." ;;
+  *) exit 0 ;;
+esac
 
 hash_body() {
   if command -v shasum >/dev/null 2>&1; then
