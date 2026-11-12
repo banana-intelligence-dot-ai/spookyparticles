@@ -152,7 +152,7 @@ export function formatIncidentsText(report: Pick<IncidentsReport, "incidents">, 
   confirm.searchParams.set("project", oneLine(project));
   confirm.searchParams.set("format", "text");
   return [
-    `Spooky Particles: ${report.incidents.length} open problems for ${safeProject}`,
+    `Spooky Particles: ${report.incidents.length} open ${report.incidents.length === 1 ? "problem" : "problems"} for ${safeProject}`,
     "",
     blocks.join("\n\n"),
     "",

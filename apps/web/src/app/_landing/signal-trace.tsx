@@ -129,7 +129,7 @@ function Note({ show, tone, kicker, children, className = "", style }: { show: b
   );
 }
 
-const CAUSE_TONE = "text-[#f2b8b5]";
+const CAUSE_TONE = "text-cause";
 
 export function SignalTrace() {
   const { last, now } = useWatch();
@@ -166,7 +166,7 @@ export function SignalTrace() {
   };
   const head = pen.done ? hover : pen.x;
 
-  const label = `A replay of a real failure on this site: on ${INCIDENT.date} the production deploy of ${INCIDENT.failed.commit} failed in ${INCIDENT.failed.seconds} seconds. The alert named the cause from the build log, “${INCIDENT.cause}”. The fix ${INCIDENT.fixed.commit} was live ${INCIDENT.minutesToFix} later. Our own watcher runs ${INCIDENT.schedule.every}.`;
+  const label = `A replay of a real failure on this site: on ${INCIDENT.date} the production deploy of ${INCIDENT.failed.commit} failed in ${INCIDENT.failed.seconds} seconds. The alert named the cause from the build log, “${INCIDENT.cause}”. The fix ${INCIDENT.fixed.commit} was live and working ${INCIDENT.minutesToFix} later. Our own watcher runs ${INCIDENT.schedule.every}.`;
   const strokes = { fill: "none", strokeLinejoin: "round" as const, strokeLinecap: "round" as const };
   const caption = `Our own production on ${INCIDENT.date}, UTC, replayed through today’s 5-minute checks.`;
   const nowLine = age !== null ? `Watching now. Last check ${fmtAge(age)} ago.` : `Watching now, ${INCIDENT.schedule.every}.`;
@@ -237,13 +237,13 @@ export function SignalTrace() {
           Production build failed in {INCIDENT.failed.seconds} s.
         </Note>
         <Note show={pen.x > d.xf + 60} tone="dim" kicker="Cause, from the build log" style={{ left: pct(d.xf + 26, W), top: d.peak + 70 }} className="w-[400px]">
-          <p className={`font-mono text-[15px] leading-[1.5] ${CAUSE_TONE}`}>{INCIDENT.cause}</p>
+          <p className={`font-mono text-[14px] leading-[1.55] ${CAUSE_TONE}`}>{INCIDENT.cause}</p>
         </Note>
         <Note show={pen.x > d.xf + 200} tone="dim" kicker="Alert emailed" style={{ left: pct(d.xf + 26, W), top: d.raised + 22 }} className="w-[440px]">
           “{INCIDENT.subject}”
         </Note>
-        <Note show={pen.x > d.xr} tone="live" kicker={`${INCIDENT.fixed.readyAt} UTC`} style={{ left: pct(d.xr + 26, W), top: d.peak - 6 }} className="whitespace-nowrap">
-          Fixed {INCIDENT.minutesToFix} later.
+        <Note show={pen.x > d.xr} tone="live" kicker={`${INCIDENT.fixed.readyAt} UTC`} style={{ right: pct(W - d.xr + 22, W), top: d.peak - 6 }} className="text-right whitespace-nowrap">
+          Working again, {INCIDENT.minutesToFix} later.
         </Note>
 
         <div className="absolute inset-x-0 mx-auto flex max-w-6xl items-baseline justify-between gap-6 px-8 font-mono text-[11px] text-fg-3" style={{ top: d.base + 76 }}>
@@ -298,7 +298,7 @@ export function SignalTrace() {
           <dt className="font-mono text-[12px] text-fg-3">Emailed</dt>
           <dd className="text-fg">“{INCIDENT.subject}”</dd>
           <dt className="font-mono text-[12px] text-live">Fixed</dt>
-          <dd className="text-fg">Live {INCIDENT.minutesToFix} later.</dd>
+          <dd className="text-fg">Working again {INCIDENT.minutesToFix} later.</dd>
           <dt className="font-mono text-[12px] text-live">Now</dt>
           <dd className="text-fg">{age !== null ? `Last check ${fmtAge(age)} ago.` : `Checking ${INCIDENT.schedule.every}.`}</dd>
         </dl>

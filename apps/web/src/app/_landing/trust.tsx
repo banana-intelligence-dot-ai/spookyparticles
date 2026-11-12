@@ -12,15 +12,13 @@ const ACCESS: [string, string][] = [
 
 export function Trust() {
   return (
-    <section aria-labelledby="trust" className={`${SECTION_GAP} grid gap-10 lg:grid-cols-12 lg:gap-x-6`}>
+    <section aria-labelledby="trust" className={SECTION_GAP}>
       <SectionHead
         id="trust"
-        eyebrow="Access"
         title="What each connection can read."
         sub="Vercel limits the integration to projects you pick. Our code keeps a pasted token read-only."
-        className="lg:col-span-5"
       />
-      <dl className="lg:col-span-6 lg:col-start-7">
+      <dl className="mt-12 max-w-[720px]">
         {ACCESS.map(([what, line]) => (
           <div key={what} className="grid gap-x-6 gap-y-1 border-b border-line-1 py-5 first:border-t sm:grid-cols-[168px_minmax(0,1fr)]">
             <dt className="font-mono text-[14px] text-fg">{what}</dt>
@@ -33,14 +31,14 @@ export function Trust() {
 }
 
 const QUESTIONS: [string, ReactNode][] = [
-  ["What happens when a schedule misses?", "With a read token, we alert your phone, Slack, Teams or email. We also tell you when the job recovers."],
-  ["Can the integration watch schedules?", "The integration lists schedules and their timing. Add one check-in line or a read token to watch runs."],
+  ["What does my coding agent get?", "Each open problem with its evidence: the build log line that names the cause, or a job’s last note. Claude Code gets it at session start. Any MCP agent can ask."],
+  ["Where do alerts go?", "Your phone (through ntfy), Slack, Teams or email, routed per project. Plus one digest each morning."],
+  ["How are scheduled jobs watched?", "With a read token, Vercel schedules are watched with no code change. Anywhere else, add one curl line. You hear when a run is late, fails, hangs or processes too few items."],
+  ["Does Spooky fix things for me?", "No. Your agent fixes the code through your repo. Spooky keeps checking and tells you when it’s working again."],
   [
     "Can it change my projects?",
     "No. GitHub and Vercel connections only read. An agent key can write to Spooky if you choose, but cannot delete anything or see a secret.",
   ],
-  ["Does it watch other hosts?", "Check-ins watch scheduled jobs anywhere. Other hosts appear in the map through deploy data."],
-  ["What does my agent get?", "A key that reads by default. You can allow it to add jobs and alert channels, start a sync and mark findings."],
   [
     "Where can I read the details?",
     <>
@@ -55,7 +53,7 @@ const QUESTIONS: [string, ReactNode][] = [
 export function Faq() {
   return (
     <section aria-labelledby="faq" className={SECTION_GAP}>
-      <SectionHead id="faq" eyebrow="Questions" title="Asked before connecting." />
+      <SectionHead id="faq" title="Asked before connecting." />
       <div className="mt-12 max-w-[720px]">
         {QUESTIONS.map(([q, a]) => (
           <details key={q} className="group border-b border-line-1 first:border-t">

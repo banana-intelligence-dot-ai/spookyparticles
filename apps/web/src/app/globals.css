@@ -26,6 +26,8 @@
   --live: oklch(0.74 0.13 150);
   --amber: #d9a441;
   --red: #e06c5f;
+  /* A build log line that names a failure: red, quiet enough to read in mono. */
+  --cause: #f2b8b5;
   /* 1px top highlight on raised surfaces; light comes from above. */
   --highlight: rgb(255 255 255 / 0.05);
   /* The pointer light: light, not color. */
@@ -51,6 +53,7 @@
     --live: oklch(0.55 0.13 150);
     --amber: oklch(0.58 0.15 58);
     --red: #b0453a;
+    --cause: #9a3b31;
     --highlight: rgb(255 255 255 / 0.9);
     --lamp: rgb(255 255 255 / 0.7);
   }
@@ -73,6 +76,7 @@
   --color-live: var(--live);
   --color-amber: var(--amber);
   --color-red: var(--red);
+  --color-cause: var(--cause);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 }
@@ -193,6 +197,18 @@ body {
     inset 0 1px 0 rgb(255 255 255 / 0.07),
     0 1px 1px rgb(0 0 0 / 0.5),
     0 24px 64px -32px rgb(0 0 0 / 0.9);
+}
+
+/* The landing page in light: the same material, inked. A faint vignette, and slabs drawn with a hairline, no shadow. */
+@media (prefers-color-scheme: light) {
+  [data-theme="system"].field::before {
+    background: radial-gradient(120% 90% at 50% 20%, transparent 60%, rgb(21 22 26 / 0.06) 100%);
+  }
+  [data-theme="system"] .slab {
+    background: rgb(255 255 255 / 0.6);
+    border-color: rgb(21 22 26 / 0.1);
+    box-shadow: none;
+  }
 }
 
 /* The hero trace's pen at "now": it breathes once every two seconds. Still under reduced motion. */
