@@ -114,7 +114,7 @@ function shown(value: ProbeRule["value"]): string {
 }
 
 export function describeProbeRule(rule: ProbeRule): string {
-  if (rule.op === "exists") return `${rule.path} exists`;
+  if (rule.op === "exists") return `${rule.path} has a value`;
   if (rule.op === "eq" && rule.value === "$today") return `${rule.path} is today`;
   const words: Record<Exclude<RuleOp, "exists">, string> = { eq: "is", gte: "at least", lte: "at most", gt: "more than", lt: "less than" };
   return `${rule.path} ${words[rule.op]} ${shown(rule.value)}`;

@@ -19,6 +19,16 @@ describe("probe rules", () => {
     ], "2026-11-13")).toEqual({ ok: true, note: "" });
     expect(todayInTimeZone(date("2026-11-13T02:00:00Z"), zone)).toBe("2026-11-12");
   });
+  it("treats exists as has a value, and reads a list's length", () => {
+    const body = { audio_url: "", headline: null, chapters: [], gone: [1, 2] };
+    expect(judge(body, [
+      { path: "audio_url", op: "exists" },
+      { path: "headline", op: "exists" },
+      { path: "chapters", op: "exists" },
+      { path: "chapters.length", op: "gte", value: 1 },
+      { path: "gone.length", op: "eq", value: 2 },
+    ], "2026-11-13")).toEqual({ ok: false, note: 'audio_url: expected a value, got empty; headline: expected a value, got null; chapters: expected a value, got []; chapters.length: expected >= 1, got 0' });
+  });
   it("reports only failed rules and caps values and the note", () => {
     const result = judge({ date: null, sentCount: 0, long: "x".repeat(500) }, [
       { path: "date", op: "eq", value: "$today" },
@@ -29,7 +39,7 @@ describe("probe rules", () => {
     expect(result.ok).toBe(false);
     expect(result.note).toContain("date: expected 2026-11-13, got null");
     expect(result.note).toContain("sentCount: expected >= 1, got 0");
-    expect(result.note).toContain("missing.path: expected present, got missing");
+    expect(result.note).toContain("missing.path: expected a value, got missing");
     expect(result.note).not.toContain("x".repeat(61));
     expect(result.note.length).toBeLessThanOrEqual(300);
   });

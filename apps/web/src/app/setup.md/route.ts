@@ -143,6 +143,8 @@ printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -
   ${base}/api/v1/checkins
 \`\`\`
 
+Rules: \`eq\`, \`gte\`, \`lte\`, \`gt\`, \`lt\`, and \`exists\` (has a value: not missing, null, empty text or an empty list). Paths use dots, and \`items.length\` reads a list's length.
+
 ## Existing setup
 
 1. Run the verify step (step 8). On PASS, do not create another key and do not reconnect anything.

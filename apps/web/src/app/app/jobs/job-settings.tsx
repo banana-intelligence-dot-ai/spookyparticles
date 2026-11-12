@@ -4,7 +4,7 @@ import type { JobSettingsRule, JobSettingsValue, RuleOp } from "./job-settings-l
 export const INPUT = "h-11 rounded-lg border border-line-2 bg-transparent px-3 text-[14px] text-fg hover:border-line-3 focus:border-line-3 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:h-9";
 
 const ZONES = ["UTC", "America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York", "Europe/London", "Europe/Paris", "Asia/Tokyo", "Australia/Sydney"];
-const OPS: [RuleOp, string][] = [["eq", "is"], ["gte", "at least"], ["lte", "at most"], ["gt", "more than"], ["lt", "less than"], ["exists", "exists"]];
+const OPS: [RuleOp, string][] = [["eq", "is"], ["gte", "at least"], ["lte", "at most"], ["gt", "more than"], ["lt", "less than"], ["exists", "has a value"]];
 
 export function JobSettingsFields({ value, onChange, manual, idPrefix }: { value: JobSettingsValue; onChange: (value: JobSettingsValue) => void; manual: boolean; idPrefix: string }) {
   const set = <K extends keyof JobSettingsValue>(key: K, next: JobSettingsValue[K]) => onChange({ ...value, [key]: next });

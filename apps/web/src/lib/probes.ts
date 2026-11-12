@@ -37,15 +37,20 @@ export function validateOutcomeInput(schedule: unknown, timeZone: unknown, probe
   return { schedule: cleanSchedule, timeZone: cleanZone, probe: { url: url.toString(), expect } };
 }
 
-const short = (value: unknown) => String(value === undefined ? "missing" : value === null ? "null" : typeof value === "string" ? value : JSON.stringify(value)).slice(0, 60);
+const short = (value: unknown) => String(value === undefined ? "missing" : value === null ? "null" : value === "" ? "empty" : typeof value === "string" ? value : JSON.stringify(value)).slice(0, 60);
+/** "exists" means it has a value: not missing, null, an empty string or an empty list. */
+function hasValue(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "" && !(Array.isArray(value) && value.length === 0);
+}
+
 export function judge(json: unknown, expect: ExpectRule[], todayInZone: string): { ok: boolean; note: string } {
   const failures: string[] = [];
   for (const rule of expect) {
     let value: unknown = json;
     for (const key of rule.path.split(".")) value = value && typeof value === "object" && Object.hasOwn(value, key) ? (value as Record<string, unknown>)[key] : undefined;
     const target = rule.value === "$today" ? todayInZone : rule.value;
-    const ok = rule.op === "exists" ? value !== undefined : rule.op === "eq" ? value === target : typeof value === "number" && typeof target === "number" && (rule.op === "gte" ? value >= target : rule.op === "lte" ? value <= target : rule.op === "gt" ? value > target : value < target);
-    if (!ok) failures.push(`${rule.path}: expected ${rule.op === "exists" ? "present" : `${rule.op === "eq" ? "" : rule.op === "gte" ? ">= " : rule.op === "lte" ? "<= " : rule.op === "gt" ? "> " : "< "}${short(target)}`}, got ${short(value)}`);
+    const ok = rule.op === "exists" ? hasValue(value) : rule.op === "eq" ? value === target : typeof value === "number" && typeof target === "number" && (rule.op === "gte" ? value >= target : rule.op === "lte" ? value <= target : rule.op === "gt" ? value > target : value < target);
+    if (!ok) failures.push(`${rule.path}: expected ${rule.op === "exists" ? "a value" : `${rule.op === "eq" ? "" : rule.op === "gte" ? ">= " : rule.op === "lte" ? "<= " : rule.op === "gt" ? "> " : "< "}${short(target)}`}, got ${short(value)}`);
   }
   return { ok: failures.length === 0, note: failures.join("; ").slice(0, 300) };
 }
