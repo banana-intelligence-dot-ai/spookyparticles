@@ -120,7 +120,7 @@ Anything you run on a schedule for your human (a nightly build, a daily publish,
 
 3. Tell your human to open ${base}/app/jobs once: they add where alerts go (an ntfy topic for the phone, a Slack or Teams webhook, an email) and press **Send a test**. With no channel set, alerts fall back to their account email.
 
-4. Read the state any time: \`GET ${base}/api/v1/checkins\` lists every job with status (new, never_checked_in, up, late, down, paused, retired), last check-in and next due time. \`down\` means quiet past the grace or a reported failure. \`never_checked_in\` appears after 24 hours without a first check-in and does not send an alert. Retire a gone job with \`PATCH ${base}/api/v1/checkins/JOB_ID\` and \`{"retired":true}\`; its next check-in revives it.
+4. Read the state any time: \`GET ${base}/api/v1/checkins\` lists every job with status (new, never_checked_in, up, late, down, paused, retired), last check-in and next due time. \`down\` means quiet past the grace or a reported failure. \`never_checked_in\` appears when a new job's first run is past due (at least 24 hours) and does not send an alert. Filter with \`?status=down,late\` or \`?status=issues\` (late, down and never checked in). A job can read its own state with no account key: \`GET\` its ping link plus \`/status\`. That never records a check-in. Retire a gone job with \`PATCH ${base}/api/v1/checkins/JOB_ID\` and \`{"retired":true}\`; its next check-in revives it.
 
 ## Existing setup
 

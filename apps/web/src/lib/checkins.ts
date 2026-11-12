@@ -47,9 +47,38 @@ export function pingUrlFor(token: string): string {
   return new URL(`/api/ping/${token}`, appUrl()).toString();
 }
 
-export function jobDisplayStatus(job: { status: StoredJobStatus; lastPingAt: Date | null; createdAt: Date }, nowMs = Date.now()): JobStatus {
+/** How long a new job may stay silent before it is flagged: a day, or its first period plus grace if longer. */
+export function firstCheckInWindowMs(job: { periodMinutes?: number; graceMinutes?: number }): number {
+  return Math.max(NEVER_CHECKED_IN_MS, ((job.periodMinutes ?? 0) + (job.graceMinutes ?? 0)) * 60_000);
+}
+
+export function jobDisplayStatus(job: { status: StoredJobStatus; lastPingAt: Date | null; createdAt: Date; periodMinutes?: number; graceMinutes?: number }, nowMs = Date.now()): JobStatus {
   if (job.status === "retired") return "retired";
-  return job.status === "new" && !job.lastPingAt && nowMs - job.createdAt.getTime() >= NEVER_CHECKED_IN_MS ? "never_checked_in" : job.status;
+  return job.status === "new" && !job.lastPingAt && nowMs - job.createdAt.getTime() >= firstCheckInWindowMs(job) ? "never_checked_in" : job.status;
+}
+
+/** Statuses an agent can filter on. "issues" means anything that needs a look: late, down or never checked in. */
+export const JOB_STATUSES: readonly JobStatus[] = ["new", "never_checked_in", "up", "late", "down", "paused", "retired"];
+export function parseStatusFilter(raw: string | null): Set<JobStatus> | null {
+  if (!raw) return null;
+  const out = new Set<JobStatus>();
+  for (const part of raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+    if (part === "issues") ["late", "down", "never_checked_in"].forEach((s) => out.add(s as JobStatus));
+    else if ((JOB_STATUSES as readonly string[]).includes(part)) out.add(part as JobStatus);
+    else return null;
+  }
+  return out.size ? out : null;
+}
+
+/** What the job's own check-in link may read back: its state, never other jobs or the account. */
+export type JobStatusByLink = { name: string; status: JobStatus; lastCheckIn: string | null; lastResult: string | null; lastNote: string | null; nextDue: string | null };
+
+export async function jobStatusByToken(token: string, nowMs = Date.now()): Promise<JobStatusByLink | null> {
+  if (!token || token.length > 200) return null;
+  const [j] = await getDb().select().from(schema.checkinJobs).where(eq(schema.checkinJobs.token, token)).limit(1);
+  if (!j) return null;
+  const v = view(j, nowMs);
+  return { name: v.name, status: v.status, lastCheckIn: v.lastPingAt, lastResult: v.lastPingKind, lastNote: v.lastNote, nextDue: v.nextDueAt };
 }
 
 export function sortJobViews<T extends { name: string; status: JobStatus }>(jobs: T[]): T[] {

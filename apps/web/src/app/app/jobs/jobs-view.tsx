@@ -222,7 +222,7 @@ function JobRow({ j, now, onChanged, onNotice }: { j: Job; now: number; onChange
         {period(j.periodMinutes)}, grace {j.graceMinutes} min · {detail}
         {j.project ? <> · <span className="font-mono">{j.project}</span></> : null}
       </p>
-      {j.status === "never_checked_in" ? <p className="mt-1 pl-[19px] text-[14px] text-fg-2">No check-in in the 24 hours since you added this. Retire it if the job is gone.</p> : null}
+      {j.status === "never_checked_in" ? <p className="mt-1 pl-[19px] text-[14px] text-fg-2">No check-in since you added this, and its first run was due. Retire it if the job is gone.</p> : null}
       {j.source === "vercel" ? <><p className="mt-0.5 pl-[19px] text-[12px] text-fg-3">Vercel schedule · <span className="font-mono">{j.path} · {j.schedule}</span></p>{j.watched ? <p className="mt-0.5 pl-[19px] text-[12px] text-fg-3">Watched from Vercel&apos;s request history, no code change</p> : null}</> : null}
       {open ? (
         <div className="mt-3 pl-[19px]">

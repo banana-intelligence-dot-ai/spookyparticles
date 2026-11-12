@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, cleanMinutes, cleanName, jobDisplayStatus, jobIssue, sortJobViews } from "./checkins";
+import { ago, cleanMinutes, cleanName, jobDisplayStatus, jobIssue, parseStatusFilter, sortJobViews } from "./checkins";
 import { validateTarget } from "./alerts/channels";
 
 describe("check-in input cleaning", () => {
@@ -29,6 +29,19 @@ describe("check-in state", () => {
     expect(jobDisplayStatus(job, createdAt.getTime() + 24 * 60 * 60_000 - 1)).toBe("new");
     expect(jobDisplayStatus(job, createdAt.getTime() + 24 * 60 * 60_000)).toBe("never_checked_in");
     expect(jobDisplayStatus({ ...job, lastPingAt: new Date("2026-11-10T11:00:00Z") }, createdAt.getTime() + 48 * 60 * 60_000)).toBe("new");
+  });
+
+  it("gives a slow job until its first run is due before calling it never checked in", () => {
+    const weekly = { status: "new" as const, lastPingAt: null, createdAt, periodMinutes: 7 * 24 * 60, graceMinutes: 120 };
+    expect(jobDisplayStatus(weekly, createdAt.getTime() + 3 * 24 * 60 * 60_000)).toBe("new");
+    expect(jobDisplayStatus(weekly, createdAt.getTime() + (7 * 24 * 60 + 120) * 60_000)).toBe("never_checked_in");
+  });
+
+  it("reads a status filter, with issues as a shorthand, and refuses unknown words", () => {
+    expect([...parseStatusFilter("down,late")!]).toEqual(["down", "late"]);
+    expect([...parseStatusFilter("issues")!].sort()).toEqual(["down", "late", "never_checked_in"]);
+    expect(parseStatusFilter("down,broken")).toBeNull();
+    expect(parseStatusFilter(null)).toBeNull();
   });
 
   it("keeps retired jobs retired and puts them at the bottom", () => {

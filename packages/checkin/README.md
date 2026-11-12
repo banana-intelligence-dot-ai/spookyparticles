@@ -66,6 +66,16 @@ From a shell, with no code at all:
 curl -fsS -m 10 --retry 3 "$SPOOKY_PING_URL"
 ```
 
+## Check that it worked
+
+Add `/status` to the end of the check-in link to read the job's state. It never records a run.
+
+```bash
+curl -fsS "$SPOOKY_PING_URL/status"
+```
+
+It answers with the job's name, its status (`up`, `late`, `down` and so on), the last check-in and its result, and when the next one is due.
+
 ## Options
 
 | Option | Default | What it does |
