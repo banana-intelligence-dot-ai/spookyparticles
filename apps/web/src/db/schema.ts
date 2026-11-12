@@ -565,7 +565,7 @@ export const alerts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
-    kind: text("kind").$type<"deploy_failed" | "job_quiet" | "job_failed" | "job_recovered" | "channel_test" | "server_errors" | "server_errors_recovered" | "site_down" | "site_recovered" | "expiration">().notNull(),
+    kind: text("kind").$type<"deploy_failed" | "job_quiet" | "job_failed" | "job_recovered" | "channel_test" | "server_errors" | "server_errors_recovered" | "site_down" | "site_recovered" | "expiration" | "daily_digest">().notNull(),
     /** Stable per event, e.g. deploy_failed:<deployment id>. Unique per user. */
     key: text("key").notNull(),
     channel: text("channel").$type<"email" | "ntfy" | "slack" | "teams" | "channels">().notNull(),
@@ -585,6 +585,8 @@ export const alertSettings = pgTable("alert_settings", {
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
   deployFailed: boolean("deploy_failed").notNull().default(true),
+  /** The morning summary: what needs you, what alerted in the last day, what is fine. */
+  dailyDigest: boolean("daily_digest").notNull().default(true),
   updatedAt: now("updated_at"),
 });
 
@@ -640,10 +642,15 @@ export const checkinJobs = pgTable(
     graceMinutes: integer("grace_minutes").notNull().default(10),
     /** "owner/repo" or a project name the job belongs to, for the Today row. */
     project: text("project"),
+    owner: text("owner"),
+    maxRunMinutes: integer("max_run_minutes"),
+    minCount: integer("min_count"),
     source: text("source").$type<"manual" | "vercel">().notNull().default("manual"),
     externalRef: text("external_ref"),
     path: text("path"),
     schedule: text("schedule"),
+    timeZone: text("time_zone"),
+    probe: jsonb("probe").$type<{ url: string; expect: { path: string; op: "eq" | "gte" | "lte" | "gt" | "lt" | "exists"; value?: string | number | boolean }[] }>(),
     requestMethod: text("request_method"),
     vercelConnectionId: uuid("vercel_connection_id"),
     vercelProjectId: text("vercel_project_id"),
@@ -673,6 +680,7 @@ export const checkinPings = pgTable(
       .references(() => checkinJobs.id, { onDelete: "cascade" }),
     kind: text("kind").$type<"ok" | "start" | "fail">().notNull(),
     note: text("note"),
+    count: integer("count"),
     at: now("at"),
   },
   (t) => [index("checkin_pings_job_at_idx").on(t.jobId, t.at)],
@@ -686,6 +694,7 @@ export const alertChannels = pgTable(
     userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
     kind: text("kind").$type<"ntfy" | "slack" | "teams" | "email">().notNull(),
     label: text("label").notNull(),
+    project: text("project"),
     encryptedTarget: text("encrypted_target").notNull(),
     keyId: text("key_id").notNull(),
     enabled: boolean("enabled").notNull().default(true),

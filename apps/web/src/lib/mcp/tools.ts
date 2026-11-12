@@ -137,8 +137,10 @@ export function toolsFor(actor: Actor): ToolRegistry {
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => ({ jobs: (await listJobs(userId)).map((job) => ({
-        name: job.name, project: job.project, status: job.status, lastCheckIn: job.lastPingAt,
+        name: job.name, project: job.project, owner: job.owner, status: job.status, lastCheckIn: job.lastPingAt,
         nextDue: job.nextDueAt, lastResult: job.lastPingKind, cause: job.lastPingKind === "fail" ? job.lastNote : null,
+        schedule: job.schedule, timeZone: job.timeZone,
+        probe: job.probe ? { url: job.probe.url, rules: job.probe.expect.length } : null,
       })) }),
     }),
     list_findings: tool({

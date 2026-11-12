@@ -43,6 +43,10 @@ Only calls from Vercel's scheduler count as runs, so opening the route in a brow
 
 Pass `{ start: true }` to also check in when a run starts, so Spooky can catch a run that hangs.
 
+### Catch a hung run
+
+Set `maxRunMinutes` on the job, then send a `start` check-in before the work. If no ok or fail check-in follows within that many minutes, Spooky alerts you without waiting for the usual grace period. `withCheckin` can send the start check-in with `{ start: true }`.
+
 ## Any other job
 
 From a script, a worker, or anything else that runs on a schedule:
@@ -53,12 +57,14 @@ import { checkin } from "./spooky-checkin";
 await checkin("start");
 try {
   await doTheWork();
-  await checkin("ok");
+  await checkin("ok", { count: 12 });
 } catch (error) {
   await checkin("fail", { note: "import step failed" });
   throw error;
 }
 ```
+
+Pass `{ count: 12 }` with an ok check-in to report how many items ran. If the job has `minCount` and the count is too low, Spooky marks the run failed. A missing count leaves the result as ok.
 
 From a shell, with no code at all:
 
@@ -82,6 +88,7 @@ It answers with the job's name, its status (`up`, `late`, `down` and so on), the
 |---|---|---|
 | `url` | `SPOOKY_PING_URL` | The job's check-in link. |
 | `note` | none | A short note kept with the run, up to 500 characters. Never put a secret here. |
+| `count` | none | A non-negative integer number of items processed. |
 | `timeoutMs` | `5000` | How long to wait for Spooky on each try. |
 | `retries` | `2` | Extra tries after a network or server error. |
 | `start` | `false` | `withCheckin` only. Also check in when the run starts. |

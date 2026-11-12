@@ -12,7 +12,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { sendEmail } from "./email";
 
 export type ChannelKind = "ntfy" | "slack" | "teams" | "email";
-export type Notice = { subject: string; text: string; link?: string | null; priority?: "high" | "default" | "low" };
+export type Notice = { subject: string; text: string; html?: string; link?: string | null; priority?: "high" | "default" | "low" };
 export type DeliveryResult = { kind: ChannelKind; label: string; ok: boolean; reason?: string };
 
 const TIMEOUT_MS = 8_000;
@@ -151,7 +151,7 @@ export async function deliverTo(kind: ChannelKind, target: string, n: Notice): P
         }),
       });
     case "email": {
-      const r = await sendEmail({ to: target, subject: n.subject, text: body, html: `<pre style="font:14px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;white-space:pre-wrap">${escapeHtml(body)}</pre>` });
+      const r = await sendEmail({ to: target, subject: n.subject, text: body, html: n.html ?? `<pre style="font:14px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;white-space:pre-wrap">${escapeHtml(body)}</pre>` });
       return r.ok ? { ok: true } : { ok: false, reason: r.reason };
     }
   }
@@ -159,24 +159,45 @@ export async function deliverTo(kind: ChannelKind, target: string, n: Notice): P
 
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
 
-export type ChannelView = { id: string; kind: ChannelKind; label: string; enabled: boolean; lastOkAt: string | null; lastError: string | null; createdAt: string };
+export type ChannelView = { id: string; kind: ChannelKind; label: string; project: string | null; enabled: boolean; lastOkAt: string | null; lastError: string | null; createdAt: string };
+
+export function cleanChannelProject(raw: unknown): string | null {
+  return typeof raw === "string" ? raw.trim().slice(0, 120) || null : null;
+}
+
+export function matchesProject(channelProject: string, alertProject: string | null | undefined): boolean {
+  const channel = channelProject.trim().toLowerCase();
+  const alert = alertProject?.trim().toLowerCase();
+  if (!channel || !alert) return false;
+  if (channel === alert) return true;
+  const a = channel.split("/");
+  const b = alert.split("/");
+  return a.length === 2 && b.length === 1 && a[1] === b[0] || b.length === 2 && a.length === 1 && b[1] === a[0];
+}
 
 export async function listChannels(userId: string): Promise<ChannelView[]> {
   const rows = await getDb().select().from(schema.alertChannels).where(eq(schema.alertChannels.userId, userId)).orderBy(schema.alertChannels.createdAt);
-  return rows.map((r) => ({ id: r.id, kind: r.kind, label: r.label, enabled: r.enabled, lastOkAt: r.lastOkAt?.toISOString() ?? null, lastError: r.lastError, createdAt: r.createdAt.toISOString() }));
+  return rows.map((r) => ({ id: r.id, kind: r.kind, label: r.label, project: r.project, enabled: r.enabled, lastOkAt: r.lastOkAt?.toISOString() ?? null, lastError: r.lastError, createdAt: r.createdAt.toISOString() }));
 }
 
-export async function addChannel(userId: string, kind: ChannelKind, raw: string): Promise<{ ok: true; channel: ChannelView } | { ok: false; reason: string }> {
+export async function addChannel(userId: string, kind: ChannelKind, raw: string, project: string | null = null): Promise<{ ok: true; channel: ChannelView } | { ok: false; reason: string }> {
   const v = validateTarget(kind, raw);
   if (!v.ok) return v;
   const sealed = encrypt(v.target);
   const [row] = await getDb()
     .insert(schema.alertChannels)
-    .values({ userId, kind, label: v.label, encryptedTarget: sealed.ciphertext, keyId: sealed.keyId })
+    .values({ userId, kind, label: v.label, project, encryptedTarget: sealed.ciphertext, keyId: sealed.keyId })
     .returning();
   // Audit the channel id and kind only, never the secret address.
   await appendAudit({ actor: `user:${userId}`, userId, action: "alert_channel.added", target: `alert_channel:${row.id}`, after: { kind: row.kind } });
-  return { ok: true, channel: { id: row.id, kind: row.kind, label: row.label, enabled: row.enabled, lastOkAt: null, lastError: null, createdAt: row.createdAt.toISOString() } };
+  return { ok: true, channel: { id: row.id, kind: row.kind, label: row.label, project: row.project, enabled: row.enabled, lastOkAt: null, lastError: null, createdAt: row.createdAt.toISOString() } };
+}
+
+export async function updateChannelProject(userId: string, id: string, project: string | null): Promise<ChannelView | null> {
+  const [row] = await getDb().update(schema.alertChannels).set({ project }).where(and(eq(schema.alertChannels.userId, userId), eq(schema.alertChannels.id, id))).returning();
+  if (!row) return null;
+  await appendAudit({ actor: `user:${userId}`, userId, action: "alert_channel.updated", target: `alert_channel:${id}`, after: { project } });
+  return { id: row.id, kind: row.kind, label: row.label, project: row.project, enabled: row.enabled, lastOkAt: row.lastOkAt?.toISOString() ?? null, lastError: row.lastError, createdAt: row.createdAt.toISOString() };
 }
 
 export async function removeChannel(userId: string, id: string): Promise<boolean> {
@@ -189,9 +210,10 @@ export async function removeChannel(userId: string, id: string): Promise<boolean
  * Send to every enabled channel the user has. With none, email the account address, so an
  * alert never has nowhere to go. Returns one result per channel for the alerts row.
  */
-export async function deliverToAll(userId: string, n: Notice): Promise<DeliveryResult[]> {
+export async function deliverToAll(userId: string, n: Notice, project?: string | null): Promise<DeliveryResult[]> {
   const db = getDb();
-  const channels = await db.select().from(schema.alertChannels).where(and(eq(schema.alertChannels.userId, userId), eq(schema.alertChannels.enabled, true)));
+  const channels = (await db.select().from(schema.alertChannels).where(and(eq(schema.alertChannels.userId, userId), eq(schema.alertChannels.enabled, true))))
+    .filter((c) => c.project === null || matchesProject(c.project, project));
   const results: DeliveryResult[] = [];
   if (!channels.length) {
     const [u] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, userId)).limit(1);

@@ -8,12 +8,14 @@ import { and, eq, inArray } from "drizzle-orm";
 import { connection } from "next/server";
 import { getDb, schema } from "@/db";
 import { sweepQuietJobs } from "@/lib/checkins";
+import { runDueProbes } from "@/lib/probes";
 import { executeDueDeletions, purgeRevokedConnectionData } from "@/lib/purge";
 import { json } from "@/lib/http";
 import { resyncHostsQuietly } from "@/lib/sync";
 import { sweepServerErrors, sweepUptime } from "@/lib/vercel-monitor";
 import { sweepVercelSchedules } from "@/lib/vercel-watch";
 import { sweepChecks } from "@/lib/checks/sweep";
+import { sendDigests } from "@/lib/alerts/digest";
 
 export async function GET(req: Request) {
   await connection();
@@ -29,12 +31,14 @@ export async function GET(req: Request) {
   let ok = true;
   let detail: string | null = null;
   let schedules: Awaited<ReturnType<typeof sweepVercelSchedules>> | null = null;
+  let probes: Awaited<ReturnType<typeof runDueProbes>> | null = null;
   let jobs: Awaited<ReturnType<typeof sweepQuietJobs>> | null = null;
   let errors: Awaited<ReturnType<typeof sweepServerErrors>> | null = null;
   let uptime: Awaited<ReturnType<typeof sweepUptime>> | null = null;
   let checks: Awaited<ReturnType<typeof sweepChecks>> | null = null;
   try {
     schedules = await sweepVercelSchedules();
+    probes = await runDueProbes();
     jobs = await sweepQuietJobs();
   } catch (err) {
     ok = false;
@@ -52,6 +56,9 @@ export async function GET(req: Request) {
   try { uptime = await sweepUptime(); } catch (err) { note("uptime sweep", err); }
   try { checks = await sweepChecks(); } catch (err) { note("check sweep", err); }
   try { await resyncHostsQuietly(rows); } catch (err) { note("host resync", err); }
+  // The morning digest, once a day in the digest hour.
+  let digest: Awaited<ReturnType<typeof sendDigests>> = null;
+  try { digest = await sendDigests(); } catch (err) { note("digest", err); }
   // Promised deletions, once an hour: data from connections revoked 30 days ago, and accounts
   // whose deletion grace period has passed.
   let purged: { connections: Record<string, number>; accounts: { accounts: number; rows: number } } | null = null;
@@ -70,5 +77,5 @@ export async function GET(req: Request) {
     // A missing table (migration not applied yet) must not fail the sweep that just ran.
     console.error("[watch] heartbeat not written", (err as Error).message.slice(0, 120));
   }
-  return json({ ok, connections: rows.length, jobs, schedules, errors, uptime, checks, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
+  return json({ ok, connections: rows.length, jobs, schedules, probes, errors, uptime, checks, digest, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
 }

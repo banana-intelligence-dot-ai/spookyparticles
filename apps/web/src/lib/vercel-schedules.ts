@@ -37,20 +37,40 @@ function field(raw: string, low: number, high: number): Set<number> | null {
   return values;
 }
 
-export function expectedRuns(expression: string, afterMs: number, throughMs: number, limit = Number.POSITIVE_INFINITY): number[] | null {
+const formatters = new Map<string, Intl.DateTimeFormat>();
+export function validTimeZone(timeZone: string): boolean {
+  try { new Intl.DateTimeFormat("en-US", { timeZone }).format(); return true; } catch { return false; }
+}
+function wallParts(ms: number, timeZone: string): { minute: number; hour: number; day: number; month: number; weekday: number } {
+  let formatter = formatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", minute: "2-digit", hour: "2-digit", day: "2-digit", month: "2-digit", weekday: "short" });
+    formatters.set(timeZone, formatter);
+  }
+  const parts = Object.fromEntries(formatter.formatToParts(ms).map((p) => [p.type, p.value]));
+  return { minute: Number(parts.minute), hour: Number(parts.hour), day: Number(parts.day), month: Number(parts.month), weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(parts.weekday) };
+}
+
+export function validSchedule(expression: string): boolean {
   const parts = expression.trim().split(/\s+/);
-  if (parts.length !== 5 || !Number.isFinite(afterMs) || !Number.isFinite(throughMs) || throughMs - afterMs > 5 * 366 * 86_400_000) return null;
+  return parts.length === 5 && [field(parts[0], 0, 59), field(parts[1], 0, 23), field(parts[2], 1, 31), field(parts[3], 1, 12), field(parts[4], 0, 7)].every(Boolean);
+}
+
+export function expectedRuns(expression: string, afterMs: number, throughMs: number, limit = Number.POSITIVE_INFINITY, timeZone = "UTC"): number[] | null {
+  const parts = expression.trim().split(/\s+/);
+  if (!validTimeZone(timeZone) || parts.length !== 5 || !Number.isFinite(afterMs) || !Number.isFinite(throughMs) || throughMs - afterMs > 5 * 366 * 86_400_000) return null;
   const fields = [field(parts[0], 0, 59), field(parts[1], 0, 23), field(parts[2], 1, 31), field(parts[3], 1, 12), field(parts[4], 0, 7)];
   if (fields.some((f) => !f)) return null;
   const [minute, hour, day, month, weekday] = fields as Set<number>[];
   const out: number[] = [];
   for (let ms = Math.floor(afterMs / 60_000) * 60_000 + 60_000; ms <= throughMs; ms += 60_000) {
-    const d = new Date(ms);
-    const dow = d.getUTCDay();
-    const domMatch = day.has(d.getUTCDate());
+    const utc = new Date(ms);
+    const d = timeZone === "UTC" ? { minute: utc.getUTCMinutes(), hour: utc.getUTCHours(), day: utc.getUTCDate(), month: utc.getUTCMonth() + 1, weekday: utc.getUTCDay() } : wallParts(ms, timeZone);
+    const dow = d.weekday;
+    const domMatch = day.has(d.day);
     const dowMatch = weekday.has(dow) || (dow === 0 && weekday.has(7));
     const dayMatch = parts[2] === "*" ? dowMatch : parts[4] === "*" ? domMatch : domMatch || dowMatch;
-    if (minute.has(d.getUTCMinutes()) && hour.has(d.getUTCHours()) && month.has(d.getUTCMonth() + 1) && dayMatch) {
+    if (minute.has(d.minute) && hour.has(d.hour) && month.has(d.month) && dayMatch) {
       out.push(ms);
       if (out.length >= limit) break;
     }
@@ -58,8 +78,8 @@ export function expectedRuns(expression: string, afterMs: number, throughMs: num
   return out;
 }
 
-export function nextRun(expression: string, afterMs: number): number | null {
-  return expectedRuns(expression, afterMs, afterMs + 5 * 366 * 86_400_000, 1)?.[0] ?? null;
+export function nextRun(expression: string, afterMs: number, timeZone = "UTC"): number | null {
+  return expectedRuns(expression, afterMs, afterMs + 5 * 366 * 86_400_000, 1, timeZone)?.[0] ?? null;
 }
 
 export function decideRuns(expected: number[], evidence: RunEvidence[], path: string, graceMs: number, nowMs: number): RunDecision[] {

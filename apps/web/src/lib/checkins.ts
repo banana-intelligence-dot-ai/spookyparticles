@@ -11,6 +11,8 @@ import { appendAudit } from "@/lib/audit";
 import { randomToken } from "@/lib/crypto";
 import { appUrl } from "@/lib/env";
 import { deliverToAll, type DeliveryResult } from "./alerts/channels";
+import { nextRun } from "./vercel-schedules";
+import type { Probe } from "./probes";
 
 export type StoredJobStatus = "new" | "up" | "late" | "down" | "paused" | "retired";
 export type JobStatus = StoredJobStatus | "never_checked_in";
@@ -24,9 +26,14 @@ export type JobView = {
   id: string;
   name: string;
   project: string | null;
+  owner: string | null;
+  maxRunMinutes: number | null;
+  minCount: number | null;
   source: "manual" | "vercel";
   path: string | null;
   schedule: string | null;
+  timeZone: string | null;
+  probe: Probe | null;
   evidenceState: "ok" | "not_readable" | "unavailable" | null;
   watched: boolean;
   watchNote: string | null;
@@ -48,11 +55,15 @@ export function pingUrlFor(token: string): string {
 }
 
 /** How long a new job may stay silent before it is flagged: a day, or its first period plus grace if longer. */
-export function firstCheckInWindowMs(job: { periodMinutes?: number; graceMinutes?: number }): number {
+export function firstCheckInWindowMs(job: { periodMinutes?: number; graceMinutes?: number; schedule?: string | null; timeZone?: string | null; source?: string; createdAt?: Date }): number {
+  if (job.source === "manual" && job.schedule && job.createdAt) {
+    const due = nextRun(job.schedule, job.createdAt.getTime(), job.timeZone ?? "UTC");
+    if (due !== null) return due - job.createdAt.getTime() + (job.graceMinutes ?? 0) * 60_000;
+  }
   return Math.max(NEVER_CHECKED_IN_MS, ((job.periodMinutes ?? 0) + (job.graceMinutes ?? 0)) * 60_000);
 }
 
-export function jobDisplayStatus(job: { status: StoredJobStatus; lastPingAt: Date | null; createdAt: Date; periodMinutes?: number; graceMinutes?: number }, nowMs = Date.now()): JobStatus {
+export function jobDisplayStatus(job: { status: StoredJobStatus; lastPingAt: Date | null; createdAt: Date; periodMinutes?: number; graceMinutes?: number; schedule?: string | null; timeZone?: string | null; source?: string }, nowMs = Date.now()): JobStatus {
   if (job.status === "retired") return "retired";
   return job.status === "new" && !job.lastPingAt && nowMs - job.createdAt.getTime() >= firstCheckInWindowMs(job) ? "never_checked_in" : job.status;
 }
@@ -71,14 +82,14 @@ export function parseStatusFilter(raw: string | null): Set<JobStatus> | null {
 }
 
 /** What the job's own check-in link may read back: its state, never other jobs or the account. */
-export type JobStatusByLink = { name: string; status: JobStatus; lastCheckIn: string | null; lastResult: string | null; lastNote: string | null; nextDue: string | null };
+export type JobStatusByLink = { name: string; owner: string | null; status: JobStatus; lastCheckIn: string | null; lastResult: string | null; lastNote: string | null; nextDue: string | null };
 
 export async function jobStatusByToken(token: string, nowMs = Date.now()): Promise<JobStatusByLink | null> {
   if (!token || token.length > 200) return null;
   const [j] = await getDb().select().from(schema.checkinJobs).where(eq(schema.checkinJobs.token, token)).limit(1);
   if (!j) return null;
   const v = view(j, nowMs);
-  return { name: v.name, status: v.status, lastCheckIn: v.lastPingAt, lastResult: v.lastPingKind, lastNote: v.lastNote, nextDue: v.nextDueAt };
+  return { name: v.name, owner: v.owner, status: v.status, lastCheckIn: v.lastPingAt, lastResult: v.lastPingKind, lastNote: v.lastNote, nextDue: v.nextDueAt };
 }
 
 export function sortJobViews<T extends { name: string; status: JobStatus }>(jobs: T[]): T[] {
@@ -100,9 +111,14 @@ function view(j: typeof schema.checkinJobs.$inferSelect, nowMs = Date.now()): Jo
     id: j.id,
     name: j.name,
     project: j.project,
+    owner: j.owner,
+    maxRunMinutes: j.maxRunMinutes,
+    minCount: j.minCount,
     source: j.source,
     path: j.path,
     schedule: j.schedule,
+    timeZone: j.timeZone,
+    probe: j.probe,
     evidenceState: j.evidenceState,
     watched: j.status !== "retired" && (j.source === "manual" || (j.status !== "paused" && j.evidenceState === "ok")),
     watchNote: j.status === "retired" ? null : j.source === "vercel" && j.evidenceState === "not_readable" ? "Found on Vercel, not watched yet. Vercel's integration cannot read request history. To watch it, add a read token for this team on Connections, or add one check-in line." : j.source === "vercel" && j.evidenceState === "unavailable" ? "Vercel request history is unavailable right now." : null,
@@ -130,6 +146,45 @@ export function cleanMinutes(raw: unknown, fallback: number | null, max = MAX_PE
   return Number.isInteger(n) && n >= MIN_PERIOD_MINUTES && n <= max ? n : null;
 }
 
+export function cleanOwner(raw: unknown): string | null {
+  return typeof raw === "string" ? raw.trim().replace(/\s+/g, " ").slice(0, 81) || null : null;
+}
+
+export function cleanCount(raw: unknown): number | null {
+  if (typeof raw !== "string" && typeof raw !== "number") return null;
+  const value = String(raw);
+  if (!/^\d+$/.test(value)) return null;
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n <= 1_000_000_000 ? n : null;
+}
+
+export function classifyPing(kind: PingKind, count: number | null, minCount: number | null, note: string | null): { kind: PingKind; note: string | null } {
+  if (kind !== "ok" || count === null || minCount === null || count >= minCount) return { kind, note };
+  const reason = `ran but did nothing: count ${count}, expected at least ${minCount}`;
+  return { kind: "fail", note: `${note ? `${note.slice(0, 199 - reason.length)} ` : ""}${reason}` };
+}
+
+export function isHungRun(lastPingKind: string | null, maxRunMinutes: number | null): boolean {
+  return lastPingKind === "start" && maxRunMinutes !== null;
+}
+
+export function pingDueAt(kind: PingKind, periodMinutes: number, maxRunMinutes: number | null, nowMs: number, schedule?: string | null, timeZone = "UTC", source = "manual"): number {
+  // A run that reports a little early still counts for the occurrence it belongs to.
+  const early = Math.min(5, Math.floor(periodMinutes / 2)) * 60_000;
+  if (source === "manual" && schedule && !(kind === "start" && maxRunMinutes !== null)) return nextRun(schedule, nowMs + early, timeZone) ?? nowMs + periodMinutes * 60_000;
+  return nowMs + (kind === "start" && maxRunMinutes !== null ? maxRunMinutes : periodMinutes) * 60_000;
+}
+
+export function schedulePeriodMinutes(schedule: string, timeZone: string, fromMs: number): number {
+  const first = nextRun(schedule, fromMs, timeZone);
+  const second = first === null ? null : nextRun(schedule, first, timeZone);
+  return first !== null && second !== null ? Math.max(1, Math.round((second - first) / 60_000)) : 1440;
+}
+
+export function dueState(dueMs: number, graceMinutes: number, nowMs: number): "on_time" | "late" | "quiet" {
+  return nowMs <= dueMs ? "on_time" : nowMs < dueMs + graceMinutes * 60_000 ? "late" : "quiet";
+}
+
 export async function listJobs(userId: string): Promise<JobView[]> {
   const rows = await getDb().select().from(schema.checkinJobs).where(eq(schema.checkinJobs.userId, userId)).orderBy(asc(schema.checkinJobs.name));
   const nowMs = Date.now();
@@ -141,17 +196,18 @@ export async function getJob(userId: string, id: string): Promise<JobView | null
   return j ? view(j) : null;
 }
 
-export async function createJob(input: { userId: string; name: string; periodMinutes: number; graceMinutes: number; project: string | null; actor: string }): Promise<JobView> {
+export async function createJob(input: { userId: string; name: string; periodMinutes: number; graceMinutes: number; project: string | null; owner: string | null; maxRunMinutes: number | null; minCount: number | null; schedule: string | null; timeZone: string | null; probe: Probe | null; actor: string }): Promise<JobView> {
   const token = randomToken(18);
+  const createdAt = new Date();
   const [j] = await getDb()
     .insert(schema.checkinJobs)
-    .values({ userId: input.userId, name: input.name, token, periodMinutes: input.periodMinutes, graceMinutes: input.graceMinutes, project: input.project })
+    .values({ userId: input.userId, name: input.name, token, periodMinutes: input.periodMinutes, graceMinutes: input.graceMinutes, project: input.project, owner: input.owner, maxRunMinutes: input.maxRunMinutes, minCount: input.minCount, schedule: input.schedule, timeZone: input.timeZone, probe: input.probe, createdAt, nextDueAt: input.schedule ? new Date(nextRun(input.schedule, createdAt.getTime(), input.timeZone ?? "UTC")!) : null })
     .returning();
-  await appendAudit({ actor: input.actor, userId: input.userId, action: "checkin.created", target: `checkin:${j.id}`, after: { name: j.name, periodMinutes: j.periodMinutes, graceMinutes: j.graceMinutes } });
+  await appendAudit({ actor: input.actor, userId: input.userId, action: "checkin.created", target: `checkin:${j.id}`, after: { name: j.name, periodMinutes: j.periodMinutes, graceMinutes: j.graceMinutes, schedule: j.schedule, timeZone: j.timeZone, probe: j.probe } });
   return view(j);
 }
 
-export async function updateJob(userId: string, id: string, patch: { name?: string; periodMinutes?: number; graceMinutes?: number; project?: string | null; paused?: boolean; retired?: boolean }, actor: string): Promise<JobView | null> {
+export async function updateJob(userId: string, id: string, patch: { name?: string; periodMinutes?: number; graceMinutes?: number; project?: string | null; owner?: string | null; maxRunMinutes?: number | null; minCount?: number | null; schedule?: string | null; timeZone?: string | null; probe?: Probe | null; paused?: boolean; retired?: boolean }, actor: string): Promise<JobView | null> {
   const db = getDb();
   const [cur] = await db.select().from(schema.checkinJobs).where(and(eq(schema.checkinJobs.userId, userId), eq(schema.checkinJobs.id, id))).limit(1);
   if (!cur) return null;
@@ -160,12 +216,24 @@ export async function updateJob(userId: string, id: string, patch: { name?: stri
   if (patch.periodMinutes) set.periodMinutes = patch.periodMinutes;
   if (patch.graceMinutes !== undefined) set.graceMinutes = patch.graceMinutes;
   if (patch.project !== undefined) set.project = patch.project;
+  if (patch.owner !== undefined) set.owner = patch.owner;
+  if (patch.maxRunMinutes !== undefined) set.maxRunMinutes = patch.maxRunMinutes;
+  if (patch.minCount !== undefined) set.minCount = patch.minCount;
+  if (patch.schedule !== undefined) set.schedule = patch.schedule;
+  if (patch.timeZone !== undefined) set.timeZone = patch.timeZone;
+  if (patch.probe !== undefined) set.probe = patch.probe;
   if (patch.paused === true) set.status = "paused";
   if (patch.paused === false && cur.status === "paused") set.status = cur.lastPingAt ? "up" : "new";
   if (patch.retired === true) set.status = "retired";
   if (patch.retired === false && cur.status === "retired") set.status = cur.lastPingKind === "fail" ? "down" : cur.lastPingAt ? "up" : "new";
   // A new period moves the next due time from the last check-in.
-  if (patch.periodMinutes && cur.lastPingAt) set.nextDueAt = new Date(cur.lastPingAt.getTime() + patch.periodMinutes * 60_000);
+  if (patch.schedule !== undefined || patch.timeZone !== undefined || patch.periodMinutes !== undefined || patch.maxRunMinutes !== undefined) {
+    const schedule = patch.schedule === undefined ? cur.schedule : patch.schedule;
+    const zone = patch.timeZone === undefined ? cur.timeZone : patch.timeZone;
+    const fromMs = cur.lastPingAt?.getTime() ?? cur.createdAt.getTime();
+    set.nextDueAt = cur.source === "manual" && schedule ? new Date(nextRun(schedule, fromMs, zone ?? "UTC")!) : cur.lastPingAt ? new Date(pingDueAt(cur.lastPingKind as PingKind, patch.periodMinutes ?? cur.periodMinutes, patch.maxRunMinutes === undefined ? cur.maxRunMinutes : patch.maxRunMinutes, fromMs)) : null;
+    if (cur.source === "manual" && schedule && patch.periodMinutes === undefined && (patch.schedule !== undefined || patch.timeZone !== undefined)) set.periodMinutes = schedulePeriodMinutes(schedule, zone ?? "UTC", Date.now());
+  }
   const [j] = await db.update(schema.checkinJobs).set(set).where(eq(schema.checkinJobs.id, id)).returning();
   await appendAudit({ actor, userId, action: "checkin.updated", target: `checkin:${id}`, before: { status: cur.status }, after: { ...patch } });
   return view(j);
@@ -181,7 +249,7 @@ export async function recentPings(userId: string, id: string, limit = 20) {
   const job = await getJob(userId, id);
   if (!job) return null;
   const rows = await getDb().select().from(schema.checkinPings).where(eq(schema.checkinPings.jobId, id)).orderBy(desc(schema.checkinPings.at)).limit(limit);
-  return rows.map((p) => ({ kind: p.kind, note: p.note, at: p.at.toISOString() }));
+  return rows.map((p) => ({ kind: p.kind, note: p.note, count: p.count, at: p.at.toISOString() }));
 }
 
 // ---------- The ping ----------
@@ -192,14 +260,27 @@ export type PingResult = { ok: true; job: JobView; recovered: boolean } | { ok: 
  * A check-in. `ok` and `start` mean the job is alive; `fail` means it ran and failed.
  * Recovery is when a down or late job checks in ok. The note is kept short and plain.
  */
-export async function recordPing(token: string, kind: PingKind, note: string | null, nowMs = Date.now()): Promise<PingResult> {
+export async function recordPing(token: string, kind: PingKind, note: string | null, nowMs = Date.now(), count: number | null = null): Promise<PingResult> {
   const db = getDb();
   const [cur] = await db.select().from(schema.checkinJobs).where(eq(schema.checkinJobs.token, token)).limit(1);
   if (!cur) return { ok: false, reason: "unknown" };
+  return recordPingForJob(cur, kind, note, nowMs, count);
+}
+
+export async function recordPingById(id: string, kind: PingKind, note: string | null, nowMs = Date.now()): Promise<PingResult> {
+  const [cur] = await getDb().select().from(schema.checkinJobs).where(eq(schema.checkinJobs.id, id)).limit(1);
+  if (!cur) return { ok: false, reason: "unknown" };
+  return recordPingForJob(cur, kind, note, nowMs, null);
+}
+
+async function recordPingForJob(cur: typeof schema.checkinJobs.$inferSelect, kind: PingKind, note: string | null, nowMs: number, count: number | null): Promise<PingResult> {
+  const db = getDb();
   if (cur.status === "paused") return { ok: false, reason: "paused" };
   const now = new Date(nowMs);
-  const cleanNote = note ? note.replace(/\s+/g, " ").trim().slice(0, 200) : null;
-  await db.insert(schema.checkinPings).values({ jobId: cur.id, kind, note: cleanNote, at: now });
+  const decision = classifyPing(kind, count, cur.minCount, note ? note.replace(/\s+/g, " ").trim() : null);
+  kind = decision.kind;
+  const cleanNote = decision.note?.slice(0, 200) ?? null;
+  await db.insert(schema.checkinPings).values({ jobId: cur.id, kind, note: cleanNote, count, at: now });
   const wasDown = cur.status === "down" || cur.status === "late";
   const wasRetired = cur.status === "retired";
   const nextStatus: JobStatus = kind === "fail" ? "down" : "up";
@@ -210,7 +291,7 @@ export async function recordPing(token: string, kind: PingKind, note: string | n
       lastPingAt: now,
       lastPingKind: kind,
       lastNote: cleanNote,
-      nextDueAt: new Date(nowMs + cur.periodMinutes * 60_000),
+      nextDueAt: new Date(pingDueAt(kind, cur.periodMinutes, cur.maxRunMinutes, nowMs, cur.schedule, cur.timeZone ?? "UTC", cur.source)),
       missCount: kind === "fail" ? cur.missCount : 0,
       updatedAt: now,
     })
@@ -222,14 +303,14 @@ export async function recordPing(token: string, kind: PingKind, note: string | n
   if (kind === "fail") {
     await notifyJob(j, "job_failed", {
       subject: `${j.name}: run failed`,
-      text: `${j.name} reported a failed run at ${now.toUTCString()}.${cleanNote ? ` Note: ${cleanNote}` : ""}${j.project ? ` Project: ${j.project}.` : ""}`,
+      text: `${j.name} reported a failed run at ${now.toUTCString()}.${cleanNote ? ` Note: ${cleanNote}` : ""}${j.project ? ` Project: ${j.project}.` : ""}${j.owner ? ` Owner: ${j.owner}.` : ""}`,
       priority: "high",
       key: `job_failed:${j.id}:${now.toISOString().slice(0, 16)}`,
     });
   } else if (wasDown && cur.status === "down") {
     await notifyJob(j, "job_recovered", {
       subject: `${j.name}: back`,
-      text: `${j.name} checked in again at ${now.toUTCString()} after ${cur.missCount} missed ${cur.missCount === 1 ? "check-in" : "check-ins"}.`,
+      text: `${j.name} checked in again at ${now.toUTCString()} after ${cur.missCount} missed ${cur.missCount === 1 ? "check-in" : "check-ins"}.${j.owner ? ` Owner: ${j.owner}.` : ""}`,
       priority: "low",
       key: `job_recovered:${j.id}:${now.toISOString().slice(0, 16)}`,
     });
@@ -240,9 +321,22 @@ export async function recordPing(token: string, kind: PingKind, note: string | n
 // ---------- The sweep ----------
 
 /**
+ * Whether the nth missed period alerts. The first miss always does. After that, only when the time
+ * since the first alert crosses 1 h, 4 h or 24 h, then each further day, so a 5-minute job that
+ * stops sends 4 alerts on day one instead of 288.
+ */
+export function shouldRealert(missCount: number, periodMinutes: number): boolean {
+  if (missCount <= 1) return true;
+  const before = (missCount - 2) * periodMinutes;
+  const now = (missCount - 1) * periodMinutes;
+  for (const t of [60, 240]) if (before < t && now >= t) return true;
+  return Math.floor(now / 1440) > Math.floor(before / 1440);
+}
+
+/**
  * Called by the watcher every few minutes. A job past its due time but inside the grace is
- * "late" (no alert). Past the grace it is "down": one alert, then quiet until it recovers or
- * misses again by a whole period. Jobs that never checked in stay "new" and never alert.
+ * "late" (no alert). Past the grace it is "down": one alert, then repeats on the back-off in
+ * shouldRealert until it recovers. Jobs that never checked in stay "new" and never alert.
  */
 export async function sweepQuietJobs(nowMs = Date.now(), onlyJobIds?: string[]): Promise<{ late: number; down: number }> {
   const db = getDb();
@@ -255,8 +349,8 @@ export async function sweepQuietJobs(nowMs = Date.now(), onlyJobIds?: string[]):
   let down = 0;
   for (const j of candidates) {
     const due = j.nextDueAt!.getTime();
-    const graceEnd = due + j.graceMinutes * 60_000;
-    if (nowMs < graceEnd) {
+    const hung = isHungRun(j.lastPingKind, j.maxRunMinutes);
+    if (dueState(due, hung ? 0 : j.graceMinutes, nowMs) === "late") {
       if (j.status === "up") {
         await db.update(schema.checkinJobs).set({ status: "late", updatedAt: now }).where(eq(schema.checkinJobs.id, j.id));
         late += 1;
@@ -265,14 +359,16 @@ export async function sweepQuietJobs(nowMs = Date.now(), onlyJobIds?: string[]):
     }
     // Past the grace. Alert once per missed period: the due time moves forward by one period each time.
     const missCount = j.missCount + 1;
-    const nextDue = new Date(due + j.periodMinutes * 60_000);
+    const nextDue = new Date(j.source === "manual" && j.schedule ? nextRun(j.schedule, due, j.timeZone ?? "UTC")! : due + j.periodMinutes * 60_000);
     await db.update(schema.checkinJobs).set({ status: "down", missCount, nextDueAt: nextDue, updatedAt: now }).where(eq(schema.checkinJobs.id, j.id));
     down += 1;
+    // Repeats back off: a job that stays quiet alerts again at 1 h, 4 h and 24 h, then once a day.
+    if (!shouldRealert(missCount, j.periodMinutes)) continue;
     const lastHeard = j.lastPingAt ? `last heard ${ago(nowMs - j.lastPingAt.getTime())} ago` : "never heard from";
     await notifyJob({ ...j, status: "down", missCount }, "job_quiet", {
-      subject: missCount === 1 ? `${j.name}: quiet` : `${j.name}: still quiet (${missCount} missed)`,
-      text: `${j.name} was due ${ago(nowMs - due)} ago and has not checked in; ${lastHeard}. Expected every ${j.periodMinutes >= 60 && j.periodMinutes % 60 === 0 ? `${j.periodMinutes / 60} h` : `${j.periodMinutes} min`}, grace ${j.graceMinutes} min.${j.project ? ` Project: ${j.project}.` : ""}`,
-      priority: "high",
+      subject: hung ? `${j.name}: started, never finished` : missCount === 1 ? `${j.name}: quiet` : `${j.name}: still quiet (${missCount} missed)`,
+      text: hung ? `${j.name} started at ${j.lastPingAt?.toUTCString() ?? "an unknown time"} and did not finish within ${j.maxRunMinutes} min.${j.project ? ` Project: ${j.project}.` : ""}${j.owner ? ` Owner: ${j.owner}.` : ""}` : `${j.name} was due ${ago(nowMs - due)} ago and has not checked in; ${lastHeard}. Expected every ${j.periodMinutes >= 60 && j.periodMinutes % 60 === 0 ? `${j.periodMinutes / 60} h` : `${j.periodMinutes} min`}, grace ${j.graceMinutes} min.${j.project ? ` Project: ${j.project}.` : ""}${j.owner ? ` Owner: ${j.owner}.` : ""}`,
+      priority: missCount === 1 ? "high" : "default",
       key: `job_quiet:${j.id}:${missCount}:${new Date(due).toISOString().slice(0, 16)}`,
     });
   }
@@ -302,7 +398,7 @@ async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind: "job_q
       .onConflictDoNothing({ target: [schema.alerts.userId, schema.alerts.key] })
       .returning({ id: schema.alerts.id });
     if (!row) return;
-    const results: DeliveryResult[] = await deliverToAll(j.userId, { subject: n.subject, text: n.text, link, priority: n.priority });
+    const results: DeliveryResult[] = await deliverToAll(j.userId, { subject: n.subject, text: n.text, link, priority: n.priority }, j.project);
     const anyOk = results.some((r) => r.ok);
     await db
       .update(schema.alerts)

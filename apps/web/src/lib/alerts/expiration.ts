@@ -25,7 +25,7 @@ export async function notifyExpiration(userId: string, item: Expiration, nodeId:
     const [row] = await db.insert(schema.alerts).values({ userId, kind: "expiration", key, channel: "channels", to: person?.email ?? "", subject, payload: { item, threshold } }).onConflictDoNothing({ target: [schema.alerts.userId, schema.alerts.key] }).returning({ id: schema.alerts.id });
     if (!row) return "skipped";
     // The person's own channels (phone, Slack, Teams), or their account email when none is set.
-    const results: DeliveryResult[] = await deliverToAll(userId, { subject, text, link, priority: threshold === 1 ? "high" : "default" });
+    const results: DeliveryResult[] = await deliverToAll(userId, { subject, text, link, priority: threshold === 1 ? "high" : "default" }, item.project);
     const anyOk = results.some((r) => r.ok);
     await db.update(schema.alerts).set({ sentAt: anyOk ? new Date() : null, error: anyOk ? null : (results.map((r) => `${r.kind}: ${r.reason ?? "failed"}`).join("; ") || "no channel").slice(0, 200) }).where(eq(schema.alerts.id, row.id));
     await appendAudit({ actor: "system:alerts", userId, action: anyOk ? "alert.sent" : "alert.failed", target: `alert:${row.id}`, after: { kind: "expiration", key, channels: results.map((r) => `${r.kind}:${r.ok ? "ok" : "failed"}`) } });

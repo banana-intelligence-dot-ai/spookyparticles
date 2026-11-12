@@ -1,13 +1,11 @@
 /** Five minute external checks for production sites and request-history error rates. */
-import { lookup } from "node:dns/promises";
-import { request } from "node:https";
 import { isIP } from "node:net";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { deliverToAll } from "@/lib/alerts/channels";
 import { getAccessToken } from "@/lib/connections";
 import { appUrl } from "@/lib/env";
-import { isPublicAddress, pinnedLookup } from "@/lib/net-safety";
+import { pinnedGet, resolvePublic } from "@/lib/net-safety";
 import type { VercelScope } from "@/lib/providers/vercel";
 import { queryErrorRate } from "@/lib/providers/vercel-query";
 import { nextErrorRate, nextUptime, type ErrorRateState, type UptimeState } from "@/lib/vercel-health";
@@ -31,7 +29,7 @@ async function notify(userId: string, kind: "server_errors" | "server_errors_rec
   const [row] = await db.insert(schema.alerts).values({ userId, kind, key, channel: "channels", to: person?.email ?? "", subject, payload: { project } })
     .onConflictDoNothing({ target: [schema.alerts.userId, schema.alerts.key] }).returning({ id: schema.alerts.id });
   if (!row) return false;
-  const results = await deliverToAll(userId, { subject, text, link: new URL("/app", appUrl()).toString(), priority: kind === "site_down" || kind === "server_errors" ? "high" : "default" });
+  const results = await deliverToAll(userId, { subject, text, link: new URL("/app", appUrl()).toString(), priority: kind === "site_down" || kind === "server_errors" ? "high" : "default" }, project);
   const anyOk = results.some((r) => r.ok);
   await db.update(schema.alerts).set({ sentAt: anyOk ? new Date() : null, error: anyOk ? null : (results.map((r) => `${r.kind}: ${r.reason ?? "failed"}`).join("; ") || "no channel").slice(0, 200), payload: sql`${schema.alerts.payload} || ${JSON.stringify({ deliveries: results })}::jsonb` }).where(eq(schema.alerts.id, row.id));
   return true;
@@ -96,28 +94,12 @@ export async function checkSite(startUrl: string, knownHosts: Set<string>): Prom
     if (Date.now() >= deadline) return { kind: "down", status: "timeout" };
     const host = url.hostname.toLowerCase().replace(/\.$/, "");
     if (url.protocol !== "https:" || url.port && url.port !== "443" || url.username || url.password || isIP(host) || !knownHosts.has(host)) return { kind: "unknown", status: "unsafe destination" };
-    let addresses: { address: string; family: number }[];
-    let dnsTimer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      addresses = await Promise.race([
-        lookup(host, { all: true }),
-        new Promise<never>((_, reject) => { dnsTimer = setTimeout(() => reject(new Error("timeout")), Math.max(1, deadline - Date.now())); }),
-      ]);
-    } catch (err) { return { kind: "down", status: (err as Error).message === "timeout" ? "timeout" : "DNS error" }; }
-    finally { clearTimeout(dnsTimer); }
-    if (!addresses.length || addresses.some((a) => !isPublicAddress(a.address))) return { kind: "unknown", status: "unsafe address" };
-    const selected = addresses[0];
-    const answer = await new Promise<{ status: number; location: string | undefined } | { error: string }>((resolve) => {
-      const req = request(url, { method: "GET", headers: { "user-agent": "SpookyParticles-Uptime/1.0 (+https://spookyparticles.com)" }, lookup: pinnedLookup(selected) }, (res) => {
-        resolve({ status: res.statusCode ?? 0, location: res.headers.location });
-        res.destroy(); // Status and Location are enough; no response body is read.
-      });
-      const timer = setTimeout(() => req.destroy(new Error("timeout")), Math.max(1, deadline - Date.now()));
-      req.on("close", () => clearTimeout(timer));
-      req.on("error", (err) => resolve({ error: err.message === "timeout" ? "timeout" : "network error" }));
-      req.end();
-    });
-    if ("error" in answer) return { kind: "down", status: answer.error };
+    let addresses: Awaited<ReturnType<typeof resolvePublic>>;
+    try { addresses = await resolvePublic(host, deadline - Date.now()); }
+    catch (err) { return (err as Error).message === "address not public" ? { kind: "unknown", status: "unsafe address" } : { kind: "down", status: (err as Error).message === "timeout" ? "timeout" : "DNS error" }; }
+    let answer: Awaited<ReturnType<typeof pinnedGet>>;
+    try { answer = await pinnedGet(url, addresses[0], deadline - Date.now(), { "user-agent": "SpookyParticles-Uptime/1.0 (+https://spookyparticles.com)" }); }
+    catch (err) { return { kind: "down", status: (err as Error).message === "timeout" ? "timeout" : "network error" }; }
     if (answer.status >= 300 && answer.status < 400 && answer.location) {
       if (redirects === 5) return { kind: "down", status: "too many redirects" };
       try { url = new URL(answer.location, url); } catch { return { kind: "down", status: "invalid redirect" }; }

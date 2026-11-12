@@ -12,7 +12,7 @@ import { track } from "@/lib/analytics/server";
 import { appendAudit } from "@/lib/audit";
 import { parseMasterKey } from "@/lib/crypto";
 import { appUrl } from "@/lib/env";
-import { sendEmail } from "./email";
+import { deliverToAll } from "./channels";
 
 /** Failures older than this at first sight are history, not news. */
 export const FRESH_MS = 24 * 60 * 60 * 1000;
@@ -72,18 +72,20 @@ function optOutSecret(env: Record<string, string | undefined> = process.env): Bu
   return createHmac("sha256", parseMasterKey(env.SP_MASTER_KEY)).update("alerts:opt-out").digest();
 }
 
+export type OptOutKind = "deploy_failed" | "daily_digest";
+
 /** A token tied to one user and one alert kind, signed with a key derived from the master key. */
-export function optOutToken(userId: string, kind: "deploy_failed", env?: Record<string, string | undefined>): string {
+export function optOutToken(userId: string, kind: OptOutKind, env?: Record<string, string | undefined>): string {
   return createHmac("sha256", optOutSecret(env)).update(`${userId}:${kind}`).digest("base64url");
 }
 
-export function optOutTokenValid(userId: string, kind: "deploy_failed", token: string, env?: Record<string, string | undefined>): boolean {
+export function optOutTokenValid(userId: string, kind: OptOutKind, token: string, env?: Record<string, string | undefined>): boolean {
   const expected = Buffer.from(optOutToken(userId, kind, env));
   const given = Buffer.from(token);
   return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
-export function optOutUrl(userId: string, kind: "deploy_failed"): string {
+export function optOutUrl(userId: string, kind: OptOutKind): string {
   const u = new URL("/api/alerts/opt-out", appUrl());
   u.searchParams.set("u", userId);
   u.searchParams.set("k", kind);
@@ -119,26 +121,26 @@ export async function notifyDeployFailed(userId: string, f: DeployFailure, nowMs
     const [prior] = await db.select({ id: schema.alerts.id }).from(schema.alerts).where(and(eq(schema.alerts.userId, userId), eq(schema.alerts.key, key))).limit(1);
     if (prior) return "skipped";
     const [person] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, userId)).limit(1);
-    if (!person?.email) return "skipped";
 
     const rendered = renderDeployFailed(f, { todayUrl: new URL("/app", appUrl()).toString(), unsubscribeUrl: optOutUrl(userId, "deploy_failed") });
     const payload = { project: f.project, environment: f.environment, host: f.host, at: f.at, cause: f.cause, deploymentId: f.deploymentId, inspectorUrl: f.inspectorUrl, logLines: f.logTail.slice(-EMAIL_LOG_LINES) };
     // Claim the key first: two syncs racing on the same failure produce one email.
     const [row] = await db
       .insert(schema.alerts)
-      .values({ userId, kind: "deploy_failed", key, channel: "email", to: person.email, subject: rendered.subject, payload })
+      .values({ userId, kind: "deploy_failed", key, channel: "channels", to: person?.email ?? "", subject: rendered.subject, payload })
       .onConflictDoNothing({ target: [schema.alerts.userId, schema.alerts.key] })
       .returning({ id: schema.alerts.id });
     if (!row) return "skipped";
 
-    const sent = await sendEmail({ to: person.email, ...rendered });
+    const results = await deliverToAll(userId, { ...rendered, priority: "high" }, f.project);
+    const sent = results.some((r) => r.ok);
     await db
       .update(schema.alerts)
-      .set(sent.ok ? { sentAt: new Date() } : { error: sent.reason.slice(0, 200) })
+      .set(sent ? { sentAt: new Date() } : { error: (results.map((r) => `${r.kind}: ${r.reason ?? "failed"}`).join("; ") || "no channel").slice(0, 200) })
       .where(eq(schema.alerts.id, row.id));
-    await appendAudit({ actor: "system:alerts", userId, action: sent.ok ? "alert.sent" : "alert.failed", target: `alert:${row.id}`, after: { kind: "deploy_failed", project: f.project, environment: f.environment, ...(sent.ok ? {} : { reason: sent.reason }) } });
-    if (sent.ok) await track(userId, "alert_sent", { kind: "deploy_failed" });
-    return sent.ok ? "sent" : "failed";
+    await appendAudit({ actor: "system:alerts", userId, action: sent ? "alert.sent" : "alert.failed", target: `alert:${row.id}`, after: { kind: "deploy_failed", project: f.project, environment: f.environment, channels: results.map((r) => `${r.kind}:${r.ok ? "ok" : "failed"}`) } });
+    if (sent) await track(userId, "alert_sent", { kind: "deploy_failed" });
+    return sent ? "sent" : "failed";
   } catch (err) {
     console.error("[alerts] deploy_failed", (err as Error).message);
     return "failed";

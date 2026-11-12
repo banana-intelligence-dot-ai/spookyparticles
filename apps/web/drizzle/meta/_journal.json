@@ -134,6 +134,20 @@
       "when": 1794445400816,
       "tag": "0018_audit_strip_on_deletion",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794467122028,
+      "tag": "0019_checkin_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794495035374,
+      "tag": "0020_outcome_checks",
+      "breakpoints": true
     }
   ]
 }

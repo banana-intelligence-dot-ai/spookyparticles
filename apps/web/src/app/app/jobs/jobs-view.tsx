@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { CopyButton } from "@/components/copy-button";
 import { Empty, ErrorLine, List, PageHeader, SectionTitle, buttonStyles, surface } from "@/components/ui";
 import { apiPost, apiSend, useApi } from "@/components/use-api";
+import { JobSettingsFields, INPUT } from "./job-settings";
+import { buildSettingsInput, buildSettingsPatch, describeProbeRule, emptyJobSettings, settingsFromJob, type JobSettingsValue, type Probe } from "./job-settings-lib";
 
 type Job = {
   id: string;
@@ -15,6 +17,11 @@ type Job = {
   source: "manual" | "vercel";
   path: string | null;
   schedule: string | null;
+  timeZone: string | null;
+  owner: string | null;
+  maxRunMinutes: number | null;
+  minCount: number | null;
+  probe: Probe | null;
   watched: boolean;
   evidenceState: "ok" | "not_readable" | "unavailable" | null;
   watchNote: string | null;
@@ -28,9 +35,8 @@ type Job = {
   missCount: number;
   pingUrl: string | null;
 };
-type Channel = { id: string; kind: "ntfy" | "slack" | "teams" | "email"; label: string; enabled: boolean; lastOkAt: string | null; lastError: string | null };
+type Channel = { id: string; kind: "ntfy" | "slack" | "teams" | "email"; label: string; project: string | null; enabled: boolean; lastOkAt: string | null; lastError: string | null };
 
-const INPUT = "h-11 rounded-lg border border-line-2 bg-transparent px-3 text-[14px] text-fg hover:border-line-3 focus:border-line-3 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:h-9";
 const PERIODS: [string, number][] = [["every 5 minutes", 5], ["every 15 minutes", 15], ["hourly", 60], ["every 6 hours", 360], ["daily", 1440], ["weekly", 10080]];
 const KIND_LABEL: Record<Channel["kind"], string> = { ntfy: "Phone (ntfy)", slack: "Slack", teams: "Microsoft Teams", email: "Email" };
 const KIND_HINT: Record<Channel["kind"], string> = {
@@ -122,15 +128,27 @@ function AddJob({ onDone, onClose }: { onDone: (msg: string | null) => void | Pr
   const [periodMinutes, setPeriod] = useState(1440);
   const [grace, setGrace] = useState(30);
   const [project, setProject] = useState("");
+  const [settings, setSettings] = useState<JobSettingsValue>(() => emptyJobSettings());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<{ job: Job; curl: string } | null>(null);
+
+  useEffect(() => {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (zone) setSettings((current) => current.timeZone ? current : { ...current, timeZone: zone });
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const r = await apiPost<{ job: Job; curl: string }>("/api/v1/checkins", { name, periodMinutes, graceMinutes: grace, project: project || null });
+    const r = await apiPost<{ job: Job; curl: string }>("/api/v1/checkins", {
+      name,
+      periodMinutes,
+      graceMinutes: grace,
+      ...(project.trim() ? { project: project.trim() } : {}),
+      ...buildSettingsInput(settings),
+    });
     setBusy(false);
     if (!r.ok || !r.data) {
       setError(r.error ?? "That job was not made. Try again.");
@@ -186,6 +204,12 @@ function AddJob({ onDone, onClose }: { onDone: (msg: string | null) => void | Pr
           <input value={project} onChange={(e) => setProject(e.target.value)} maxLength={120} placeholder="owner/repo" className={`${INPUT} font-mono`} />
         </label>
       </div>
+      <details className="mt-4 border-t border-line-1 pt-2">
+        <summary className="flex min-h-11 cursor-pointer items-center text-[14px] font-medium text-fg sm:min-h-9">More options</summary>
+        <div className="pt-3">
+          <JobSettingsFields value={settings} onChange={setSettings} manual idPrefix="add-job" />
+        </div>
+      </details>
       {error ? <p className="mt-3 text-[14px] text-amber">{error}</p> : null}
       <div className="mt-5 flex gap-2">
         <button type="submit" className={buttonStyles.primary} disabled={busy || name.trim().length < 2}>{busy ? "Making…" : "Make the job"}</button>
@@ -196,6 +220,7 @@ function AddJob({ onDone, onClose }: { onDone: (msg: string | null) => void | Pr
 
 function JobRow({ j, now, onChanged, onNotice }: { j: Job; now: number; onChanged: () => void; onNotice: (m: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const curl = `curl -fsS -m 10 --retry 3 "${j.pingUrl}"`;
@@ -226,11 +251,13 @@ function JobRow({ j, now, onChanged, onNotice }: { j: Job; now: number; onChange
       {j.source === "vercel" ? <><p className="mt-0.5 pl-[19px] text-[12px] text-fg-3">Vercel schedule · <span className="font-mono">{j.path} · {j.schedule}</span></p>{j.watched ? <p className="mt-0.5 pl-[19px] text-[12px] text-fg-3">Watched from Vercel&apos;s request history, no code change</p> : null}</> : null}
       {open ? (
         <div className="mt-3 pl-[19px]">
+          <JobSettingsSummary job={j} />
           {j.source === "manual" || j.watchNote ? <div className="slab flex items-start gap-1 rounded-lg py-2.5 pr-1.5 pl-3">
             <code className="min-w-0 flex-1 font-mono text-[13px] leading-[1.5] [overflow-wrap:anywhere] text-code">{curl}</code>
             <CopyButton value={curl} label={`Copy the check-in command for ${j.name}`} />
           </div> : null}
           <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className={buttonStyles.ghost} onClick={() => setEditing((value) => !value)} aria-expanded={editing}>Edit settings</button>
             {j.source === "manual" && j.status !== "retired" ? <button type="button" className={buttonStyles.ghost} disabled={busy} onClick={() => act(() => apiSend("PATCH", `/api/v1/checkins/${j.id}`, { paused: j.status !== "paused" }))}>
               {j.status === "paused" ? "Resume" : "Pause"}
             </button> : null}
@@ -248,15 +275,64 @@ function JobRow({ j, now, onChanged, onNotice }: { j: Job; now: number; onChange
               </>
             )}
           </div>
+          {editing ? <EditSettings job={j} onClose={() => setEditing(false)} onChanged={onChanged} /> : null}
         </div>
       ) : null}
     </li>
   );
 }
 
+function JobSettingsSummary({ job }: { job: Job }) {
+  const lines = [
+    job.schedule ? `Runs ${job.schedule}${job.timeZone ? ` (${job.timeZone})` : ""}` : null,
+    job.probe ? `Checks ${job.probe.url}: ${job.probe.expect.map(describeProbeRule).join(", ")}` : null,
+    job.owner ? `Owner: ${job.owner}` : null,
+    job.maxRunMinutes !== null ? `Longest run: ${job.maxRunMinutes} minutes` : null,
+    job.minCount !== null ? `Fewest items per run: ${job.minCount}` : null,
+  ].filter((line): line is string => Boolean(line));
+  if (!lines.length) return <p className="mb-3 text-[14px] text-fg-2">No extra settings.</p>;
+  return <ul className="mb-3 space-y-1 text-[14px] text-fg-2">{lines.map((line) => <li key={line}>{line}</li>)}</ul>;
+}
+
+function EditSettings({ job, onClose, onChanged }: { job: Job; onClose: () => void; onChanged: () => void }) {
+  const [settings, setSettings] = useState<JobSettingsValue>(() => settingsFromJob(job));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const patch = buildSettingsPatch(job, settings, job.source === "manual");
+    if (!Object.keys(patch).length) {
+      onClose();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const result = await apiSend<{ job: Job }>("PATCH", `/api/v1/checkins/${job.id}`, patch);
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error ?? "Those settings were not saved. Try again.");
+      return;
+    }
+    onClose();
+    onChanged();
+  };
+  return (
+    <form onSubmit={submit} className="mt-4 rounded-xl border border-line-2 p-4 sm:p-5">
+      <JobSettingsFields value={settings} onChange={setSettings} manual={job.source === "manual"} idPrefix={`edit-${job.id}`} />
+      {job.source === "vercel" ? <p className="mt-3 text-[14px] text-fg-2">Vercel sets this job's schedule. Result checks work on jobs you add yourself.</p> : null}
+      {error ? <p className="mt-3 text-[14px] text-amber">{error}</p> : null}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="submit" className={buttonStyles.primary} disabled={busy}>{busy ? "Saving…" : "Save settings"}</button>
+        <button type="button" className={buttonStyles.ghost} onClick={onClose} disabled={busy}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 function Channels({ list, loading, onChanged, onNotice }: { list: Channel[]; loading: boolean; onChanged: () => void; onNotice: (m: string) => void }) {
   const [kind, setKind] = useState<Channel["kind"]>("ntfy");
   const [target, setTarget] = useState("");
+  const [project, setProject] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
@@ -272,13 +348,14 @@ function Channels({ list, loading, onChanged, onNotice }: { list: Channel[]; loa
     e.preventDefault();
     setBusy("add");
     setError(null);
-    const r = await apiPost("/api/v1/alert-channels", { kind, target });
+    const r = await apiPost("/api/v1/alert-channels", { kind, target, project: project.trim() || null });
     setBusy(null);
     if (!r.ok) {
       setError(r.error ?? "That channel was not added.");
       return;
     }
     setTarget("");
+    setProject("");
     onChanged();
   };
   const test = async (id: string) => {
@@ -310,6 +387,7 @@ function Channels({ list, loading, onChanged, onNotice }: { list: Channel[]; loa
                 <span aria-hidden className={`size-[7px] shrink-0 rounded-full ${c.lastError ? "bg-amber" : c.lastOkAt ? "bg-accent" : "ring-1 ring-inset ring-line-3"}`} />
                 <span className="shrink-0 text-[14px] text-fg">{KIND_LABEL[c.kind]}</span>
                 <span className="min-w-0 truncate font-mono text-[13px] text-fg-2">{c.label}</span>
+                {c.project ? <span className="min-w-0 truncate font-mono text-[12px] text-fg-2">Project: {c.project}</span> : null}
               </div>
               <div className="mt-2 flex items-center gap-2 pl-[19px] sm:mt-0 sm:pl-0">
                 {c.lastError ? <span className="mr-auto text-[12px] text-amber">{c.lastError}</span> : sent === c.id ? <span className="mr-auto text-[12px] text-fg-2">sent</span> : null}
@@ -339,6 +417,10 @@ function Channels({ list, loading, onChanged, onNotice }: { list: Channel[]; loa
           </div>
           <button type="submit" className={buttonStyles.primary} disabled={busy === "add" || !target.trim()}>{busy === "add" ? "Adding…" : "Add"}</button>
         </div>
+        <label className="mt-3 flex max-w-sm flex-col gap-1.5 text-[14px] text-fg-2">
+          Project (optional)
+          <input value={project} onChange={(e) => setProject(e.target.value)} maxLength={120} placeholder="All projects" className={INPUT} />
+        </label>
         {kind === "ntfy" ? <p className="mt-3 max-w-[70ch] text-[14px] leading-[1.55] text-fg-2">Anyone who knows this topic can read your alerts on ntfy.sh, so use a long random one and keep it private.</p> : null}
         <p className="mt-3 max-w-[70ch] text-[14px] leading-[1.55] text-fg-2">{KIND_HINT[kind]} Stored encrypted, shown masked, removable here.</p>
         {error ? <p className="mt-2 text-[14px] text-amber">{error}</p> : null}

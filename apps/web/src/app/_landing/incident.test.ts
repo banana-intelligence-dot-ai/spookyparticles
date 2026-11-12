@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { logTailAndCause } from "@/lib/providers/vercel";
+import { renderDeployFailed } from "@/lib/alerts/deploy-failed";
 import { BUILD_LOG, INCIDENT } from "./incident";
 
 describe("the hero's replayed incident", () => {
@@ -16,7 +17,6 @@ describe("the hero's replayed incident", () => {
   });
 
   it("uses the subject line the alert email really has", async () => {
-    const { renderDeployFailed } = await import("@/lib/alerts/deploy-failed");
     const r = renderDeployFailed(
       { deploymentId: "d", project: INCIDENT.project, environment: "production", host: INCIDENT.host, at: null, cause: INCIDENT.cause, logTail: [], inspectorUrl: null, url: null },
       { todayUrl: "https://x/app", unsubscribeUrl: "https://x/u" },

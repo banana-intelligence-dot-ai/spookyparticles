@@ -129,7 +129,19 @@ Anything you run on a schedule for your human (a nightly build, a daily publish,
 
 3. Tell your human to open ${base}/app/jobs once: they add where alerts go (an ntfy topic for the phone, a Slack or Teams webhook, an email) and press **Send a test**. With no channel set, alerts fall back to their account email.
 
-4. Read the state any time: \`GET ${base}/api/v1/checkins\` lists every job with status (new, never_checked_in, up, late, down, paused, retired), last check-in and next due time. \`down\` means quiet past the grace or a reported failure. \`never_checked_in\` appears when a new job's first run is past due (at least 24 hours) and does not send an alert. Filter with \`?status=down,late\` or \`?status=issues\` (late, down and never checked in). A job can read its own state with no account key: \`GET\` its ping link plus \`/status\`. That never records a check-in. Retire a gone job with \`PATCH ${base}/api/v1/checkins/JOB_ID\` and \`{"retired":true}\`; its next check-in revives it.
+   A channel can have a \`project\` to receive alerts only for that project. Leave it empty for all projects. Set \`owner\` on a job to name the person responsible; alerts include it. Set \`maxRunMinutes\` (1 to 10080) and send \`?status=start\` before the work to catch a run that never finishes. Set \`minCount\` and send \`?count=N\` with an ok ping to flag a run that processed too few items. A missing count does not fail the run.
+
+4. Read the state any time: \`GET ${base}/api/v1/checkins\` lists every job with status (new, never_checked_in, up, late, down, paused, retired), last check-in and next due time. \`down\` means quiet past the grace or a reported failure. \`never_checked_in\` appears when a new job's first run is past due and does not send an alert. For period jobs, that takes at least 24 hours. For scheduled jobs, it follows the first cron occurrence and grace. Filter with \`?status=down,late\` or \`?status=issues\` (late, down and never checked in). A job can read its own state with no account key: \`GET\` its ping link plus \`/status\`. That never records a check-in. Retire a gone job with \`PATCH ${base}/api/v1/checkins/JOB_ID\` and \`{"retired":true}\`; its next check-in revives it.
+
+## Watch the result, not just the run
+
+For a public JSON health endpoint, Spooky can fetch and judge the answer at each scheduled time. This example checks weekdays at 7:35 in New York. \`$today\` means the date in that time zone. No check runs on weekends.
+
+\`\`\`bash
+printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -H "content-type: application/json" \\
+  -d '{"name":"Daily email","schedule":"35 7 * * 1-5","timeZone":"America/New_York","probe":{"url":"https://example.com/api/health","expect":[{"path":"date","op":"eq","value":"$today"},{"path":"sentCount","op":"gte","value":1}]}}' \\
+  ${base}/api/v1/checkins
+\`\`\`
 
 ## Existing setup
 

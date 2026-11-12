@@ -5,7 +5,7 @@
  * learns nothing. Never cached; the token is never logged.
  */
 import { connection } from "next/server";
-import { recordPing, type PingKind } from "@/lib/checkins";
+import { cleanCount, recordPing, type PingKind } from "@/lib/checkins";
 
 const KINDS = new Set<string>(["ok", "start", "fail"]);
 
@@ -24,7 +24,8 @@ async function handle(req: Request, params: Promise<{ token: string }>) {
       /* no note */
     }
   }
-  const r = await recordPing(token, kind, note);
+  const count = cleanCount(url.searchParams.get("count"));
+  const r = await recordPing(token, kind, note, Date.now(), count);
   const headers = { "content-type": "application/json", "cache-control": "no-store" };
   if (!r.ok) return new Response(JSON.stringify({ ok: false, reason: r.reason }), { status: 200, headers });
   return new Response(JSON.stringify({ ok: true, job: r.job.name, status: r.job.status, nextDueAt: r.job.nextDueAt, recovered: r.recovered }), { status: 200, headers });

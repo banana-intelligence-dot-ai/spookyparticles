@@ -13,6 +13,8 @@ export type CheckinOptions = {
   url?: string;
   /** A short note kept with the run, at most 500 characters. Never put a secret here. */
   note?: string;
+  /** Number of items this run processed. Only non-negative integers are sent. */
+  count?: number;
   /** How long to wait for Spooky on each try. Default 5000. */
   timeoutMs?: number;
   /** Extra tries after a network error or a server error. Default 2. */
@@ -79,6 +81,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function checkin(status: CheckinStatus = "ok", options: CheckinOptions = {}): Promise<boolean> {
   const url = pingUrl(options.url ?? envUrl(), status);
   if (!url) return false;
+  if (Number.isSafeInteger(options.count) && options.count! >= 0) url.searchParams.set("count", String(options.count));
   const send = options.fetch ?? globalThis.fetch;
   const tries = 1 + Math.max(0, Math.floor(options.retries ?? 2));
   const body = options.note ? options.note.slice(0, NOTE_MAX) : "";

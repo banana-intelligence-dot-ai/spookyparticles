@@ -1,7 +1,5 @@
-import { lookup } from "node:dns/promises";
-import { request } from "node:https";
 import { isIP } from "node:net";
-import { isPublicAddress, pinnedLookup } from "@/lib/net-safety";
+import { pinnedGet, resolvePublic } from "@/lib/net-safety";
 
 export type ScanHit = { kind: "found"; pattern: string; path: string };
 export type ScanResult = { state: "open" | "ok" | "unknown"; reason: "site_protected" | "no_production_site" | "scan_limited" | null; hits: ScanHit[] };
@@ -45,39 +43,21 @@ export type ScanDeps = {
   resolve?: (host: string) => Promise<{ address: string; family: number }[]>;
   get?: (url: URL, address: string, family: number, bytes: number, timeoutMs: number) => Promise<Page>;
 };
-const defaultResolve = (host: string) => lookup(host, { all: true });
 function getPage(url: URL, address: string, family: number, limit: number, timeoutMs: number): Promise<Page> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0, capped = false;
-    const req = request(url, { method: "GET", headers: { "user-agent": "SpookyParticles-Check/1.0 (+https://spookyparticles.com)" }, lookup: pinnedLookup({ address, family }) }, (res) => {
-      res.on("error", (err) => { if (!capped) reject(err); });
-      res.on("data", (chunk: Buffer) => {
-        if (size + chunk.length > limit) { chunks.push(chunk.subarray(0, Math.max(0, limit - size))); size = limit; capped = true; res.destroy(); return; }
-        chunks.push(chunk); size += chunk.length;
-      });
-      res.on("end", () => resolve({ status: res.statusCode ?? 0, location: res.headers.location, body: Buffer.concat(chunks).toString("utf8"), capped }));
-      res.on("close", () => { if (capped) resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8"), capped }); });
-    });
-    req.setTimeout(Math.max(1, timeoutMs), () => req.destroy(new Error("timeout")));
-    req.on("error", (err) => { if (!capped) reject(err); });
-    req.end();
-  });
+  return pinnedGet(url, { address, family }, timeoutMs, { "user-agent": "SpookyParticles-Check/1.0 (+https://spookyparticles.com)" }, limit);
 }
 const unknown = (reason: "site_protected" | "no_production_site" | "scan_limited"): ScanResult => ({ state: "unknown", reason, hits: [] });
 export async function scanPublicSite(startUrl: string | null, knownHosts: Set<string>, deps: ScanDeps = {}): Promise<ScanResult> {
   if (!startUrl) return unknown("no_production_site");
   const deadline = Date.now() + 8000;
-  const resolve = deps.resolve ?? defaultResolve;
   const get = deps.get ?? getPage;
   async function safeGet(url: URL, limit: number): Promise<Page | null> {
     const host = url.hostname.toLowerCase().replace(/\.$/, "");
     if (url.protocol !== "https:" || (url.port && url.port !== "443") || url.username || url.password || isIP(host) || !knownHosts.has(host)) return null;
     const left = deadline - Date.now();
     if (left <= 0) return null;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const addresses = await Promise.race([resolve(host), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), left); })]).finally(() => clearTimeout(timer));
-    if (!addresses.length || addresses.some((a) => !isPublicAddress(a.address))) return null;
+    const addresses = await resolvePublic(host, left, deps.resolve).catch(() => null);
+    if (!addresses) return null;
     const page = await get(url, addresses[0].address, addresses[0].family, limit, left);
     const bytes = Buffer.from(page.body);
     return bytes.length > limit ? { ...page, body: bytes.subarray(0, limit).toString("utf8"), capped: true } : page;

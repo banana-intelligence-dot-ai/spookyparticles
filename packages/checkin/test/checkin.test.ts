@@ -4,13 +4,13 @@ import { checkin, withCheckin } from "../src/index.ts";
 
 const URL_ = "https://spookyparticles.com/api/ping/tok_example";
 
-type Call = { url: string; status: string | null; body: string };
+type Call = { url: string; status: string | null; count: string | null; body: string };
 
 function fakeFetch(answers: Array<Response | Error>) {
   const calls: Call[] = [];
   const fn = (async (input: URL | string, init?: RequestInit) => {
     const u = new URL(String(input));
-    calls.push({ url: `${u.origin}${u.pathname}`, status: u.searchParams.get("status"), body: String(init?.body ?? "") });
+    calls.push({ url: `${u.origin}${u.pathname}`, status: u.searchParams.get("status"), count: u.searchParams.get("count"), body: String(init?.body ?? "") });
     const next = answers.length > 1 ? answers.shift()! : answers[0]!;
     if (next instanceof Error) throw next;
     return next.clone();
@@ -24,7 +24,7 @@ const cronReq = () => new Request("https://app.example.com/api/cron/nightly", { 
 test("sends ok by default and reports success", async () => {
   const f = fakeFetch([okAnswer()]);
   assert.equal(await checkin("ok", { url: URL_, fetch: f.fn }), true);
-  assert.deepEqual(f.calls, [{ url: URL_, status: "ok", body: "" }]);
+  assert.deepEqual(f.calls, [{ url: URL_, status: "ok", count: null, body: "" }]);
 });
 
 test("puts the note in the body, never the link, and caps it", async () => {
@@ -71,14 +71,23 @@ test("a thrown error checks in fail with the error name only, then rethrows", as
     throw new TypeError("password=hunter2 in a message");
   }, { url: URL_, fetch: f.fn });
   await assert.rejects(GET(cronReq()), TypeError);
-  assert.deepEqual(f.calls, [{ url: URL_, status: "fail", body: "TypeError" }]);
+  assert.deepEqual(f.calls, [{ url: URL_, status: "fail", count: null, body: "TypeError" }]);
 });
 
 test("a 4xx or 5xx answer checks in fail with the status code", async () => {
   const f = fakeFetch([okAnswer()]);
   const GET = withCheckin(async () => new Response("no", { status: 500 }), { url: URL_, fetch: f.fn });
   assert.equal((await GET(cronReq())).status, 500);
-  assert.deepEqual(f.calls, [{ url: URL_, status: "fail", body: "HTTP 500" }]);
+  assert.deepEqual(f.calls, [{ url: URL_, status: "fail", count: null, body: "HTTP 500" }]);
+});
+
+test("sends a non-negative integer count only", async () => {
+  const f = fakeFetch([okAnswer()]);
+  await checkin("ok", { url: URL_, fetch: f.fn, count: 0 });
+  await checkin("ok", { url: URL_, fetch: f.fn, count: 12 });
+  await checkin("ok", { url: URL_, fetch: f.fn, count: -1 });
+  await checkin("ok", { url: URL_, fetch: f.fn, count: 1.5 });
+  assert.deepEqual(f.calls.map((c) => c.count), ["0", "12", null, null]);
 });
 
 test("a visit that is not from Vercel's scheduler does not count, unless only is all", async () => {

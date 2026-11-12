@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideRuns, expectedRuns, nextRun, pickSchedules } from "./vercel-schedules";
+import { decideRuns, expectedRuns, nextRun, pickSchedules, validTimeZone } from "./vercel-schedules";
 
 const ms = (value: string) => Date.parse(value);
 const runs = (cron: string, start: string, end: string) => expectedRuns(cron, ms(start), ms(end))?.map((n) => new Date(n).toISOString());
@@ -31,6 +31,21 @@ describe("UTC cron", () => {
   });
   it("rejects unsupported syntax and bad ranges", () => {
     for (const cron of ["@daily", "0 0 * *", "0 0 ? * *", "60 * * * *", "*/0 * * * *", "0 0 31-1 * *"]) expect(expectedRuns(cron, 0, 60_000)).toBeNull();
+  });
+});
+
+describe("zoned cron", () => {
+  it("moves a New York morning check across the spring DST change", () => {
+    expect(nextRun("35 7 * * 1-5", ms("2026-03-06T12:35:00Z"), "America/New_York")).toBe(ms("2026-03-09T11:35:00Z"));
+    expect(nextRun("35 7 * * 1-5", ms("2026-03-05T12:35:00Z"), "America/New_York")).toBe(ms("2026-03-06T12:35:00Z"));
+  });
+  it("moves a New York morning check across the fall DST change", () => {
+    expect(nextRun("35 7 * * 1-5", ms("2026-10-30T11:35:00Z"), "America/New_York")).toBe(ms("2026-11-02T12:35:00Z"));
+    expect(nextRun("35 7 * * 1-5", ms("2026-10-29T11:35:00Z"), "America/New_York")).toBe(ms("2026-10-30T11:35:00Z"));
+  });
+  it("rejects unknown zones", () => {
+    expect(validTimeZone("America/Not_A_Zone")).toBe(false);
+    expect(expectedRuns("* * * * *", 0, 60_000, 1, "America/Not_A_Zone")).toBeNull();
   });
 });
 

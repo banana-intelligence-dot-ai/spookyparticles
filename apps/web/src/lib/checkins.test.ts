@@ -1,6 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { ago, cleanMinutes, cleanName, jobDisplayStatus, jobIssue, parseStatusFilter, sortJobViews } from "./checkins";
-import { validateTarget } from "./alerts/channels";
+import { ago, cleanMinutes, cleanName, jobDisplayStatus, jobIssue, parseStatusFilter, sortJobViews, classifyPing, pingDueAt, isHungRun, shouldRealert, dueState, firstCheckInWindowMs } from "./checkins";
+import { matchesProject, validateTarget } from "./alerts/channels";
+
+describe("project alert routing", () => {
+  it("matches trimmed names and owner/name forms without matching unrelated projects", () => {
+    expect(matchesProject(" N8PEACE/Daystart ", "daystart")).toBe(true);
+    expect(matchesProject("artifactnews", "n8peace/ARTIFACTNEWS")).toBe(true);
+    expect(matchesProject("n8peace/daystart", "other/daystart")).toBe(false);
+    expect(matchesProject("daystart", undefined)).toBe(false);
+  });
+});
+
+describe("run decisions", () => {
+  it("fails only measured ok runs below the minimum", () => {
+    expect(classifyPing("ok", 0, 1, "done")).toEqual({ kind: "fail", note: "done ran but did nothing: count 0, expected at least 1" });
+    expect(classifyPing("ok", null, 1, null)).toEqual({ kind: "ok", note: null });
+    expect(classifyPing("ok", 1, 1, null)).toEqual({ kind: "ok", note: null });
+    expect(classifyPing("start", 0, 1, null)).toEqual({ kind: "start", note: null });
+  });
+  it("uses max run time and skips grace for a started run", () => {
+    expect(pingDueAt("start", 60, 10, 1000)).toBe(601000);
+    expect(pingDueAt("ok", 60, 10, 1000)).toBe(3601000);
+    expect(isHungRun("start", 10)).toBe(true);
+    expect(isHungRun("ok", 10)).toBe(false);
+    expect(isHungRun("start", null)).toBe(false);
+  });
+});
+
+describe("repeat alert back-off", () => {
+  const alerts = (period: number, misses: number) => Array.from({ length: misses }, (_, i) => i + 1).filter((n) => shouldRealert(n, period));
+  it("sends a 5-minute job 4 alerts on day one, not 288", () => {
+    expect(alerts(5, 288)).toEqual([1, 13, 49, 289].filter((n) => n <= 288));
+    expect(alerts(5, 289)).toEqual([1, 13, 49, 289]);
+  });
+  it("keeps a daily job alerting once a day", () => {
+    expect(alerts(1440, 4)).toEqual([1, 2, 3, 4]);
+  });
+  it("an hourly job alerts at 1, 4 and 24 hours, then daily", () => {
+    expect(alerts(60, 50)).toEqual([1, 2, 5, 25, 49]);
+  });
+});
 
 describe("check-in input cleaning", () => {
   it("accepts a sane name and period, rejects junk", () => {
@@ -63,6 +102,26 @@ describe("check-in state", () => {
   });
 });
 
+describe("manual wall-clock schedules", () => {
+  const fridayPing = Date.parse("2026-11-13T12:40:00Z");
+  const mondayDue = Date.parse("2026-11-16T12:35:00Z");
+  it("waits through Saturday and Sunday, then applies grace on Monday", () => {
+    const due = pingDueAt("ok", 1440, null, fridayPing, "35 7 * * 1-5", "America/New_York");
+    expect(due).toBe(mondayDue);
+    expect(dueState(due, 10, Date.parse("2026-11-14T18:00:00Z"))).toBe("on_time");
+    expect(dueState(due, 10, Date.parse("2026-11-15T18:00:00Z"))).toBe("on_time");
+    expect(dueState(due, 10, mondayDue + 5 * 60_000)).toBe("late");
+    expect(dueState(due, 10, mondayDue + 10 * 60_000)).toBe("quiet");
+  });
+  it("does not call a new Friday job late over the weekend", () => {
+    const createdAt = new Date("2026-11-13T13:00:00Z");
+    const job = { source: "manual", schedule: "35 7 * * 1-5", timeZone: "America/New_York", status: "new" as const, lastPingAt: null, createdAt, graceMinutes: 10 };
+    expect(firstCheckInWindowMs(job)).toBe(mondayDue - createdAt.getTime() + 10 * 60_000);
+    expect(jobDisplayStatus(job, Date.parse("2026-11-15T18:00:00Z"))).toBe("new");
+    expect(jobDisplayStatus(job, mondayDue + 10 * 60_000)).toBe("never_checked_in");
+  });
+});
+
 describe("alert channel targets", () => {
   it("turns an ntfy topic into a topic URL and masks it", () => {
     const r = validateTarget("ntfy", "example-topic-k3v9q2x7");
@@ -81,5 +140,12 @@ describe("alert channel targets", () => {
   it("masks email and rejects non-addresses", () => {
     expect(validateTarget("email", "Nate@Example.com")).toMatchObject({ ok: true, target: "nate@example.com", label: "na…@example.com" });
     expect(validateTarget("email", "not an email").ok).toBe(false);
+  });
+});
+
+describe("scheduled jobs that report early", () => {
+  it("counts a ping a minute early toward that run, so the next due time is the next weekday", () => {
+    const early = Date.parse("2026-11-13T12:34:00Z"); // Friday 7:34 New York
+    expect(pingDueAt("ok", 1440, null, early, "35 7 * * 1-5", "America/New_York", "manual")).toBe(Date.parse("2026-11-16T12:35:00Z"));
   });
 });
