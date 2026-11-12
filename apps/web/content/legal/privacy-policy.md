@@ -174,4 +174,3 @@ If we make a material change, we will tell you in the product or by email before
 
 Banana Intelligence LLC
 Email: hello@spookyparticles.com
-Mailing address: [address to be added]

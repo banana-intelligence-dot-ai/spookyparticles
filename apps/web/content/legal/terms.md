@@ -135,4 +135,3 @@ These Terms and the Privacy Policy are the whole agreement between you and us ab
 
 Banana Intelligence LLC
 Email: hello@spookyparticles.com
-Mailing address: [address to be added]
