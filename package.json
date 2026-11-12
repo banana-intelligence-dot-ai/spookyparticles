@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "npm run dev -w apps/web",
     "build": "npm run build -w packages/tier0 && npm run build -w apps/web",
-    "test": "npm test -w packages/tier0 && npm test -w apps/web",
+    "test": "npm test -w packages/tier0 && npm test -w packages/checkin && npm test -w apps/web",
     "db:generate": "npm run db:generate -w apps/web",
     "revoke:all": "npm run revoke:all -w apps/web --",
     "setup": "node scripts/setup.mjs"

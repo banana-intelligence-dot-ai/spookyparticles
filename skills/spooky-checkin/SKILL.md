@@ -7,7 +7,7 @@ description: Make every scheduled job watched, so a missed or failed run raises 
 
 Covers Standard item 4: every scheduled job is watched, and a missed or failed run raises an alert. See [the Standard, Keep it running](https://github.com/banana-intelligence-dot-ai/spookyparticles/blob/main/docs/standard/STANDARD.md#keep-it-running).
 
-Spooky reads Vercel cron jobs and their run history on its own, with no code change. Jobs that run anywhere else (GitHub Actions, another host, a machine under a desk) need a check-in: a link the job calls when it finishes. If the call does not arrive on time, Spooky alerts.
+Spooky reads Vercel cron jobs and their run history on its own, with no code change, when the team is connected with a pasted token. With Sign in with Vercel alone, Vercel does not share run history, so a Vercel cron route needs a check-in too (see "A Vercel cron route" below). Jobs that run anywhere else (GitHub Actions, another host, a machine under a desk) need a check-in: a link the job calls when it finishes. If the call does not arrive on time, Spooky alerts.
 
 ## Check
 
@@ -40,6 +40,22 @@ For each schedule off Vercel that is not watched:
 
    In a GitHub Actions step, pass it in with `env: SPOOKY_PING_URL: ${{ secrets.SPOOKY_PING_URL }}`.
 4. Open one pull request per job. Say in the description that the person must add the secret before merging.
+
+## A Vercel cron route
+
+Use the check-in package, one file with no dependencies: [packages/checkin](https://github.com/banana-intelligence-dot-ai/spookyparticles/tree/main/packages/checkin).
+
+1. Create the job and have the person store the link as `SPOOKY_PING_URL` in the Vercel project's environment variables (Production), as in steps 1 and 2 above.
+2. Copy `packages/checkin/src/index.ts` into the project, for example as `lib/spooky-checkin.ts`.
+3. Wrap the route's handler, keeping any existing `CRON_SECRET` check inside it:
+
+   ```ts
+   import { withCheckin } from "@/lib/spooky-checkin";
+   export const GET = withCheckin(async (req) => { /* the existing handler body */ });
+   ```
+
+   Each run checks in ok on a 2xx or 3xx answer and fail on a throw or a 4xx or 5xx answer. Only calls from Vercel's scheduler count.
+4. Open one pull request. Say in the description that the person must add `SPOOKY_PING_URL` before merging.
 
 ## Prove it is done
 

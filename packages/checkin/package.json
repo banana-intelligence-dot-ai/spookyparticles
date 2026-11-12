@@ -1,0 +1,36 @@
+{
+  "name": "spooky-checkin",
+  "version": "0.1.0",
+  "description": "Tell Spooky Particles each time a scheduled job runs, so a missed or failed run raises an alert. One wrapper for a Vercel cron route, one call for any other job. No dependencies.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://spookyparticles.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/banana-intelligence-dot-ai/spookyparticles.git",
+    "directory": "packages/checkin"
+  },
+  "keywords": ["cron", "vercel", "monitoring", "heartbeat", "check-in"],
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test \"test/*.test.ts\""
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
