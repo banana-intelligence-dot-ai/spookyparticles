@@ -211,6 +211,35 @@ fixer --budget 9
 [ "$(count 'claim owner/app1')" = 1 ] || fail "claimed in a dirty repo"
 grep -q 'uncommitted changes' "$FAKE/out" || fail "dirty repo not reported"
 
+# A clone behind origin is brought up to date, onto the default branch, before the agent runs.
+rm -f "$HOME/code/app1/wip.txt"
+g() { "$REAL_GIT" -c user.email=t@t -c user.name=t "$@"; }
+g init -q --bare "$FAKE/origin1.git"
+g init -q -b main "$FAKE/seed1"
+g -C "$FAKE/seed1" commit -q --allow-empty -m one
+g -C "$FAKE/seed1" push -q "$FAKE/origin1.git" main
+"$REAL_GIT" -C "$FAKE/origin1.git" symbolic-ref HEAD refs/heads/main
+rm -rf "$HOME/code/app1"; "$REAL_GIT" clone -q "$FAKE/origin1.git" "$HOME/code/app1"
+g -C "$HOME/code/app1" checkout -q -b old-fix
+g -C "$FAKE/seed1" commit -q --allow-empty -m two
+g -C "$FAKE/seed1" push -q "$FAKE/origin1.git" main
+deploy_block owner/app1 2026-11-12T14:00:00Z "" > "$FAKE/incidents-owner_app1.txt"
+runs_before=$(count "agent claude $HOME/code/app1")
+fixer --budget 99
+[ "$("$REAL_GIT" -C "$HOME/code/app1" rev-parse --abbrev-ref HEAD)" = main ] || fail "agent not run on the default branch"
+[ "$("$REAL_GIT" -C "$HOME/code/app1" log -1 --format=%s)" = two ] || fail "repo not updated before the run"
+[ "$(count "agent claude $HOME/code/app1")" = $((runs_before + 1)) ] || fail "no run after the update"
+
+# Local commits that are not on origin: skipped, never merged or discarded.
+g -C "$HOME/code/app1" commit -q --allow-empty -m mine
+g -C "$FAKE/seed1" commit -q --allow-empty -m three
+g -C "$FAKE/seed1" push -q "$FAKE/origin1.git" main
+deploy_block owner/app1 2026-11-12T15:00:00Z "" > "$FAKE/incidents-owner_app1.txt"
+fixer --budget 99
+[ "$(count "agent claude $HOME/code/app1")" = $((runs_before + 1)) ] || fail "ran on a diverged repo"
+[ "$("$REAL_GIT" -C "$HOME/code/app1" log -1 --format=%s)" = mine ] || fail "local commit lost"
+grep -q 'could not bring' "$FAKE/out" || fail "diverged repo not reported"
+
 # No key, push topic, ping link or sp_ key in any output, log, run log or state file.
 [ "$(count 'bad auth')" = 0 ] || fail "key not sent on stdin"
 [ "$(count 'KEY IN ARGV')" = 0 ] || fail "key in a process argument"

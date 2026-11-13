@@ -473,6 +473,19 @@ EOF
 
 claude_tools="Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(npm test:*),Bash(npm run:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(bun:*),Bash(make:*),Bash(pytest:*),Bash(python3 -m pytest:*),Bash(python -m pytest:*),Bash(python3 -m unittest:*),Bash(python -m unittest:*),Bash(uv run:*),Bash(poetry run:*),Bash(cargo:*),Bash(go:*),Bash(ls:*),Bash(grep:*),Bash(sed:*),Bash(curl:*),Bash(sleep:*)"
 
+# sync_repo <repo>: fetch origin, switch to its default branch and fast-forward it. Fails rather
+# than merge or discard: local commits that are not on origin stop the run.
+sync_repo() {
+  git -C "$1" fetch -q origin 2>/dev/null || return 1
+  sr_head=$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) || sr_head=
+  if [ -z "$sr_head" ]; then
+    git -C "$1" remote set-head origin -a >/dev/null 2>&1 || return 1
+    sr_head=$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) || return 1
+  fi
+  git -C "$1" checkout -q "${sr_head#origin/}" 2>/dev/null || return 1
+  git -C "$1" merge -q --ff-only "$sr_head" 2>/dev/null
+}
+
 # run_agent <repo> <prompt> <log>: one headless run with a hard timeout. Prints the exit code.
 run_agent() {
   repo=$1
@@ -547,6 +560,11 @@ EOF
   fi
   if [ -n "$(git -C "$repo" status --porcelain 2>/dev/null)" ]; then
     log "$project: $repo has uncommitted changes, skipped so your work is not mixed in. Use a separate clone for the fixer."
+    return 0
+  fi
+  # Fix today's code, not the clone's: put the repo on its default branch, up to date with origin.
+  if git -C "$repo" remote get-url origin >/dev/null 2>&1 && ! sync_repo "$repo"; then
+    log "$project: could not bring $repo up to date with origin (offline, or local commits not on origin), skipped. Will try next pass."
     return 0
   fi
 
