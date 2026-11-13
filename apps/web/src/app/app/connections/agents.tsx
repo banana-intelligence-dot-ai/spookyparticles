@@ -90,7 +90,7 @@ export function ConnectedAgents({
   };
 
   return (
-    <section aria-labelledby="agents-title" className="mt-14">
+    <section id="agents" aria-labelledby="agents-title" className="mt-14 scroll-mt-8">
       <SectionTitle
         id="agents-title"
         count={keys ? String(live.length) : undefined}

@@ -27,6 +27,8 @@ export type RepoNode = {
   name: string;
   status: string | null;
   lastActivityAt: Date | null;
+  /** Newest successful production deploy. A site still deploying is in use, archived repo or not. */
+  lastDeployAt?: Date | null;
 };
 
 export type RulesInput = {
@@ -92,6 +94,7 @@ export function computeFindings(input: RulesInput): FindingCandidate[] {
       if (!repo) continue;
       const idleDays = repo.lastActivityAt ? (nowMs - repo.lastActivityAt.getTime()) / DAY : null;
       const archived = repo.status === "archived";
+      if (repo.lastDeployAt && nowMs - repo.lastDeployAt.getTime() < ZOMBIE_IDLE_DAYS * DAY) continue;
       if (!archived && (idleDays === null || idleDays < ZOMBIE_IDLE_DAYS)) continue;
       const since = archived ? "repo archived" : `no push in ${Math.floor(idleDays as number)} days`;
       out.push({

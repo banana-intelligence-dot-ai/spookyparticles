@@ -16,6 +16,8 @@ export type Sync = {
   remaining: number | null;
   etaSeconds: number | null;
   percent: number | null;
+  /** A host's routine background re-read is running; this is the last finished run. */
+  refreshing?: boolean;
   /** Billing emails being read for amounts and dates (Gmail). Null when nothing is queued. */
   reading?: { done: number; total: number } | null;
 };
@@ -70,6 +72,7 @@ export function progressLine(c: Connection): string | null {
   if (s.paused) return `${formatInt(s.scanned)} repos so far. Paused at GitHub's rate limit; it picks up on its own.`;
   if (s.error) return `Stopped: ${s.error}`;
   if (c.provider === "github") return `${formatInt(s.scanned)} ${s.scanned === 1 ? "repo" : "repos"}`;
+  if (c.provider === "vercel") return isRunning(s) && !s.scanned ? "Reading projects" : `${formatInt(s.scanned)} ${s.scanned === 1 ? "project" : "projects"}`;
   // "billing mail" is what the search kept; it is not yet a finding.
   const kept = `${formatInt(s.candidates)} billing ${s.candidates === 1 ? "email" : "emails"}`;
   if (!isRunning(s)) return `${formatInt(s.scanned)} emails scanned, ${kept}`;
@@ -111,3 +114,13 @@ const STATUS_LABEL: Record<string, string> = {
   active: "connected",
 };
 export const statusLabel = (c: Connection) => STATUS_LABEL[statusWord(c)] ?? statusWord(c);
+
+export type Fix = { href: string; label: string; external: boolean };
+
+/** Where to fix a broken connection, or null: Gmail signs in again; GitHub's install page for an app GitHub dropped. */
+export function fixFor(c: Pick<Connection, "provider" | "status">): Fix | null {
+  if (c.status !== "errored") return null;
+  if (c.provider === "gmail") return { href: "/api/connect/gmail/start?next=/app/connections", label: "Reconnect", external: false };
+  if (c.provider === "github") return { href: "https://github.com/settings/installations", label: "Fix on GitHub", external: true };
+  return null;
+}

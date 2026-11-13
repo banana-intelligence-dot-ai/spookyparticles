@@ -76,7 +76,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
 ## Connect over MCP
 
-If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Eight read tools: \`whats_broken\`, \`did_my_push_land\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_expirations\`. A write key also gets \`next_finding\`, \`report_finding\` and \`record_service\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
+If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Ten read tools: \`whats_broken\`, \`did_my_push_land\`, \`claim_break\`, \`confirm_fix\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_expirations\`. A write key also gets \`next_finding\`, \`report_finding\` and \`record_service\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
 
 \`\`\`bash
 claude mcp add --transport http spooky ${base}/api/mcp --header "Authorization: Bearer $SPOOKY_API_KEY"
@@ -108,9 +108,25 @@ When you push or merge for your human, wait 3 minutes, then run:
    - A row: the deploy failed. \`cause\` is the line from the build log that names the failure and \`logTail\` (drop the jq filter to see it) is the last 40 lines. Read them, fix the code, push again, and check again in 3 minutes. Never redeploy, roll back or change settings on the host yourself; the fix goes through the repo.
    - Naming the project makes Spooky Particles re-read that repo from GitHub right then (once a minute), so the push you just made shows up; Vercel is re-read when its last read is older than 5 minutes.
 
+## Before you say it is fixed
+
+Never tell your human a break is fixed on your own word. After the fix is deployed, ask Spooky to check production:
+
+   \`\`\`bash
+   printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @- "${base}/api/v1/incidents/confirm?project=owner/repo&format=text"
+   \`\`\`
+
+   - \`fixed\`: Spooky re-read production in the last 3 minutes and nothing is broken. Now say it is fixed.
+   - \`still_broken\`: the failure is still there; the lines under it say what. Keep going.
+   - \`waiting_on_run\`: deploys are healthy, but a scheduled job has to run once before it counts. Tell your human when it is due.
+   - \`checking\`: a deploy is still building or the last read is old. Spooky started a fresh read; ask again in a minute.
+   - \`unknown_project\`: Spooky has no deploys or jobs by that name. Use the GitHub owner/repo or the Vercel project name.
+   - Before you start a fix, claim it so a second session leaves it alone: \`POST ${base}/api/v1/incidents/claim?project=owner/repo\` (MCP: \`claim_break\`). It lasts 30 minutes and ends when the check says fixed. If another agent holds it, leave it to them.
+   - Over MCP it is \`confirm_fix\` with \`{"project": "owner/repo"}\`.
+
 ## Your coding agent hears about it
 
-Claude Code can read open problems at session start. Before later prompts, it speaks only when the list changed. With a read-only key already in \`SPOOKY_API_KEY\`, run these two commands from a clone of https://github.com/banana-intelligence-dot-ai/spookyparticles:
+Claude Code, Cursor and Codex can each hear about open problems when a session starts. Claude Code also checks before later prompts and speaks only when the list changed. Cursor and Codex get the Spooky MCP server too, read with \`SPOOKY_API_KEY\` from their environment, never copied into their config. With a read-only key already in \`SPOOKY_API_KEY\`, run these two commands from a clone of https://github.com/banana-intelligence-dot-ai/spookyparticles. The installer finds which of the three you use (or pass \`--agent claude\`, \`cursor\`, \`codex\` or \`all\`), backs up each file it changes, and is safe to run twice:
 
 \`\`\`sh
 mkdir -p ~/.config/spooky && printf '%s\\n' "$SPOOKY_API_KEY" > ~/.config/spooky/key && chmod 600 ~/.config/spooky/key
@@ -177,7 +193,7 @@ Finish with a short message in this shape:
 
 ## What this gives you
 
-The same read API the web app uses: \`/api/v1/incidents\` (what is broken now, with the build log line that says why), \`/api/v1/checkins\` (scheduled jobs and whether they checked in), \`/api/v1/projects\`, \`/api/v1/projects/{owner}/{repo}\`, \`/api/v1/activity\`, \`/api/v1/spend\`, \`/api/v1/findings\`, \`/api/v1/expirations\` (known Vercel dates and domains with unknown dates), \`/api/v1/inventory\`, \`/api/v1/graph\`, \`/api/v1/connections\`. Expiration alerts go out at 30, 7 and 1 days before known dates; auto-renewing domains start at 7 days. Every number names where it came from. A write-scoped key can take and report one check finding through \`/api/v1/checks/next\` and \`/api/v1/checks/{id}/report\`. Reports never mark a finding fixed.
+The same read API the web app uses: \`/api/v1/incidents\` (what is broken now, with the build log line that says why), \`/api/v1/checkins\` (scheduled jobs and whether they checked in), \`/api/v1/projects\`, \`/api/v1/projects/{owner}/{repo}\`, \`/api/v1/activity\`, \`/api/v1/spend\`, \`/api/v1/findings\`, \`/api/v1/expirations\` (known Vercel dates and domains with unknown dates), \`/api/v1/inventory\`, \`/api/v1/graph\`, \`/api/v1/connections\`. Expiration alerts go out at 30, 7 and 1 days before known dates; auto-renewing domains start at 7 days. Every number names where it came from. A write-scoped key can take and report one check finding through \`/api/v1/checks/next\` (or \`/api/v1/checks/{id}/take\` for the one your person handed you) and \`/api/v1/checks/{id}/report\`. Reports never mark a finding fixed.
 
 Spend filters by repo and by address, repeatable: \`/api/v1/spend?project=owner/repo\` (or \`project=unlinked\`) and \`?inbox=address\`. The body lists every \`projects\` and \`inboxes\` value to pick from.
 `;

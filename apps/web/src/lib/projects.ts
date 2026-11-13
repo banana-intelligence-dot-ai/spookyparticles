@@ -13,6 +13,7 @@ import { billingUrl, linkSubscriptions, matchRepo, type RepoNode } from "./findi
 import { providerFromCreator, providerOf } from "./hosts";
 import { moveHome, productionHost } from "./move-home";
 import { recordProductionMove } from "./move-home-record";
+import { breakKey, ignoredKeys } from "./ignores";
 import { buildProjectPage, type PageFinding, type ProjectPage } from "./project-page";
 import type { SpendReport, Subscription, VendorScope } from "./spend";
 import type { UptimeState } from "./vercel-health";
@@ -39,6 +40,9 @@ export type DeploymentView = {
   sha?: string | null;
   ref?: string | null;
   message?: string | null;
+  /** This failure's identity, for ignoring it; and whether the owner ignored it. */
+  key?: string;
+  ignored?: boolean;
 };
 
 export type NoticeView = {
@@ -122,7 +126,7 @@ function noticeAt(r: LoadedReceipt): string | null {
 
 const NOTICE_KINDS: ReceiptKind[] = ["deployment", "incident_alert", "deprecation_notice", "account_security", "payment_failed", "renewal_notice", "trial_notice", "domain_or_dns", "plan_change"];
 /** The failure facts a host sync stored on a deployment node, when it did. */
-function logFacts(a: Record<string, unknown>): { cause: string | null; logTail: string[]; inspectorUrl: string | null; sha: string | null; ref: string | null; message: string | null } {
+export function logFacts(a: Record<string, unknown>): { cause: string | null; logTail: string[]; inspectorUrl: string | null; sha: string | null; ref: string | null; message: string | null } {
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
   return {
     cause: str(a.cause),
@@ -146,7 +150,7 @@ export function dedupeDeployments(list: DeploymentView[]): DeploymentView[] {
 }
 
 const DAY = 86_400_000;
-const FAILED_STATES = new Set(["failure", "error"]);
+export const FAILED_STATES = new Set(["failure", "error"]);
 
 type ProjectRow = { id: string; name: string; status: string | null; lastActivityAt: Date | null; attributes: Record<string, unknown>; kind: "repo" | "host"; host: string | null; hostLinked: string | null };
 
@@ -201,11 +205,12 @@ export type Preloaded = { receipts: LoadedReceipt[]; spend: SpendReport };
 
 export async function projectsFor(userId: string, nowMs = Date.now(), pre?: Preloaded): Promise<ProjectsReport> {
   const db = getDb();
-  const [repos, deployments, edges, findings] = await Promise.all([
+  const [repos, deployments, edges, findings, ignored] = await Promise.all([
     projectRows(userId),
     db.select().from(schema.nodes).where(and(eq(schema.nodes.userId, userId), eq(schema.nodes.kind, "deployment"))),
     db.select().from(schema.edges).where(and(eq(schema.edges.userId, userId), eq(schema.edges.kind, "deploys"))),
     db.select().from(schema.findings).where(and(eq(schema.findings.userId, userId), eq(schema.findings.status, "open"))),
+    ignoredKeys(userId),
   ]);
   const receipts = pre?.receipts ?? (await loadReceipts(userId));
   const spend = pre?.spend ?? (await spendFor(userId, nowMs, receipts));
@@ -220,15 +225,19 @@ export async function projectsFor(userId: string, nowMs = Date.now(), pre?: Prel
     const url = typeof a.url === "string" ? a.url : null;
     const creator = typeof a.creator === "string" ? a.creator : null;
     const environment = String(a.environment ?? "unknown");
+    const at = d.lastActivityAt?.toISOString() ?? null;
+    const key = breakKey(d.id, at);
     list.push({
       environment,
       label: environment.replace(/\s+/g, " ").trim(),
       state: d.status,
       url,
-      at: d.lastActivityAt?.toISOString() ?? null,
+      at,
       provider: providerOf(url, creator),
       creator,
       ...logFacts(a),
+      key,
+      ignored: FAILED_STATES.has(d.status ?? "") && ignored.has(key),
     });
     depsByRepo.set(e.fromNodeId, list);
   }
@@ -305,10 +314,14 @@ export async function projectsFor(userId: string, nowMs = Date.now(), pre?: Prel
     const notices = (noticesByRepo.get(r.id) ?? []).sort((x, y) => (y.at ?? "").localeCompare(x.at ?? "")).slice(0, 8);
     const open = findingsByRepo.get(r.id) ?? [];
     const monthly = subs.reduce<number | null>((sum, s) => (s.monthlyCents === null || s.scope !== "work" ? sum : (sum ?? 0) + s.monthlyCents), null);
-    const idleDays = r.lastActivityAt ? (nowMs - r.lastActivityAt.getTime()) / DAY : null;
-    const idle = idleDays !== null && idleDays > 90;
     const within = (iso: string | null, days: number) => Boolean(iso && nowMs - Date.parse(iso) <= days * DAY);
-    const failedDeploy = (d: DeploymentView) => Boolean(d.state && FAILED_STATES.has(d.state));
+    // Deploys count as activity: a site deployed from a laptop or another repo is not idle,
+    // even when this repo has had no push (or was archived on GitHub) for months.
+    const newestProductionAt = deps.filter((d) => d.state === "success" && d.environment.toLowerCase() === "production" && d.at).map((d) => d.at as string).sort().at(-1) ?? null;
+    const idleDays = r.lastActivityAt ? (nowMs - r.lastActivityAt.getTime()) / DAY : null;
+    const idle = idleDays !== null && idleDays > 90 && !within(newestProductionAt, 90);
+    const archivedButLive = r.status === "archived" && within(newestProductionAt, 30);
+    const failedDeploy = (d: DeploymentView) => Boolean(d.state && FAILED_STATES.has(d.state) && !d.ignored);
     // A failure counts as "broken" for 30 days, unless the host deployed successfully after it:
     // the same environment for a failed deployment, any environment for a "deploy failed" email.
     // Older failures stay listed but do not make the project red.
@@ -326,7 +339,7 @@ export async function projectsFor(userId: string, nowMs = Date.now(), pre?: Prel
         : null;
     const recentTrouble = notices.some((n) => (n.kind === "payment_failed" || n.kind === "incident_alert") && within(n.at, 30));
     let health: ProjectHealth = "unknown";
-    if (r.status === "archived") health = "archived";
+    if (r.status === "archived" && !archivedButLive) health = "archived";
     else if (recentDeployFailure || recentNoticeFailure) health = "failed";
     else if (idle) health = "idle";
     else if (open.length || recentTrouble || oldFailure || stalePush) health = "attention";
@@ -426,7 +439,49 @@ export async function activityFor(userId: string, opts: { limit?: number; sinceM
 /** A failure older than this is history, not "still failing": the project was abandoned, not broken. */
 export const FAILED_WINDOW_MS = 30 * DAY;
 
+/**
+ * Pure: failed deployments that belong only to retired projects (an archived repo whose site has
+ * not deployed to production in 30 days). Today hides those projects, so incidents, the agent
+ * inbox and MCP do too; an archived repo whose site still deploys keeps its failures.
+ */
+export function retiredFailures(failedIds: string[], links: { from: string; to: string }[], archived: Set<string>, live: Set<string>): Set<string> {
+  const owners = new Map<string, string[]>();
+  for (const l of links) owners.set(l.to, [...(owners.get(l.to) ?? []), l.from]);
+  return new Set(failedIds.filter((id) => (owners.get(id) ?? []).length > 0 && (owners.get(id) ?? []).every((repo) => archived.has(repo) && !live.has(repo))));
+}
+
+/** The failed deployment ids whose projects are retired, read from the graph. */
+export async function retiredFailureIds(userId: string, failedIds: string[], nowMs: number): Promise<Set<string>> {
+  if (!failedIds.length) return new Set();
+  const db = getDb();
+  const deploys = (ids: string[], side: "to" | "from") =>
+    db
+      .select({ from: schema.edges.fromNodeId, to: schema.edges.toNodeId })
+      .from(schema.edges)
+      .where(and(eq(schema.edges.userId, userId), eq(schema.edges.kind, "deploys"), inArray(side === "to" ? schema.edges.toNodeId : schema.edges.fromNodeId, ids)));
+  const links = await deploys(failedIds, "to");
+  const repoIds = [...new Set(links.map((l) => l.from))];
+  if (!repoIds.length) return new Set();
+  const archivedRows = await db
+    .select({ id: schema.nodes.id })
+    .from(schema.nodes)
+    .where(and(eq(schema.nodes.userId, userId), inArray(schema.nodes.id, repoIds), eq(schema.nodes.status, "archived")));
+  const archived = new Set(archivedRows.map((r) => r.id));
+  if (!archived.size) return new Set();
+  const theirs = await deploys([...archived], "from");
+  const okRows = theirs.length
+    ? await db
+        .select({ id: schema.nodes.id, attributes: schema.nodes.attributes })
+        .from(schema.nodes)
+        .where(and(eq(schema.nodes.userId, userId), inArray(schema.nodes.id, [...new Set(theirs.map((t) => t.to))]), eq(schema.nodes.status, "success"), gte(schema.nodes.lastActivityAt, new Date(nowMs - FAILED_WINDOW_MS))))
+    : [];
+  const prodOk = new Set(okRows.filter((r) => String((r.attributes as Record<string, unknown>).environment ?? "").toLowerCase() === "production").map((r) => r.id));
+  const live = new Set(theirs.filter((t) => prodOk.has(t.to)).map((t) => t.from));
+  return retiredFailures(failedIds, links, archived, live);
+}
+
 export async function failedDeployments(userId: string, nowMs = Date.now()) {
+  const ignored = await ignoredKeys(userId);
   const rows = await getDb()
     .select()
     .from(schema.nodes)
@@ -439,12 +494,17 @@ export async function failedDeployments(userId: string, nowMs = Date.now()) {
       ),
     )
     .orderBy(desc(schema.nodes.lastActivityAt));
-  return rows.map((d) => {
+  const retired = await retiredFailureIds(userId, rows.map((d) => d.id), nowMs);
+  return rows.flatMap((d) => {
+    if (retired.has(d.id)) return [];
     const a = d.attributes as Record<string, unknown>;
     const url = typeof a.url === "string" ? a.url : null;
     const creator = typeof a.creator === "string" ? a.creator : null;
     const environment = String(a.environment ?? "");
-    return { id: d.id, name: d.name, environment, label: environment.replace(/\s+/g, " ").trim(), url, state: d.status, at: d.lastActivityAt?.toISOString() ?? null, provider: providerOf(url, creator), ...logFacts(a) };
+    const at = d.lastActivityAt?.toISOString() ?? null;
+    const key = breakKey(d.id, at);
+    if (ignored.has(key)) return [];
+    return [{ id: d.id, key, name: d.name, environment, label: environment.replace(/\s+/g, " ").trim(), url, state: d.status, at, provider: providerOf(url, creator), ...logFacts(a) }];
   });
 }
 

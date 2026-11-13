@@ -11,6 +11,7 @@ import { CopyButton } from "@/components/copy-button";
 import { Chips, Empty, ErrorLine, Meter, buttonStyles, surface } from "@/components/ui";
 import { formatInt, formatUsd, useApi } from "@/components/use-api";
 import { countLabel, isRunning, type Connection } from "./connection-model";
+import { HistoryStrip, STRIP_DAYS, type Signal } from "./history-strip";
 import { absoluteTime, plural } from "./data-model";
 import {
   NOTICE_LABEL,
@@ -59,7 +60,7 @@ export function ActivityView() {
 }
 
 /** One line in the feed: a notice from mail, or a failed deploy from GitHub (with the mail that reported it too). */
-type Item =
+export type Item =
   | { type: "notice"; id: string; at: string | null; kind: NoticeKind; n: Notice }
   | { type: "deploy"; id: string; at: string | null; kind: "deployment"; d: FailedDeployment; mail: Notice | null };
 
@@ -87,6 +88,8 @@ const GROUP_LABEL: Record<Group, string> = {
   domains: "Domains",
   other: "Other",
 };
+/** One of each, for the strip's day sentence ("2 incidents, 1 billing notice"). */
+const SIGNAL_WORD: Record<Group, string> = { deploys: "deploy notice", incidents: "incident", security: "security alert", billing: "billing notice", domains: "domain notice", other: "notice" };
 const GROUPS: Group[] = ["deploys", "incidents", "security", "billing", "domains", "other"];
 
 /** Last path segment, lowercased: "octocat/ledger-api" and "ledger-api" are the same repo. */
@@ -112,6 +115,7 @@ export function ActivityScreen({
   onMore: (() => void) | null;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [day, setDay] = useState<string | null>(null);
 
   const items = useMemo<Item[]>(() => {
     if (!report) return [];
@@ -147,7 +151,23 @@ export function ActivityScreen({
     [connections, report],
   );
 
-  const shown = filter === "all" ? items : items.filter((i) => GROUP_OF[i.kind] === filter);
+  const signals = useMemo<Signal[]>(
+    () =>
+      items
+        .filter((i) => i.at)
+        .map((i) => ({
+          at: i.at as string,
+          tone: i.type === "deploy" ? "red" : noticeTone(i.n, now),
+          label: i.type === "deploy" ? "failed deploy" : SIGNAL_WORD[GROUP_OF[i.kind]],
+          cents: i.type === "notice" && i.kind === "receipt" && i.n.verified && i.n.currency?.toUpperCase() === "USD" ? i.n.amountCents : null,
+        })),
+    [items, now],
+  );
+  const oldest = report?.items.at(-1)?.at ?? null;
+  const partialSince = report && onMore && report.items.length >= limit && oldest && now - Date.parse(oldest) < STRIP_DAYS * DAY ? oldest : null;
+
+  const byKind = filter === "all" ? items : items.filter((i) => GROUP_OF[i.kind] === filter);
+  const shown = day ? byKind.filter((i) => i.at && dayKey(i.at) === day) : byKind;
   const days = useMemo(() => {
     // What is still broken sits above Today, whenever it started.
     const failing = shown.filter((i) => i.type === "deploy");
@@ -176,17 +196,18 @@ export function ActivityScreen({
   return (
     <>
       <header className="mb-8">
-        <h1 className="text-[32px] leading-[1.1] font-medium tracking-[-0.02em] text-fg">Activity</h1>
+        <h1 className="text-[32px] leading-[1.1] font-medium tracking-[-0.02em] text-fg">History</h1>
+        <p className="mt-2 max-w-[560px] text-[14px] leading-[1.5] text-pretty text-fg-2">What your services told you, newest first: failed deploys, incidents, charges and renewals. Nothing to set up.</p>
         {ready && items.length ? (
           <>
-            <WeekLine items={items} now={now} />
+            <WeekLine items={items} now={now} readAt={mailReadAt(inboxes)} signedOut={inboxes.some((c) => c.status === "errored")} />
             <p className="mt-2 text-[14px] text-pretty text-fg-2">
               From {inboxes.length ? `mail in ${countLabel("gmail", inboxes.length)}` : "no inboxes yet"}
               {github ? ` and deploys on ${countLabel("github", github)}` : ""}.
             </p>
           </>
         ) : !ready && !error ? (
-          <p className="mt-3 text-[16px] text-fg-2">Loading activity.</p>
+          <p className="mt-3 text-[16px] text-fg-2">Loading history.</p>
         ) : null}
       </header>
 
@@ -233,8 +254,10 @@ export function ActivityScreen({
         )
       ) : null}
 
+      {ready && items.length ? <HistoryStrip signals={signals} now={now} partialSince={partialSince} picked={day} onPick={setDay} /> : null}
+
       {items.length ? (
-        <section aria-label="Activity" className="mb-16">
+        <section aria-label="History" className="mb-16">
           <div className="mb-4">
             <Chips<Filter>
               label="Filter by kind"
@@ -277,14 +300,29 @@ export function ActivityScreen({
   );
 }
 
-/** "This week: 2 failed deploys, 1 failed payment, 3 charges for $49." Only clauses that are true; only red is colored. */
-function WeekLine({ items, now }: { items: Item[]; now: number }) {
+const STALE_MAIL_MS = 2 * DAY;
+
+/** When mail was last read: the newest finished read across live inboxes, or null. */
+export function mailReadAt(connections: Connection[]): string | null {
+  const done = connections
+    .filter((c) => c.provider === "gmail" && c.status !== "revoked" && c.sync?.finishedAt)
+    .map((c) => c.sync?.finishedAt as string);
+  return done.sort().at(-1) ?? null;
+}
+
+type Part = { text: string; red?: boolean };
+
+/**
+ * Pure: the History headline. What is still failing comes first, whatever its age. Then this
+ * week's clauses, only the true ones. It never calls a week quiet when mail has not been read
+ * in it: then it says when mail was last read.
+ */
+export function weekSummary(items: Item[], now: number, readAt: string | null): { failing: Part | null; week: Part[]; staleSince: string | null } {
+  const name = (i: Item) => (i.type === "deploy" ? repoKey(i.d.name.replace(/ \([^)]*\)$/, "")) : repoKey(i.n.projectNames[0] ?? i.id));
+  const failingRepos = new Set(items.filter((i) => i.type === "deploy").map(name));
   const week = items.filter((i) => i.at && now - Date.parse(i.at) <= 7 * DAY);
   const notices = week.filter((i): i is Extract<Item, { type: "notice" }> => i.type === "notice");
-  const failed = new Set([
-    ...week.filter((i): i is Extract<Item, { type: "deploy" }> => i.type === "deploy").map((i) => repoKey(i.d.name.replace(/ \([^)]*\)$/, ""))),
-    ...notices.filter((i) => isFailNotice(i.n, now)).map((i) => repoKey(i.n.projectNames[0] ?? i.id)),
-  ]).size;
+  const failed = new Set(notices.filter((i) => isFailNotice(i.n, now)).map(name).filter((r) => !failingRepos.has(r))).size;
   const payments = notices.filter((i) => i.kind === "payment_failed" && i.n.verified).length;
   const security = notices.filter((i) => i.kind === "account_security" && i.n.verified).length;
   const incidents = notices.filter((i) => i.kind === "incident_alert" && i.n.verified).length;
@@ -294,7 +332,7 @@ function WeekLine({ items, now }: { items: Item[]; now: number }) {
   const renewals = dueOf("renewal_notice");
   const trials = dueOf("trial_notice");
 
-  const parts: { text: string; red?: boolean }[] = [];
+  const parts: Part[] = [];
   if (failed) parts.push({ text: plural(failed, "failed deploy", "failed deploys"), red: true });
   if (payments) parts.push({ text: plural(payments, "failed payment", "failed payments"), red: true });
   if (security) parts.push({ text: plural(security, "security alert", "security alerts"), red: true });
@@ -303,22 +341,51 @@ function WeekLine({ items, now }: { items: Item[]; now: number }) {
   if (renewals) parts.push({ text: `${plural(renewals, "renewal", "renewals")} due` });
   if (trials) parts.push({ text: plural(trials, "trial ending", "trials ending") });
 
+  return {
+    failing: failingRepos.size ? { text: `${plural(failingRepos.size, "deploy", "deploys")} still failing`, red: true } : null,
+    week: parts,
+    staleSince: readAt && now - Date.parse(readAt) > STALE_MAIL_MS ? readAt : null,
+  };
+}
+
+const shortDate = (at: string) => new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+function WeekLine({ items, now, readAt, signedOut }: { items: Item[]; now: number; readAt: string | null; signedOut: boolean }) {
+  const { failing, week, staleSince } = weekSummary(items, now, readAt);
+  const stale = staleSince ? (
+    <span className="text-fg-2">
+      {" "}
+      Mail was last read {shortDate(staleSince)}, so {week.length ? "anything newer" : "this week"} isn&apos;t in yet.{" "}
+      {signedOut ? "Google signed Spooky out of your inbox. " : null}
+      <Link href="/app/connections" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+        {signedOut ? "Reconnect Gmail" : "Read new mail"}
+      </Link>
+    </span>
+  ) : null;
   return (
     <p className="mt-3 text-[20px] leading-[1.35] tracking-[-0.01em] text-balance text-fg sm:text-[24px]">
-      {parts.length ? (
+      {failing ? (
+        <>
+          <span className="text-red">{failing.text}</span>.{" "}
+        </>
+      ) : null}
+      {week.length ? (
         <>
           This week:{" "}
-          {parts.map((p, i) => (
+          {week.map((p, i) => (
             <span key={p.text}>
-              {i ? (i === parts.length - 1 ? " and " : ", ") : ""}
+              {i ? (i === week.length - 1 ? " and " : ", ") : ""}
               <span className={p.red ? "text-red" : undefined}>{p.text}</span>
             </span>
           ))}
           .
         </>
+      ) : staleSince ? null : failing ? (
+        "Nothing else this week."
       ) : (
         "A quiet week. Nothing failed, nothing billed."
       )}
+      {stale}
     </p>
   );
 }

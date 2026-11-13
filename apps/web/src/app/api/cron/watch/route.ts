@@ -2,7 +2,7 @@
  * GET /api/cron/watch: Vercel Cron calls this on a schedule (apps/web/vercel.json) so host
  * failures reach the map and the alert email without anyone looking. It starts a resync
  * for every active Vercel connection older than five minutes and GitHub connection older than ten, that
- * has no sync running. Protected by CRON_SECRET, which Vercel sends as a bearer token.
+ * has no sync running, and once a day re-reads each inbox's new mail. Protected by CRON_SECRET, which Vercel sends as a bearer token.
  */
 import { and, eq, inArray } from "drizzle-orm";
 import { connection } from "next/server";
@@ -11,7 +11,7 @@ import { sweepQuietJobs } from "@/lib/checkins";
 import { runDueProbes } from "@/lib/probes";
 import { executeDueDeletions, purgeRevokedConnectionData } from "@/lib/purge";
 import { json } from "@/lib/http";
-import { resyncHostsQuietly } from "@/lib/sync";
+import { rereadMailDaily, resyncHostsQuietly } from "@/lib/sync";
 import { sweepServerErrors, sweepUptime } from "@/lib/vercel-monitor";
 import { sweepVercelSchedules } from "@/lib/vercel-watch";
 import { sweepChecks } from "@/lib/checks/sweep";
@@ -56,6 +56,9 @@ export async function GET(req: Request) {
   try { uptime = await sweepUptime(); } catch (err) { note("uptime sweep", err); }
   try { checks = await sweepChecks(); } catch (err) { note("check sweep", err); }
   try { await resyncHostsQuietly(rows); } catch (err) { note("host resync", err); }
+  // Mail, once a day per inbox: only what arrived since the last read.
+  let mail: Awaited<ReturnType<typeof rereadMailDaily>> | null = null;
+  try { mail = await rereadMailDaily(); } catch (err) { note("mail re-read", err); }
   // The morning digest, once a day in the digest hour.
   let digest: Awaited<ReturnType<typeof sendDigests>> = null;
   try { digest = await sendDigests(); } catch (err) { note("digest", err); }
@@ -77,5 +80,5 @@ export async function GET(req: Request) {
     // A missing table (migration not applied yet) must not fail the sweep that just ran.
     console.error("[watch] heartbeat not written", (err as Error).message.slice(0, 120));
   }
-  return json({ ok, connections: rows.length, jobs, schedules, probes, errors, uptime, checks, digest, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
+  return json({ ok, connections: rows.length, mail, jobs, schedules, probes, errors, uptime, checks, digest, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
 }

@@ -27,7 +27,7 @@ function writeLast(p: Provider) {
 
 /**
  * `large` is the landing page’s 44px buttons; elsewhere the app's 32px controls. `inline` lets the
- * buttons join the parent's flex row, with the older-accounts link and errors on a line of their own.
+ * buttons join the parent's flex row, with errors on a line of their own.
  */
 export function SignIn({ large = false, ink = false, inline = false, vercelEnabled = false }: { large?: boolean; ink?: boolean; inline?: boolean; vercelEnabled?: boolean }) {
   const ownLine = inline ? " order-last basis-full text-center max-[820px]:text-left" : "";
@@ -41,8 +41,12 @@ export function SignIn({ large = false, ink = false, inline = false, vercelEnabl
   const [returnTo, setReturnTo] = useState("/app");
   useEffect(() => {
     setLast(readLast());
-    const value = new URLSearchParams(window.location.search).get("returnTo");
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get("returnTo");
     if (value === "/api/connect/vercel/callback") setReturnTo(value);
+    // The one way back to an account made with GitHub or Google before Vercel sign-in existed:
+    // Vercel sign-in refuses to link it implicitly, and the notice then says to sign in the old way.
+    if (params.get("error") === "account_not_linked") setShowOlder(true);
   }, []);
   // Once per visit after sign-in: ties this visit's link tag to the account, server side.
   useEffect(() => {
@@ -99,11 +103,6 @@ export function SignIn({ large = false, ink = false, inline = false, vercelEnabl
           {last === "google" && busy !== "google" ? <span className="font-normal text-fg-2">· last time</span> : null}
         </button> : null}
       </div>
-      {vercelEnabled && !showOlder ? (
-        <button type="button" className={"mt-3 text-[14px] text-fg-2 underline underline-offset-2 hover:text-fg" + ownLine} onClick={() => setShowOlder(true)}>
-          Signed up before November 10? Use GitHub or Google
-        </button>
-      ) : null}
       {error ? <p className={"mt-3 text-[14px] text-red" + ownLine}>{error}</p> : null}
     </div>
   );

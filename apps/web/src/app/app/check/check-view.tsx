@@ -12,7 +12,10 @@ import { Empty, PageHeader, SectionTitle, buttonStyles, surface } from "@/compon
 import { apiSend, useApi } from "@/components/use-api";
 import { REASON_TEXT } from "@/lib/checks/catalog";
 import { prLabel } from "@/lib/checks/handoff";
+import { CopyForAgent } from "../copy-for-agent";
 import { ago } from "../project-model";
+import { CheckMatrix } from "./check-matrix";
+import { checkPrompt, findingAnchor } from "./check-prompt";
 import { ExpirationsPanel, type ExpirationReport } from "./expirations-panel";
 
 export type Check = {
@@ -27,6 +30,8 @@ export type Check = {
   why: string;
   limit?: string;
   fix: { text: string; steps?: string[]; docUrl: string; settingUrl?: string };
+  /** What a coding agent should do: open a pull request, or hand the person exact steps. */
+  agent?: { handoff: "pull_request" | "person"; instructions: string; personAfter?: string };
   evidence: Record<string, unknown>;
   firstOpenAt: string | null;
   fixedAt: string | null;
@@ -34,7 +39,7 @@ export type Check = {
   checkedAt: string | null;
   handoff?: { attempts: number; max: number; capped: boolean; inProgress: boolean; last: { outcome: string | null; prUrl: string | null; note: string | null; at: string | null } | null };
 };
-export type CheckProject = { nodeId: string; name: string; productionUrl: string | null; checks: Check[] };
+export type CheckProject = { nodeId: string; name: string; repo?: string | null; productionUrl: string | null; checks: Check[] };
 export type CheckReport = { ready: boolean; summary: { projects: number; open: number; fixed: number; unknown: number }; projects: CheckProject[] };
 type ServicesReport = {
   services: { id: string; name: string; category: string; projects: string[]; sources: string[]; monthlyCostUsd: number | null; costSource: string | null; costNote: string; usage?: { state: "in_use" | "idle" | "unknown"; basis: string }; shared: boolean }[];
@@ -166,11 +171,17 @@ function Reason({ reason }: { reason: string | null }) {
 
 const link = "underline decoration-line-3 underline-offset-4 hover:decoration-fg";
 
-function OpenRow({ c, busy, now, onDismiss }: { c: Check; busy: boolean; now: number; onDismiss: ((c: Check) => void) | null }) {
+/** An agent can take it: not already being worked, no pull request waiting, tries left, not judged a non-problem. */
+export function canHandOff(c: Check, prWaiting: boolean): boolean {
+  const h = c.handoff;
+  return Boolean(c.id) && !prWaiting && !h?.inProgress && !h?.capped && h?.last?.outcome !== "not_a_problem";
+}
+
+function OpenRow({ c, project, busy, now, onDismiss }: { c: Check; project: CheckProject; busy: boolean; now: number; onDismiss: ((c: Check) => void) | null }) {
   // Once a pull request is waiting, reading it is the next step: it holds the primary button, and the setting becomes a plain link.
   const pr = handoffWords(c.handoff, now)?.pr;
   return (
-    <details className="group" open={markOf(c) === "exposed"}>
+    <details id={c.id ? findingAnchor(c.id) : undefined} className="group scroll-mt-24" open={markOf(c) === "exposed"}>
       <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 sm:px-5 [&::-webkit-details-marker]:hidden">
         <Mark state={markOf(c)} />
         <span className="min-w-0 flex-1 text-[14px] font-medium text-pretty text-fg">{c.title}</span>
@@ -183,6 +194,7 @@ function OpenRow({ c, busy, now, onDismiss }: { c: Check; busy: boolean; now: nu
         <Evidence evidence={c.evidence} />
         {c.limit ? <p className="mt-3 max-w-[60ch] text-[12px] text-pretty text-fg-3">{c.limit}</p> : null}
         <HandoffLine handoff={c.handoff} now={now} />
+        {canHandOff(c, Boolean(pr)) ? <CopyForAgent prompt={checkPrompt(project, c)} className="mt-4" /> : null}
         <p className="mt-4 max-w-[60ch] text-pretty text-fg">{c.fix.text}</p>
         {c.fix.steps ? <pre className="mt-3 overflow-x-auto rounded-lg bg-bg-deep p-3 font-mono text-[12px] leading-[1.6] text-fg select-all">{c.fix.steps.join("\n")}</pre> : null}
         <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5">
@@ -229,13 +241,14 @@ function QuietRow({ c, now }: { c: Check; now: number }) {
   );
 }
 
-function Rows({ checks, busy, now, onDismiss }: { checks: Check[]; busy: string | null; now: number; onDismiss: ((c: Check) => void) | null }) {
+function Rows({ project, busy, now, onDismiss }: { project: CheckProject; busy: string | null; now: number; onDismiss: ((c: Check) => void) | null }) {
+  const checks = project.checks;
   // Open first; the order inside each group is the catalog's, most serious first.
   const live = checks.filter((c) => !c.dismissedAt);
   const ordered = [...live.filter(isOpen), ...live.filter((c) => !isOpen(c))];
   return (
     <div className="divide-y divide-line-1">
-      {ordered.map((c) => (isOpen(c) ? <OpenRow key={c.check} c={c} busy={busy === c.id} now={now} onDismiss={onDismiss} /> : <QuietRow key={c.check} c={c} now={now} />))}
+      {ordered.map((c) => (isOpen(c) ? <OpenRow key={c.check} c={c} project={project} busy={busy === c.id} now={now} onDismiss={onDismiss} /> : <QuietRow key={c.check} c={c} now={now} />))}
     </div>
   );
 }
@@ -323,17 +336,19 @@ export function CheckScreen({
         </Empty>
       ) : null}
 
+      {projects.length ? <CheckMatrix report={report!} /> : null}
+
       {needsLook.length ? (
         <div className="space-y-10">
           {needsLook.map((p) => {
             const open = p.checks.filter(isOpen).length;
             return (
-              <section key={p.nodeId} aria-label={p.name}>
+              <section key={p.nodeId} id={`check-p-${p.nodeId}`} aria-label={p.name} className="scroll-mt-24">
                 <SectionTitle count={`${open} open`}>
                   <span className="font-mono text-[16px] [overflow-wrap:anywhere]">{p.name}</span>
                 </SectionTitle>
                 <div className={`overflow-hidden ${surface}`}>
-                  <Rows checks={p.checks} busy={busy} now={now} onDismiss={onDismiss} />
+                  <Rows project={p} busy={busy} now={now} onDismiss={onDismiss} />
                 </div>
               </section>
             );
@@ -348,14 +363,14 @@ export function CheckScreen({
           </SectionTitle>
           <div className={`divide-y divide-line-1 overflow-hidden ${surface}`}>
             {g.list.map((p) => (
-              <details key={p.nodeId} className="group">
+              <details key={p.nodeId} id={`check-p-${p.nodeId}`} className="group scroll-mt-24">
                 <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-2.5 sm:px-5 [&::-webkit-details-marker]:hidden">
                   <span className="min-w-0 flex-1 truncate font-mono text-[14px] text-fg">{p.name}</span>
                   <span className="num shrink-0 text-[12px] text-fg-2">{quietSummary(p.checks)}</span>
                   <Chevron />
                 </summary>
                 <div className="border-t border-line-1 bg-bg/40">
-                  <Rows checks={p.checks} busy={busy} now={now} onDismiss={onDismiss} />
+                  <Rows project={p} busy={busy} now={now} onDismiss={onDismiss} />
                 </div>
               </details>
             ))}

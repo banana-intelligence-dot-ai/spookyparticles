@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FIXTURES, NOW } from "../dev/onboarding/fixtures";
 import { ACTIVITY_FULL, PROJECTS_CALM, PROJECTS_FULL } from "../dev/onboarding/project-fixtures";
 import { FINDINGS, SPEND } from "../dev/onboarding/spend-fixtures";
-import { buildToday } from "./today-model";
+import { buildToday, fixPrompt } from "./today-model";
 
 const conns = FIXTURES.find((f) => f.key === "done-expired")!.list;
 const full = buildToday({ projects: PROJECTS_FULL.projects, findings: FINDINGS, spend: SPEND, notices: ACTIVITY_FULL.items, connections: conns, now: NOW });
@@ -60,6 +60,26 @@ describe("the host's later success closes a failure", () => {
     };
     const today = buildToday({ projects: [healed], findings: [], spend: null, notices: ACTIVITY_FULL.items, connections: conns, now: NOW });
     expect(today.rows.some((r) => r.what.startsWith("ledger-api: production deploy failed"))).toBe(false);
+  });
+
+  it("hands a failed deploy to the agent with the evidence, and drops it once ignored", () => {
+    const ledger = PROJECTS_FULL.projects.find((p) => p.name.endsWith("ledger-api"))!;
+    const keyed = { ...ledger, notices: [], deployments: ledger.deployments.map((d) => (d.state === "failure" || d.state === "error" ? { ...d, key: "dep1@t" } : d)) };
+    const row = buildToday({ projects: [keyed], findings: [], spend: null, notices: [], connections: conns, now: NOW }).rows.find((r) => r.what.startsWith("ledger-api: production deploy failed"))!;
+    expect(row.fix?.ignoreKey).toBe("dep1@t");
+    expect(row.fix?.prompt).toMatch(/ledger-api is broken/);
+    expect(row.fix?.prompt).toMatch(/confirm_fix/);
+    expect(row.fix?.prompt).toMatch(/ignore it in Spooky/);
+    const ignored = { ...keyed, deployments: keyed.deployments.map((d) => (d.key ? { ...d, ignored: true } : d)) };
+    const today = buildToday({ projects: [ignored], findings: [], spend: null, notices: [], connections: conns, now: NOW });
+    expect(today.rows.some((r) => r.what.startsWith("ledger-api: production deploy failed"))).toBe(false);
+  });
+
+  it("writes a fix prompt with no em dashes and the project's confirm link", () => {
+    const text = fixPrompt({ project: "acme/mmlp", environment: "CI", at: "2026-10-24T03:53:24.000Z", host: "GitHub", cause: "Axios advisory", link: "https://github.com/acme/mmlp/actions/runs/1" });
+    expect(text).toContain("the CI deploy on GitHub failed on 2026-10-24 03:53 UTC");
+    expect(text).toContain("project=acme%2Fmmlp&format=text");
+    expect(text).not.toMatch(/[\u2013\u2014]/);
   });
 
   it("keeps the failure when the only later success is in another environment", () => {

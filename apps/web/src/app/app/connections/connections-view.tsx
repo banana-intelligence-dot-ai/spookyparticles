@@ -1,4 +1,5 @@
 "use client";
+import { WiringMap } from "./wiring-map";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { CopyButton } from "@/components/copy-button";
@@ -27,6 +28,7 @@ import { authClient } from "@/lib/auth-client";
 import {
   PROVIDER,
   connectError,
+  fixFor,
   isRunning as running,
   progressLine,
   runningPercent,
@@ -177,6 +179,8 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
       {notice ? <p className="mb-4 text-[14px] text-amber">{notice}</p> : null}
       {conns.error ? <ErrorLine message={conns.error} /> : null}
       {conns.loading ? <p className="text-[16px] text-fg-2">Loading…</p> : null}
+
+      {conns.data && now !== null ? <WiringMap connections={list} keys={keys.data?.apiKeys ?? []} now={now} /> : null}
 
       {conns.data ? (
         <ConnectionsList
@@ -343,6 +347,7 @@ export function ConnectionsList({
                     .replace(/^./, (ch) => ch.toLowerCase())}
                   )
                 </span>
+                <FixLink c={c} />
               </span>
             ))}
           </span>
@@ -417,6 +422,7 @@ function ConnectionRow({
   const line = progressLine(c);
   const percent = runningPercent(c);
   const warn = c.status === "errored" || Boolean(c.sync?.error);
+  const fix = fixFor(c);
   const revoked = c.status === "revoked";
 
   return (
@@ -457,22 +463,9 @@ function ConnectionRow({
         <span aria-hidden className="hidden sm:block sm:w-44" />
       ) : (
         <div className="mt-2 flex min-h-11 flex-wrap items-center justify-end gap-2 sm:mt-0 sm:h-8 sm:min-h-0 sm:w-44 sm:flex-nowrap">
-          {c.status === "errored" && c.provider === "gmail" ? (
-            <a
-              href="/api/connect/gmail/start?next=/app/connections"
-              className={buttonStyles.secondary}
-            >
-              Reconnect
-            </a>
-          ) : null}
-          {c.status === "errored" && c.provider === "github" ? (
-            <a
-              href="https://github.com/settings/installations"
-              target="_blank"
-              rel="noreferrer"
-              className={buttonStyles.secondary}
-            >
-              Fix on GitHub
+          {fix ? (
+            <a href={fix.href} {...(fix.external ? { target: "_blank", rel: "noreferrer" } : {})} className={buttonStyles.secondary}>
+              {fix.label}
             </a>
           ) : null}
           {c.status === "active" && !confirming ? (
@@ -520,5 +513,19 @@ function ConnectionRow({
         </div>
       )}
     </li>
+  );
+}
+
+/** " Reconnect": the fix for a broken connection, inline after its reason. Nothing when none. */
+function FixLink({ c }: { c: Connection }) {
+  const fix = fixFor(c);
+  if (!fix) return null;
+  return (
+    <>
+      {" "}
+      <a href={fix.href} {...(fix.external ? { target: "_blank", rel: "noreferrer" } : {})} className="underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+        {fix.label}
+      </a>
+    </>
   );
 }

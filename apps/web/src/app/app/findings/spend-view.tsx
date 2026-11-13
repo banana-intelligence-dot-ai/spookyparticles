@@ -4,6 +4,7 @@
  * Work only in the headline; personal is listed and never summed; unsorted vendors wait
  * for the user's call, which sticks. Every figure says where it came from.
  */
+import { SpendBar } from "./spend-bar";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CopyButton } from "@/components/copy-button";
@@ -451,6 +452,7 @@ function SpendBody({
             <span className="whitespace-nowrap">personal not counted</span>
           </Parts>
         )}
+        <SpendBar work={v.work} going={going} currency={spend.currency} />
         {attention.length ? (
           <ul aria-label="Needs a look" className="mt-5 flex flex-col gap-2 border-l border-line-2 pl-4">
             {attention.map((a) => (

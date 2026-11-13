@@ -35,7 +35,7 @@ function notice(id: string, over: Partial<Notice> & Pick<Notice, "kind" | "vendo
   };
 }
 
-const dep = (environment: string, state: string, url: string, atIso: string): Deployment => ({ environment, state, url, at: atIso, provider: providerOf(url, null) });
+const dep = (environment: string, state: string, url: string, atIso: string): Deployment => ({ environment, state, url, at: atIso, provider: providerOf(url, null), ...(state === "failure" || state === "error" ? { key: `${url}@${atIso}` } : {}) });
 
 const N = {
   vercelFail: notice("rcpt_d01", {

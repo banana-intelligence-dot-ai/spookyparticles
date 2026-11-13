@@ -15,8 +15,12 @@ export type TodayTone = "red" | "amber" | "grey";
 
 export type TodayAction = { label: string; href: string; external: boolean; /** Where it goes, for the hover and screen readers. */ site?: string };
 
+/** A break the owner can hand to their coding agent, or ignore (only when Spooky knows the exact failure). */
+export type TodayFix = { project: string; prompt: string; ignoreKey: string | null };
+
 export type TodayRow = {
   id: string;
+  fix?: TodayFix;
   tone: TodayTone;
   /** What, in one line. Mono part (a repo, a domain) set apart for the view. */
   what: string;
@@ -46,6 +50,28 @@ export type Today = {
 
 const sameVendor = (a: string, b: string) => a.toLowerCase().replace(/[^a-z0-9]/g, "") === b.toLowerCase().replace(/[^a-z0-9]/g, "");
 const repoShort = (name: string) => name.split("/").pop() ?? name;
+export const SITE = "https://spookyparticles.com";
+
+/**
+ * The words the owner pastes into their coding agent for one break: what failed, the evidence,
+ * fix it and prove it on production, or say why it should be ignored instead.
+ */
+export function fixPrompt(b: { project: string; environment: string; at: string | null; host: string | null; cause: string | null; link: string | null }): string {
+  const when = b.at ? ` on ${new Date(b.at).toISOString().slice(0, 16).replace("T", " ")} UTC` : "";
+  return [
+    `Spooky Particles says ${b.project} is broken: the ${b.environment} deploy${b.host ? ` on ${b.host}` : ""} failed${when}.`,
+    b.cause ? `Cause from the log: ${b.cause}` : null,
+    b.link ? `Log: ${b.link}` : null,
+    "",
+    "Please look into it. If it is a real problem, fix the cause, push, and let it deploy. Then check production with Spooky before you call it fixed: use the confirm_fix tool, or run",
+    `curl -s -X POST -H "Authorization: Bearer $SPOOKY_API_KEY" "${SITE}/api/v1/incidents/confirm?project=${encodeURIComponent(b.project)}&format=text"`,
+    "Say it is fixed only when Spooky answers fixed.",
+    "If it should not be fixed (the project is retired, or the check does not matter), change nothing. Tell me why in one or two lines, and I will ignore it in Spooky.",
+  ]
+    .filter((x) => x !== null)
+    .join("\n");
+}
+
 /** "Open billing on twilio.com": a verb and where it goes. */
 const billing = (_url: string) => "Open billing";
 
@@ -97,7 +123,7 @@ export function buildToday(
       when: j.lastPingAt ? ago(j.lastPingAt, now) : null,
       at: j.lastPingAt ? Date.parse(j.lastPingAt) : now,
       source: "check-in",
-      action: { label: "Open jobs", href: "/app/jobs", external: false },
+      action: { label: "Open schedules", href: "/app/jobs", external: false },
       cents: 0,
       amount: null,
     });
@@ -115,7 +141,7 @@ export function buildToday(
     const laterSuccess = (env: string | null, since: string | null) =>
       p.deployments.some((d) => d.state === "success" && d.at && (!since || d.at > since) && (!env || d.environment === env));
     const failed = p.deployments
-      .filter((d) => isFailedState(d.state) && recent(d.at) && !laterSuccess(d.environment, d.at))
+      .filter((d) => isFailedState(d.state) && !d.ignored && recent(d.at) && !laterSuccess(d.environment, d.at))
       .sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""))[0];
     const mail = p.notices.find((n) => n.kind === "deployment" && n.verified && /fail|error/i.test(n.subject ?? "") && recent(n.at) && !laterSuccess(null, n.at));
     if (!failed && !mail) continue;
@@ -132,6 +158,11 @@ export function buildToday(
         : failed
           ? `The latest ${env} deploy on ${hostName ?? "its host"} failed${failed.url ? ` (${host(failed.url)})` : ""}.`
           : `${mail!.vendor} emailed that a deploy failed.`,
+      fix: {
+        project: p.name,
+        ignoreKey: failed?.key ?? null,
+        prompt: fixPrompt({ project: p.name, environment: env, at, host: hostName, cause: failed?.cause ?? null, link: failed?.inspectorUrl ?? failed?.url ?? null }),
+      },
       when: at ? ago(at, now) : null,
       at: at ? Date.parse(at) : null,
       source: [failed ? (failed.cause ? `${hostName ?? "host"} build log` : failed.provider === "Vercel" ? "Vercel deployments" : "GitHub deployments") : null, mail ? `${mail.vendor} mail` : null]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerFromUrl } from "./projects";
+import { providerFromUrl, retiredFailures } from "./projects";
 
 describe("providerFromUrl", () => {
   it("names the host from well-known deployment domains", () => {
@@ -29,5 +29,17 @@ describe("dedupeDeployments", () => {
   it("keeps GitHub rows when the host has not reported that environment, and everything when no host rows exist", () => {
     expect(dedupeDeployments([vercel("production", "2026-11-04T07:21:56Z"), github("Staging", "2026-11-03T23:24:16Z")]).map((d) => d.environment)).toEqual(["production", "Staging"]);
     expect(dedupeDeployments([github("Production", "1"), github("Preview", "2")]).length).toBe(2);
+  });
+});
+
+describe("retiredFailures", () => {
+  it("drops failures that belong only to an archived repo whose site stopped deploying", () => {
+    const links = [
+      { from: "mmlp", to: "ci-fail" },
+      { from: "happenings", to: "prod-fail" },
+      { from: "live-repo", to: "other-fail" },
+    ];
+    const retired = retiredFailures(["ci-fail", "prod-fail", "other-fail", "unlinked"], links, new Set(["mmlp", "happenings"]), new Set(["happenings"]));
+    expect([...retired]).toEqual(["ci-fail"]);
   });
 });

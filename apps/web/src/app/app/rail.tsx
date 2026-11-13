@@ -10,8 +10,8 @@ export const RAIL_ITEMS = [
   { href: "/app/projects", label: "Projects" },
   { href: "/app/check", label: "Check" },
   { href: "/app/findings", label: "Spend" },
-  { href: "/app/activity", label: "Activity" },
-  { href: "/app/jobs", label: "Jobs" },
+  { href: "/app/activity", label: "History" },
+  { href: "/app/jobs", label: "Schedules" },
   { href: "/app/connections", label: "Connections" },
 ] as const;
 

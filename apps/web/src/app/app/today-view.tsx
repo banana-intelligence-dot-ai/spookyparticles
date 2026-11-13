@@ -1,7 +1,7 @@
 "use client";
 /**
- * Today: is anything broken and what needs me this week. Spend is a column in the rows, never a headline.
- * Two figures, then one ranked list of at most ten rows. Setup shows only until
+ * Today: is anything broken, and does my agent know? Spend is a column in the rows, never a headline.
+ * What was caught and fixed in 30 days on top, two figures, who hears, then one ranked list of at most ten rows. Setup shows only until
  * GitHub and Gmail have each finished a first sync.
  */
 import Link from "next/link";
@@ -9,11 +9,15 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorLine } from "@/components/ui";
 import { useApi } from "@/components/use-api";
+import type { Listening } from "@/lib/agent-listening";
+import type { Catches } from "@/lib/catches";
+import { CatchLog } from "./catch-log";
 import { isRunning, type Connection } from "./connection-model";
 import { absoluteTime, plural, type Finding, type Findings, type Spend } from "./data-model";
 import { Onboarding, onboardingComplete } from "./onboarding";
 import { ago, type ActivityReport, type ProjectsReport } from "./project-model";
-import { buildToday, type JobRow, type TodayRow, type TodayTone } from "./today-model";
+import { buildToday, type JobRow, type TodayFix, type TodayRow, type TodayTone } from "./today-model";
+import { agentButton, CopyForAgent } from "./copy-for-agent";
 
 export function TodayView() {
   const params = useSearchParams();
@@ -30,6 +34,9 @@ export function TodayView() {
   const checks = useApi<{ summary: { open: number } }>("/api/v1/checks", {
     pollMs: () => 60_000,
   });
+  const listening = useApi<Listening>("/api/v1/agents/listening", { pollMs: () => 60_000 });
+  const { reload: reloadListening } = listening;
+  const catches = useApi<Catches>("/api/v1/catches", { pollMs: () => 60_000 });
   const { reload: reloadProjects } = projects;
 
   // While a sync runs, connections poll and the list refills on the same beat.
@@ -50,9 +57,15 @@ export function TodayView() {
       activity={activity.data}
       jobs={checkins.data?.jobs ?? []}
       checkOpen={checks.data?.summary.open ?? 0}
+      listening={listening.data ?? null}
+      catches={catches.data ?? null}
       params={params}
       error={conns.error ?? projects.error}
       now={now ?? 0}
+      onChanged={() => {
+        void reloadProjects();
+        void reloadListening();
+      }}
     />
   );
 }
@@ -77,9 +90,12 @@ export function TodayScreen({
   activity,
   jobs,
   checkOpen = 0,
+  listening = null,
+  catches = null,
   params,
   error,
   now,
+  onChanged,
 }: {
   ready: boolean;
   connections: Connection[];
@@ -89,10 +105,29 @@ export function TodayScreen({
   activity: ActivityReport | null;
   jobs: JobRow[];
   checkOpen?: number;
+  /** Which sessions hear about which projects; null until loaded. */
+  listening?: Listening | null;
+  /** What was caught in 30 days and how fast it was fixed; null until loaded. */
+  catches?: Catches | null;
   params: URLSearchParams;
   error: string | null;
   now: number;
+  /** After an ignore or undo, so the list re-reads. */
+  onChanged?: () => void;
 }) {
+  const [undo, setUndo] = useState<{ fix: TodayFix; what: string } | null>(null);
+  const ignore = async (fix: TodayFix, what: string, on: boolean) => {
+    if (!fix.ignoreKey) return false;
+    const res = await fetch("/api/v1/incidents/ignore", {
+      method: on ? "POST" : "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: fix.ignoreKey, project: fix.project }),
+    });
+    if (!res.ok) return false;
+    setUndo(on ? { fix, what } : null);
+    onChanged?.();
+    return true;
+  };
   const today = useMemo(
     () =>
       buildToday({
@@ -129,6 +164,8 @@ export function TodayScreen({
 
       {ready && hasData ? (
         <>
+          {catches ? <CatchLog data={catches} now={now} /> : null}
+
           <section aria-label="Today in two numbers" className="mb-14 grid max-w-[720px] grid-cols-1 gap-y-5 sm:grid-cols-2 sm:gap-x-12">
             <Figure
               href="#needs-title"
@@ -146,6 +183,8 @@ export function TodayScreen({
             />
           </section>
 
+          {listening ? <Agents data={listening} now={now} /> : null}
+
           <section aria-labelledby="needs-title">
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
               <h2 id="needs-title" className="text-[20px] leading-[1.25] font-medium tracking-[-0.01em] text-fg">
@@ -153,6 +192,18 @@ export function TodayScreen({
               </h2>
               <p className="text-[14px] text-fg-3">{syncing ? "Syncing now" : last ? <span title={absoluteTime(last)}>Checked {ago(last, now)}</span> : null}</p>
             </div>
+            {undo ? (
+              <p className="flex min-h-11 flex-wrap items-center gap-x-3 border-t border-line-1 text-[14px] text-fg-2" aria-live="polite">
+                Ignored {undo.what}. A new failure will show again.
+                <button
+                  type="button"
+                  onClick={() => void ignore(undo.fix, undo.what, false)}
+                  className="inline-flex h-11 items-center text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg"
+                >
+                  Undo
+                </button>
+              </p>
+            ) : null}
             {today.rows.length ? (
               <div className="flex flex-col gap-6">
                 {GROUPS.map(([tone, title]) => {
@@ -167,7 +218,7 @@ export function TodayScreen({
                       </h3>
                       <ol>
                         {list.map((r) => (
-                          <Row key={r.id} r={r} />
+                          <Row key={r.id} r={r} onIgnore={r.fix?.ignoreKey ? () => ignore(r.fix as TodayFix, r.what, true) : undefined} />
                         ))}
                       </ol>
                     </div>
@@ -181,7 +232,7 @@ export function TodayScreen({
               <p className="mt-3 text-[14px] text-fg-3">
                 {plural(today.more, "smaller item", "smaller items")} left off to keep this to ten. See{" "}
                 <Link href="/app/activity" className="text-fg-2 underline decoration-line-3 underline-offset-4 hover:text-fg">
-                  Activity
+                  History
                 </Link>
                 .
               </p>
@@ -190,6 +241,66 @@ export function TodayScreen({
         </>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Your agents: does each coding session hear when its project breaks. A session is listening
+ * once it has asked about its project (the session hook asks at session start). A broken
+ * project no session asked about in 14 days is the gap this section exists to show.
+ */
+function Agents({ data, now }: { data: Listening; now: number }) {
+  const rows = [...data.unheard.map((u) => ({ ...u, heard: false as const })), ...data.listeners.map((l) => ({ ...l, heard: true as const }))];
+  return (
+    <section aria-labelledby="agents-title" className="mb-14">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <h2 id="agents-title" className="text-[20px] leading-[1.25] font-medium tracking-[-0.01em] text-fg">
+          Your agents
+        </h2>
+        <p className="text-[14px] text-fg-3">Who hears when a project breaks</p>
+      </div>
+      {data.listeners.length === 0 ? (
+        <p className="border-t border-line-1 py-4 text-[16px] leading-[1.45] text-pretty text-fg-2">
+          No coding session is listening yet, so a break reaches you but not your agents.{" "}
+          <Link href="/app/connections#agents" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+            Connect an agent
+          </Link>{" "}
+          and give it the session hook from the{" "}
+          <a href="/setup.md" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+            setup steps
+          </a>
+          .
+        </p>
+      ) : null}
+      {rows.length ? (
+        <ol className={data.listeners.length ? "border-t border-line-1" : ""}>
+          {rows.map((r) => (
+            <li key={`${r.heard}-${r.project}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-6 border-b border-line-1 py-3">
+              <div className="min-w-0">
+                <p className="truncate font-mono text-[14px] text-fg">{r.project}</p>
+                <p className="mt-0.5 text-[12px] leading-[1.5] text-fg-3">
+                  {r.heard ? (
+                    <span title={absoluteTime(r.lastAskedAt)}>
+                      Asked {ago(r.lastAskedAt, now)}
+                      {r.agent ? ` by ${r.agent}` : ""}
+                    </span>
+                  ) : (
+                    "No session has asked about this project"
+                  )}
+                </p>
+              </div>
+              {r.open ? (
+                <a href="#needs-title" className="inline-flex min-h-11 items-center text-right text-[14px] whitespace-nowrap text-red underline decoration-red/40 underline-offset-4 hover:decoration-red">
+                  {plural(r.open, "open problem", "open problems")}
+                </a>
+              ) : (
+                <p className="text-right text-[14px] whitespace-nowrap text-fg-3">Nothing broken</p>
+              )}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </section>
   );
 }
 
@@ -228,7 +339,7 @@ function metaParts(r: TodayRow): string[] {
   return [r.when, ...r.source.split(" · ")].filter((x): x is string => Boolean(x));
 }
 
-function Row({ r }: { r: TodayRow }) {
+function Row({ r, onIgnore }: { r: TodayRow; onIgnore?: () => Promise<boolean> }) {
   const meta = metaParts(r);
   return (
     <li className="grid grid-cols-[minmax(0,1fr)] gap-x-3 border-b border-line-1 py-4 sm:grid-cols-[minmax(0,1fr)_104px_120px] sm:items-center sm:gap-x-6">
@@ -252,6 +363,7 @@ function Row({ r }: { r: TodayRow }) {
             ))}
           </p>
         ) : null}
+        {r.fix ? <FixActions prompt={r.fix.prompt} onIgnore={onIgnore} /> : null}
       </div>
       {r.action || r.amount ? (
         <div className="-mb-2 flex items-center gap-4 sm:col-span-2 sm:col-start-2 sm:mb-0 sm:grid sm:grid-cols-[104px_120px] sm:gap-6">
@@ -285,5 +397,37 @@ function Row({ r }: { r: TodayRow }) {
         </div>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * Hand a break to your coding agent: copy words that say what failed, the evidence, and to fix
+ * it and prove it on production, or explain why it should be ignored. Ignore stops counting this
+ * one failure; the next one shows again.
+ */
+function FixActions({ prompt, onIgnore }: { prompt: string; onIgnore?: () => Promise<boolean> }) {
+  const [busy, setBusy] = useState(false);
+  const [ignoreFailed, setIgnoreFailed] = useState(false);
+  return (
+    <div className="mt-3">
+      <CopyForAgent prompt={prompt}>
+        {onIgnore ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              const ok = await onIgnore();
+              setBusy(false);
+              setIgnoreFailed(!ok);
+            }}
+            className={`${agentButton} text-fg-2 hover:text-fg disabled:opacity-60`}
+          >
+            {busy ? "Ignoring…" : "Ignore"}
+          </button>
+        ) : null}
+      </CopyForAgent>
+      {ignoreFailed ? <p className="mt-1 text-[12px] text-red">Spooky couldn&apos;t save that. Try again.</p> : null}
+    </div>
   );
 }

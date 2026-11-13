@@ -11,6 +11,8 @@ it("lists write tools only for write-scoped keys", async () => {
   const write = toolsFor(actor(["read", "write"]));
   expect(Object.keys(read)).toContain("list_findings");
   expect(Object.keys(read)).toContain("list_services");
+  expect(Object.keys(read)).toContain("confirm_fix");
+  expect(Object.keys(read)).toContain("claim_break");
   expect(Object.keys(read)).not.toContain("record_service");
   expect(Object.keys(read)).not.toContain("next_finding");
   expect(Object.keys(write)).toContain("report_finding");

@@ -41,6 +41,9 @@ export type Notice = {
 /** provider: the host the URL points at (Vercel, Netlify, …), null for custom domains. */
 export type Deployment = {
   environment: string;
+  /** A failure's identity, for ignoring it; and whether the owner ignored it. */
+  key?: string;
+  ignored?: boolean;
   state: string | null;
   url: string | null;
   at: string | null;
@@ -255,9 +258,22 @@ export function noticeSentence(n: Notice, now: number): { vendor: string | null;
 }
 
 /** Why a project has its health word, in one sentence, naming the source. */
+/** The newest successful production deploy, from any source. */
+export function lastProductionAt(p: Pick<Project, "deployments">): string | null {
+  return p.deployments.filter((d) => d.state === "success" && d.environment.toLowerCase() === "production" && d.at).map((d) => d.at as string).sort().at(-1) ?? null;
+}
+
+/** The latest sign of life: a push or a production deploy, whichever is newer. */
+export function lastActiveAt(p: Pick<Project, "deployments" | "lastPushAt">): string | null {
+  const live = lastProductionAt(p);
+  return [p.lastPushAt, live].filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
+}
+
 export function healthReason(p: Project, now: number): string | null {
   const failed = p.deployments.find((d) => isFailedState(d.state));
   if (p.health === "archived") return "Archived on GitHub.";
+  const live = lastProductionAt(p);
+  if (p.status === "archived" && live) return `The repo is archived on GitHub, but production still deploys (last ${ago(live, now)}). Spooky counts it as active.`;
   if (p.health === "failed") {
     if (failed) return `The latest ${failed.environment} deploy failed${failed.at ? ` ${ago(failed.at, now)}` : ""}. Source: GitHub.`;
     const n = p.notices.find((x) => x.kind === "deployment");

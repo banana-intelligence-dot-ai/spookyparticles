@@ -27,7 +27,7 @@ Other agents: an HTTP MCP server at `https://spookyparticles.com/api/mcp` with t
 
 ## One finding per run
 
-1. Call `whats_broken`. If a deploy or a scheduled job is failing now, tell your person first. That is more urgent than a finding.
+1. Call `whats_broken`. If a deploy or a scheduled job is failing now, tell your person first. That is more urgent than a finding. If you fix it, deploy, then call `confirm_fix` with the project. Say it is fixed only when it answers `fixed`; on `checking`, wait `retryAfterSeconds` and ask again.
 2. Call `next_finding`. It returns one finding, most serious first, or none.
 3. Read `handoff` on the finding:
    - `pull_request`: follow `instructions`. Work on a new branch in the `repo` it names. Make the smallest change that fixes this one finding. Open a pull request.

@@ -173,4 +173,5 @@ If we make a material change, we will tell you in the product or by email before
 ## 15. Contact
 
 Banana Intelligence LLC
+131 Continental Dr, Suite 305, Newark, DE 19713, US
 Email: hello@spookyparticles.com

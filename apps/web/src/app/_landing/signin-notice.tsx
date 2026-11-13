@@ -19,7 +19,7 @@ export function SignInNotice() {
         ) : (
           <>
             <p className="text-[16px] text-fg">Sign in to open that page.</p>
-            <p className="mt-0.5 text-[14px] text-pretty text-fg-2">Sign in with Vercel. If you signed up before November 10, your GitHub or Google sign-in still works.</p>
+            <p className="mt-0.5 text-[14px] text-pretty text-fg-2">Continue with Vercel to sign in.</p>
           </>
         )}
       </div>

@@ -36,6 +36,7 @@ export function checkReport(nodes: Node[], rows: Row[], ready: boolean, attempts
       const title = state === "open" ? words.title : state === "ok" ? words.okTitle : spec.name;
       return { id: row?.id ?? null, check, state, reason, source: row?.source ?? "verified", name: spec.name, title, severity: spec.severity, why: spec.why, ...(spec.limit ? { limit: spec.limit } : {}),
         fix: { text: words.fixText, ...(spec.fix.steps ? { steps: spec.fix.steps } : {}), docUrl: spec.fix.docUrl, ...(settingUrl ? { settingUrl } : {}) }, evidence: row?.evidence ?? {},
+        agent: { handoff: spec.agent.handoff, instructions: spec.agent.instructions, ...(spec.agent.personAfter ? { personAfter: spec.agent.personAfter } : {}) },
         firstOpenAt: row?.firstOpenAt ?? null, fixedAt: row?.fixedAt ?? null, dismissedAt: row?.dismissedAt ?? null, checkedAt: row?.checkedAt ?? null,
         handoff: row ? handoffSummary(row, attempts, now) : { attempts: 0, max: MAX_ATTEMPTS, capped: false, inProgress: false, last: null } };
     });

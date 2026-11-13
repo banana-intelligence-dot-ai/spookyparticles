@@ -4,7 +4,8 @@
  * confirmed and dismissed ones keep their status. Also writes one
  * `subscription` node per recurring charge so the Map shows what is paid for.
  */
-import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
+import { isOwnMail } from "@spooky/tier0";
 import { getDb, schema } from "@/db";
 import { appendAudit } from "./audit";
 import { billingUrl, computeFindings, findingVendor, matchRepo, type FindingCandidate } from "./findings-rules";
@@ -27,15 +28,19 @@ export async function loadReceipts(userId: string) {
       inbox: schema.connections.display,
       subject: schema.messages.subject,
       sentAt: schema.messages.date,
+      from: schema.messages.from,
       senderVerdict: schema.senderVerdicts.verdict,
     })
     .from(schema.receipts)
     .innerJoin(schema.connections, eq(schema.connections.id, schema.receipts.connectionId))
     .innerJoin(schema.messages, eq(schema.messages.id, schema.receipts.messageId))
     .leftJoin(schema.senderVerdicts, eq(schema.senderVerdicts.domain, sql`lower(substring(${schema.messages.from} from '@([A-Za-z0-9.-]+)'))`))
-    .where(and(eq(schema.receipts.userId, userId), eq(schema.connections.status, "active")));
+    // An inbox Google signed out (errored) keeps its history; only a removed (revoked) one hides it.
+    .where(and(eq(schema.receipts.userId, userId), ne(schema.connections.status, "revoked")));
   return rows
     .filter((r) => !r.senderVerdict || !(NOT_VENDOR_VERDICTS as readonly string[]).includes(r.senderVerdict))
+    // Our own alerts read back in before the filter skipped them: never a vendor's signal.
+    .filter((r) => !isOwnMail(r.from ?? undefined))
     .map((r) => ({ ...r.receipt, inbox: r.inbox, subject: r.subject, sentAt: r.sentAt }));
 }
 
@@ -82,10 +87,23 @@ export async function recomputeFindings(userId: string, actor = "system:findings
   const db = getDb();
   const receipts = await loadReceipts(userId);
   const spend = await spendFor(userId, undefined, receipts);
-  const repos = await db
-    .select({ id: schema.nodes.id, name: schema.nodes.name, status: schema.nodes.status, lastActivityAt: schema.nodes.lastActivityAt })
-    .from(schema.nodes)
-    .where(and(eq(schema.nodes.userId, userId), eq(schema.nodes.kind, "repo")));
+  const [repoRows, deployEdges, deployNodes] = await Promise.all([
+    db.select({ id: schema.nodes.id, name: schema.nodes.name, status: schema.nodes.status, lastActivityAt: schema.nodes.lastActivityAt })
+      .from(schema.nodes)
+      .where(and(eq(schema.nodes.userId, userId), eq(schema.nodes.kind, "repo"))),
+    db.select({ fromNodeId: schema.edges.fromNodeId, toNodeId: schema.edges.toNodeId }).from(schema.edges)
+      .where(and(eq(schema.edges.userId, userId), eq(schema.edges.kind, "deploys"))),
+    db.select({ id: schema.nodes.id, status: schema.nodes.status, attributes: schema.nodes.attributes, lastActivityAt: schema.nodes.lastActivityAt }).from(schema.nodes)
+      .where(and(eq(schema.nodes.userId, userId), eq(schema.nodes.kind, "deployment"), eq(schema.nodes.status, "success"))),
+  ]);
+  // A repo's newest successful production deploy, so a site still deploying is never called a zombie.
+  const prodAt = new Map(deployNodes
+    .filter((d) => String((d.attributes as Record<string, unknown>).environment ?? "").toLowerCase() === "production" && d.lastActivityAt)
+    .map((d) => [d.id, d.lastActivityAt as Date]));
+  const repos = repoRows.map((r) => {
+    const times = deployEdges.filter((e) => e.fromNodeId === r.id).map((e) => prodAt.get(e.toNodeId)).filter((t): t is Date => Boolean(t));
+    return { ...r, lastDeployAt: times.length ? new Date(Math.max(...times.map((t) => t.getTime()))) : null };
+  });
 
   // Subscription nodes: one per recurring charge, keyed like the subscription,
   // and a pays_for edge to the repo its project name matches.

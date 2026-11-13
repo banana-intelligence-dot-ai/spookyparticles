@@ -83,6 +83,16 @@ describe("computeFindings", () => {
     expect(f[0].evidence.inbox).toContain("ops@example.com");
   });
 
+  it("never calls a project a zombie while its site still deploys, archived repo or not", () => {
+    const f = computeFindings({
+      subscriptions: [sub({ projectNames: ["my-happenings"] })],
+      receipts: [],
+      repos: [{ id: "n1", name: "n8peace/my-happenings", status: "archived", lastActivityAt: d("2026-06-24"), lastDeployAt: new Date(now - 3_600_000) }],
+      nowMs: now,
+    });
+    expect(f.filter((x) => x.kind === "zombie")).toEqual([]);
+  });
+
   it("flags a paid project whose repo is idle, and not an active one", () => {
     const repos = [
       { id: "n1", name: "n8peace/old-site", status: "active", lastActivityAt: d("2026-05-01") },

@@ -105,3 +105,19 @@ describe("siteConfirmedDown", () => {
     expect(siteConfirmedDown({ uptime: null })).toBe(false);
   });
 });
+
+describe("archived repo that still deploys", () => {
+  it("names the live production deploy instead of calling it archived", async () => {
+    const { healthReason, lastActiveAt } = await import("./project-model");
+    const { idlePaid } = await import("./projects-view");
+    const p = {
+      id: "n1", name: "n8peace/my-happenings", kind: "repo", host: null, framework: null, url: null, productionUrl: null, uptime: null, private: true,
+      defaultBranch: "main", language: null, status: "archived", lastPushAt: at(19), health: "ok",
+      deployments: [{ environment: "production", state: "success", at: at(0.1), url: null, provider: "Vercel" }],
+      elsewhere: null, movedAt: null, movedFrom: null, monthlyCents: 2230, currency: "USD", stalePush: null, subscriptions: [], notices: [], openFindings: [],
+    } as unknown as Parameters<typeof healthReason>[0];
+    expect(lastActiveAt(p)).toBe(at(0.1));
+    expect(healthReason(p, NOW)).toMatch(/archived on GitHub, but production still deploys/);
+    expect(idlePaid(p, NOW)).toBe(false);
+  });
+});

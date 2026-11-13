@@ -28,12 +28,19 @@ async function context(userId: string) {
 
 export async function findingsReport(userId: string) { return (await context(userId)).report; }
 
-export async function takeNext(actor: Actor, retried = false) {
+/**
+ * Take the next open finding, most serious first. With `only`, take that one finding: the person
+ * handed it to this agent from the Check page. It must still be open to an agent (not fixed,
+ * dismissed, waiting on a pull request, or out of tries); another finding in progress does not block it.
+ */
+export async function takeNext(actor: Actor, retried = false, only: string | null = null) {
   const { checks, attempts, report } = await context(actor.userId);
   if (!checks.ready) return { finding: null, attempt: null, counts: { open: 0, waitingOnPerson: 0, needsPerson: 0, inProgress: 0 }, ready: false };
-  const ordered = report.projects.flatMap((p) => p.checks).filter((c) => c.id).map((c) => checks.rows.find((r) => r.id === c.id)!);
+  const ordered = report.projects.flatMap((p) => p.checks).filter((c) => c.id && (!only || c.id === only)).map((c) => checks.rows.find((r) => r.id === c.id)!);
+  if (only && !ordered.length) throw new ApiError(404, "not_found", "No such finding");
   const { active, eligible, counts } = queue(ordered, attempts);
   const row = ordered.find((r) => r.id === (active?.checkId ?? eligible[0]?.id));
+  if (only && !row) throw new ApiError(409, "not_available", "This finding is not open to an agent now: it was fixed or dismissed, a pull request for it is waiting, or it used its three tries. Tell your person.");
   if (!row) return { finding: null, attempt: null, counts };
   const project = report.projects.find((p) => p.checks.some((c) => c.id === row.id))!;
   const check = project.checks.find((c) => c.id === row.id)!;
@@ -50,7 +57,7 @@ export async function takeNext(actor: Actor, retried = false) {
   } catch (err) {
     if (missingTable(err, "check_attempts")) return { finding: null, attempt: null, counts, ready: false };
     if ((err as { code?: string; cause?: { code?: string } }).code === "23514" || (err as { cause?: { code?: string } }).cause?.code === "23514") {
-      if (!retried) return takeNext(actor, true);
+      if (!retried) return takeNext(actor, true, only);
       throw new ApiError(409, "finding_changed", "This finding changed. Ask for the next finding again");
     }
     throw err;

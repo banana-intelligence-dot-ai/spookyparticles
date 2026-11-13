@@ -272,6 +272,22 @@ export async function revokeConnection(c: Connection, actor: string, auditDetail
   return { id: c.id, provider: c.provider, providerRevoked, providerStatus };
 }
 
+type RunLike = { finishedAt: Date | null };
+
+/**
+ * Which run a connection shows. Hosts (Vercel, GitHub) are re-read in the background every few
+ * minutes; that routine refresh must not make a synced connection look like it never finished.
+ * So a host shows its newest finished run while a newer one is in flight (refreshing: true).
+ * Gmail and a host's first sync show the newest run, so real progress stays visible.
+ * `runs` is newest first.
+ */
+export function pickShownRun<R extends RunLike>(provider: string, runs: R[]): { run: R | null; refreshing: boolean } {
+  const newest = runs[0] ?? null;
+  if (!newest || newest.finishedAt || (provider !== "vercel" && provider !== "github")) return { run: newest, refreshing: false };
+  const done = runs.find((r) => r.finishedAt);
+  return done ? { run: done, refreshing: true } : { run: newest, refreshing: false };
+}
+
 export async function listConnectionsWithSync(userId: string) {
   const db = getDb();
   const rows = await db
@@ -287,8 +303,8 @@ export async function listConnectionsWithSync(userId: string) {
         .where(inArray(schema.syncRuns.connectionId, ids))
         .orderBy(desc(schema.syncRuns.startedAt))
     : [];
-  const latest = new Map<string, (typeof runs)[number]>();
-  for (const r of runs) if (!latest.has(r.connectionId)) latest.set(r.connectionId, r);
+  const byConnection = new Map<string, (typeof runs)[number][]>();
+  for (const r of runs) byConnection.set(r.connectionId, [...(byConnection.get(r.connectionId) ?? []), r]);
 
   // Reading progress per inbox: candidates read over candidates found.
   const reading = new Map<string, { done: number; total: number }>();
@@ -307,11 +323,12 @@ export async function listConnectionsWithSync(userId: string) {
   }
 
   return rows.map((c) => {
-    const run = latest.get(c.id);
+    const { run, refreshing } = pickShownRun(c.provider, byConnection.get(c.id) ?? []);
     return {
       ...publicConnection(c),
       sync: run
         ? {
+            refreshing,
             // Reading progress: billing candidates read over candidates found (Gmail only).
             reading: c.provider === "gmail" ? (reading.get(c.id) ?? { done: 0, total: 0 }) : null,
             id: run.id,

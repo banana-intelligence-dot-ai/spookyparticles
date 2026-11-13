@@ -4,23 +4,29 @@ import { INCIDENT } from "./incident";
 
 /**
  * The hero: two entangled particles at the two edges of the screen, your app and your agent.
- * It plays our own Nov 9 production failure: the app goes red, a beat later the agent knows,
- * then both settle green. Click either particle to replay. Still on "know" under reduced motion
- * or with ?still (screenshots).
+ * It plays our own Nov 9 production failure: the app goes red, a beat later the agent knows and
+ * why (the error its build log names), then the agent pushes the real fix commit and both settle
+ * green. It plays twice and rests on the fix. Click either particle to replay. Still on "know"
+ * under reduced motion or with ?still (screenshots).
  */
 type State = "idle" | "fail" | "know" | "ok";
 const SEQUENCE: [State, number][] = [
   ["idle", 1500],
-  ["fail", 380],
+  ["fail", 1200],
   ["know", 3800],
-  ["ok", 3800],
+  ["ok", 5200],
 ];
+/** Full passes before it rests on "ok". */
+const PASSES = 2;
 const FAILED = `deploy failed ${INCIDENT.failed.failedAt} UTC`;
+/** What the agent got with the problem: the error the build log names, e.g. "WorkflowBuildError". */
+const WHY = `why: ${/\[(\w+)\]/.exec(INCIDENT.cause)?.[1] ?? "build log attached"}`;
 const LINES: Record<State, { app: string; agent: string }> = {
   idle: { app: "running", agent: "working" },
   fail: { app: FAILED, agent: "working" },
   know: { app: FAILED, agent: "1 open problem" },
-  ok: { app: `working again ${INCIDENT.fixed.readyAt} UTC`, agent: "working" },
+  /** The agent gets the credit: d0c7f6c is the commit a coding agent pushed to fix it. */
+  ok: { app: `working again ${INCIDENT.fixed.readyAt} UTC`, agent: `pushed fix ${INCIDENT.fixed.commit}` },
 };
 
 export function Particles() {
@@ -31,8 +37,10 @@ export function Particles() {
   const play = (from: number) => {
     if (timer.current) clearTimeout(timer.current);
     let i = from;
+    let passes = 0;
     const step = () => {
       setState(SEQUENCE[i][0]);
+      if (i === SEQUENCE.length - 1 && ++passes >= PASSES) return;
       timer.current = setTimeout(() => {
         i = (i + 1) % SEQUENCE.length;
         step();
@@ -58,7 +66,7 @@ export function Particles() {
     if (!still.current) return play(1);
     setState("fail");
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setState("know"), 380);
+    timer.current = setTimeout(() => setState("know"), 1200);
   };
 
   const lines = LINES[state];
@@ -73,6 +81,7 @@ export function Particles() {
       <p className="orb-label orb-label-agent">
         <b>your agent</b>
         <span className="orb-state-agent">{lines.agent}</span>
+        <span className="orb-why">{WHY}</span>
       </p>
     </div>
   );

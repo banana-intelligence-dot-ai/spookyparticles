@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { CopyButton } from "@/components/copy-button";
+import { FleetMap } from "./fleet-map";
 import { Chevron, Chips, Empty, ErrorLine } from "@/components/ui";
 import { formatCents, useApi } from "@/components/use-api";
 import { touch } from "@/lib/analytics/client";
@@ -19,6 +20,7 @@ import {
   NOTICE_LABEL,
   ago,
   daysSince,
+  lastActiveAt,
   deployWord,
   healthReason,
   host,
@@ -69,7 +71,7 @@ const TONE_TEXT = { red: "text-red", amber: "text-amber" } as const;
 
 /** Idle 90+ days (or archived) and still billed: the drift worth money. */
 export const idlePaid = (p: Project, now: number) =>
-  (p.monthlyCents ?? 0) > 0 && (p.health === "archived" || p.health === "idle" || (p.lastPushAt !== null && daysSince(p.lastPushAt, now) >= IDLE_DAYS));
+  (p.monthlyCents ?? 0) > 0 && (p.health === "archived" || p.health === "idle" || (lastActiveAt(p) !== null && daysSince(lastActiveAt(p) as string, now) >= IDLE_DAYS));
 
 /** Things that want a look: open findings plus red or amber notices in the last 30 days. */
 function alertsOf(p: Project, now: number): { count: number; tone: "red" | "amber" | null; words: string[]; first: string | null } {
@@ -238,6 +240,8 @@ export function ProjectsScreen({
           deploys and what it costs.
         </Empty>
       ) : null}
+
+      {projects.length ? <FleetMap projects={projects} now={now} /> : null}
 
       {projects.length ? (
         <section aria-label="Projects" className="mb-16">

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ConnectionsList } from "@/app/app/connections/connections-view";
 import { ConnectedAgents, SignInWays, type AgentKey } from "@/app/app/connections/agents";
+import { WiringMap } from "@/app/app/connections/wiring-map";
 import type { Finding, Spend } from "@/app/app/data-model";
 import { SpendScreen } from "@/app/app/findings/spend-view";
 import { ActivityScreen } from "@/app/app/activity-view";
@@ -16,6 +17,9 @@ import { CheckScreen } from "@/app/app/check/check-view";
 import { CHECK_CLEAR, CHECK_FULL, CHECK_NONE, CHECK_NOT_READY, SERVICES_SAMPLE } from "./check-fixtures";
 import { PageHeader, buttonStyles } from "@/components/ui";
 import { FIXTURES, NOW } from "./fixtures";
+import { CATCHES, CATCHES_NONE } from "./catches-fixture";
+import { RUNS } from "./runs-fixture";
+import { RunHistoryChart } from "@/app/app/jobs/run-history";
 import { VIEWS, type View } from "./views";
 import { FINDINGS, SPEND } from "./spend-fixtures";
 import {
@@ -29,6 +33,16 @@ import {
 } from "./project-fixtures";
 
 const NO_PARAMS = new URLSearchParams();
+
+/** One session listening, one broken project nobody hears. */
+const LISTENING = {
+  checkedAt: new Date(NOW).toISOString(),
+  listeners: [
+    { project: "n8peace/daystart", lastAskedAt: new Date(NOW - 4 * 60_000).toISOString(), agent: "macbook-read", open: 0 },
+    { project: "n8peace/news-factory", lastAskedAt: new Date(NOW - 3 * 3_600_000).toISOString(), agent: "macbook-write", open: 1 },
+  ],
+  unheard: [{ project: "supportgrid", open: 1 }],
+};
 
 const day = (n: number) => new Date(NOW - n * 86_400_000).toISOString();
 /** Agents and sign-in identities for the busier fixtures. Ids are obviously fake. */
@@ -82,6 +96,7 @@ const PATH: Record<View, string> = {
   today: "/app",
   projects: "/app/projects",
   activity: "/app/activity",
+  schedules: "/app/jobs",
   spend: "/app/findings",
   connections: "/app/connections",
   project: "/app/projects",
@@ -121,7 +136,7 @@ export function Preview({ only, view }: { only: string | null; view: View }) {
           </nav>
 
           {view === "today" ? (
-            <TodayScreen ready connections={f.list} projects={d.projects} findings={findings} spend={spend} activity={d.activity} jobs={[]} params={NO_PARAMS} error={null} now={NOW} />
+            <TodayScreen ready connections={f.list} projects={d.projects} findings={findings} spend={spend} activity={d.activity} jobs={[]} listening={f.key === "done-expired" ? { checkedAt: new Date(NOW).toISOString(), listeners: [], unheard: [] } : LISTENING} catches={f.key === "done-expired" ? CATCHES_NONE : CATCHES} params={NO_PARAMS} error={null} now={NOW} />
           ) : null}
 
           {view === "projects" ? (
@@ -134,6 +149,13 @@ export function Preview({ only, view }: { only: string | null; view: View }) {
             <ActivityScreen ready connections={f.list} report={d.activity} error={null} now={NOW} limit={100} onMore={null} />
           ) : null}
 
+
+          {view === "schedules" ? (
+            <>
+              <PageHeader title="Schedules" lede="Your scheduled jobs, like crons and nightly builds, and whether each ran on time. When one misses, you hear by phone, Slack, Teams or email, and again when it's back." />
+              <RunHistoryChart data={RUNS} now={NOW} />
+            </>
+          ) : null}
 
           {view === "spend" ? (
             <SpendScreen
@@ -166,6 +188,7 @@ export function Preview({ only, view }: { only: string | null; view: View }) {
                 title="Connections"
                 lede="Read-only access you grant, one provider at a time. Revoke any of it here; nothing is ever deleted on your accounts."
               />
+              <WiringMap connections={f.list} keys={f.key === "many" || f.key === "done" ? AGENTS : []} now={NOW} />
               <ConnectionsList
                 list={f.list}
                 now={NOW}

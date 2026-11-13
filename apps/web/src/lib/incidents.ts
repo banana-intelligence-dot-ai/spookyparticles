@@ -3,11 +3,14 @@ import { jobIssue, listJobs, type JobIssue } from "./checkins";
 import { refreshRepoQuietly } from "./github-refresh";
 import { failedDeployments } from "./projects";
 import { resyncHostsQuietlyFor } from "./sync";
+import type { Claim } from "./claims";
 
 const WINDOW_MS = 30 * 86_400_000;
 
 export type DeployIncident = {
   kind: "deploy_failed";
+  /** This failure's identity; the owner can ignore it by this key. */
+  key: string;
   project: string;
   environment: string | null;
   host: string | null;
@@ -62,6 +65,7 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
       const projectName = d.name.replace(/\s+\(.*\)$/, "");
       return {
         kind: "deploy_failed" as const,
+        key: d.key,
         project: projectName,
         environment: d.environment || null,
         host: d.provider,
@@ -125,11 +129,36 @@ function jobProblem(issue: JobIssue): string {
   return "never checked in";
 }
 
+const LOG_LINES = 8;
+
+/** Who is on it: nothing when unclaimed, "you" for the asking key, else the other agent. */
+function claimLine(claim: Claim | null, viewerKeyId: string | null): string | null {
+  if (!claim) return null;
+  if (viewerKeyId && claim.apiKeyId === viewerKeyId) return `Claimed: by you, until ${claim.until}.`;
+  return `Claimed: by ${oneLine(claim.agent) || "another session"} at ${claim.at}, until ${claim.until}. Leave it to them unless your human says otherwise.`;
+}
+
 /** Renders an agent-ready inbox without reading state or including private check-in links. */
-export function formatIncidentsText(report: Pick<IncidentsReport, "incidents">, project: string, origin: string): string {
+export function formatIncidentsText(
+  report: Pick<IncidentsReport, "incidents">,
+  project: string,
+  origin: string,
+  opts: { claims?: Claim[]; viewerKeyId?: string | null } = {},
+): string {
   if (report.incidents.length === 0) return "";
   const safeProject = oneLine(project) || "your projects";
+  const claims = opts.claims ?? [];
+  const viewer = opts.viewerKeyId ?? null;
+  const claimOf = (p: string | null) => {
+    if (!p) return null;
+    const name = p.toLowerCase();
+    return claims.find((c) => matchesIncidentProject(name, c.project) || matchesIncidentProject(c.project, name)) ?? null;
+  };
+  let unclaimed = false;
   const blocks = report.incidents.map((incident) => {
+    const claim = claimOf(incident.project);
+    if (!claim) unclaimed = true;
+    const claimed = claimLine(claim, viewer);
     if (incident.kind === "job") {
       const when = incident.issue === "never_checked_in"
         ? "never checked in"
@@ -139,24 +168,36 @@ export function formatIncidentsText(report: Pick<IncidentsReport, "incidents">, 
         `When: ${when}`,
         `Last note: ${oneLine(incident.lastNote) || "No note was reported."}`,
         `Link: ${absoluteUrl(origin, incident.url)}`,
+        ...(claimed ? [claimed] : []),
       ].join("\n");
     }
+    const c = incident.commit;
+    const tail = (incident.logTail ?? []).map(oneLine).filter(Boolean).slice(-LOG_LINES);
     return [
       `Deploy failed: ${oneLine(incident.project) || "Unknown project"}${incident.environment ? ` (${oneLine(incident.environment)}${incident.host ? ` on ${oneLine(incident.host)}` : ""})` : ""}`,
       `When: ${oneLine(incident.at) || "unknown"}`,
+      ...(c ? [`Change: ${oneLine(c.sha).slice(0, 7)}${c.message ? ` ${oneLine(c.message).slice(0, 120)}` : ""}${c.ref ? ` (${oneLine(c.ref)})` : ""}. Start there: this commit is the one that failed.`] : []),
       `Build log: ${oneLine(incident.cause) || "No build log line was reported."}`,
+      ...(tail.length ? ["Last log lines:", ...tail.map((l) => `  | ${l.slice(0, 240)}`)] : []),
       `Link: ${absoluteUrl(origin, incident.inspectorUrl ?? incident.url)}`,
+      ...(claimed ? [claimed] : []),
     ].join("\n");
   });
-  const confirm = new URL("/api/v1/incidents", origin);
-  confirm.searchParams.set("project", oneLine(project));
+  const confirm = new URL("/api/v1/incidents/confirm", origin);
+  confirm.searchParams.set("project", oneLine(project) || "owner/repo");
   confirm.searchParams.set("format", "text");
+  const claimUrl = new URL("/api/v1/incidents/claim", origin);
+  claimUrl.searchParams.set("project", oneLine(project) || "owner/repo");
+  claimUrl.searchParams.set("format", "text");
+  const auth = `printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @-`;
   return [
     `Spooky Particles: ${report.incidents.length} open ${report.incidents.length === 1 ? "problem" : "problems"} for ${safeProject}`,
     "",
     blocks.join("\n\n"),
     "",
-    `Fix the cause, then confirm with: printf 'Authorization: Bearer %s\\n' \"$SPOOKY_API_KEY\" | curl -fsS -H @- \"${confirm.toString()}\"`,
+    ...(unclaimed ? ["Before you start, claim it so other sessions leave it to you:", `${auth} "${claimUrl.toString()}"`, ""] : []),
+    `Fix the cause and deploy. Then ask Spooky to check production; it answers fixed, still broken, or checking:`,
+    `${auth} "${confirm.toString()}"`,
     "",
   ].join("\n");
 }

@@ -1,4 +1,8 @@
 import { jobIssue, listJobs } from "@/lib/checkins";
+import { recordInboxRead } from "@/lib/agent-listening";
+import { recordDeploys } from "@/lib/catches";
+import { claimBreak, claimsFor } from "@/lib/claims";
+import { confirmFix } from "@/lib/confirm-fix";
 import { incidentsFor } from "@/lib/incidents";
 import { projectPageFor, projectsFor } from "@/lib/projects";
 import { resyncHostsQuietlyFor } from "@/lib/sync";
@@ -30,6 +34,8 @@ function tool(def: Omit<Tool, "annotations">): Tool {
 /** Binds the read tools to the same user that the REST actor resolves. A key with the write scope also gets the two handoff tools. */
 export function toolsFor(actor: Actor): ToolRegistry {
   const userId = actor.userId;
+  /** An agent asking about its project is how Today knows that session hears about it. */
+  const heard = (project: string) => Promise.all([actor.apiKeyId ? recordInboxRead(userId, actor.apiKeyId, project) : null, recordDeploys(userId)]);
   const read: ToolRegistry = {
     list_expirations: tool({
       description: "List every known expiry date, including Vercel runtimes, domains, tracked credentials and Spooky agent keys, soonest first, plus domains whose date is unknown.",
@@ -38,13 +44,14 @@ export function toolsFor(actor: Actor): ToolRegistry {
       run: async () => expirationsFor(userId),
     }),
     whats_broken: tool({
-      description: "Check current failed deployments, failed scheduled runs, jobs that have gone quiet, and jobs that never checked in, with known causes.",
+      description: "Check current failed deployments, failed scheduled runs, jobs that have gone quiet, and jobs that never checked in, with known causes. claims shows which agent is already fixing which project; leave those alone.",
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => {
-        const [report, jobs] = await Promise.all([incidentsFor(userId), listJobs(userId)]);
+        const [report, jobs, claims] = await Promise.all([incidentsFor(userId), listJobs(userId), claimsFor(userId)]);
         return {
           checkedAt: report.checkedAt,
+          claims,
           failedDeploys: report.incidents.filter((incident) => incident.kind === "deploy_failed"),
           failedRuns: jobs.filter((job) => jobIssue(job) === "failed").map((job) => ({
             name: job.name, project: job.project, at: job.lastPingAt, cause: job.lastNote,
@@ -78,7 +85,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
       run: async (input) => {
         const repo = input.repo as string;
         const sha = input.sha as string | undefined;
-        const incidentReport = await incidentsFor(userId, repo);
+        const [incidentReport] = await Promise.all([incidentsFor(userId, repo), heard(repo)]);
         const project = (await projectsFor(userId)).projects.find((p) => p.name.toLowerCase() === repo.toLowerCase() && p.kind === "repo");
         if (!project) throw new Error("Unknown repo");
         const latest = new Map<string, typeof project.deployments[number]>();
@@ -97,6 +104,18 @@ export function toolsFor(actor: Actor): ToolRegistry {
           ...(sha ? { sha, shaLive: Boolean(production?.state === "success" && production.sha && match(production.sha, sha)) } : {}),
         };
       },
+    }),
+    claim_break: tool({
+      description: "Before you start fixing a project's break, claim it so other coding sessions leave it to you. Lasts 30 minutes; call again to renew. If another agent holds it, claimed is false and the message says who; leave it to them unless your person says otherwise.",
+      inputSchema: named("project", "GitHub owner/repo or Vercel project name"),
+      validate: (input) => validate(input, ["project"], ["project"]),
+      run: async (input) => claimBreak(actor, input.project as string),
+    }),
+    confirm_fix: tool({
+      description: "After you fix and deploy, ask Spooky to check production for the project. It re-reads the hosts and answers fixed, still_broken (with what is still failing), waiting_on_run (a job must run once), or checking (ask again after retryAfterSeconds). Only say a break is fixed after this answers fixed.",
+      inputSchema: named("project", "GitHub owner/repo or Vercel project name"),
+      validate: (input) => validate(input, ["project"], ["project"]),
+      run: async (input) => confirmFix(actor, input.project as string),
     }),
     list_projects: tool({
       description: "List every known project with its host, production URL, and latest deployment state and time.",
@@ -126,7 +145,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
       },
       run: async (input) => {
         const name = (input.project as string).trim();
-        const incidents = await incidentsFor(userId, name);
+        const [incidents] = await Promise.all([incidentsFor(userId, name), heard(name)]);
         const page = await projectPageFor(userId, name);
         if (!page) throw new Error("Unknown project");
         return { project: page.project.name, deployments: page.deployments, domains: page.domains, recentFailures: incidents.incidents.filter((incident) => incident.kind === "deploy_failed") };
@@ -164,11 +183,16 @@ export function toolsFor(actor: Actor): ToolRegistry {
   return {
     ...read,
     next_finding: write({
-      description: "Take the next open finding from the project check, most serious first. One at a time. Follow its instructions: open a pull request and never merge it, or give your person the exact steps. Then call report_finding.",
-      inputSchema: empty,
-      validate: (input) => validate(input, [], []),
-      run: async () => {
-        try { return await takeNext(actor); }
+      description: "Take the next open finding from the project check, most serious first, or the one your person handed you by finding_id. One at a time. Follow its instructions: open a pull request and never merge it, or give your person the exact steps. Then call report_finding.",
+      inputSchema: { type: "object", additionalProperties: false, properties: { finding_id: { type: "string", description: "Optional: the finding your person handed you" } } },
+      validate: (input) => {
+        const basic = validate(input, [], ["finding_id"]);
+        if (basic) return basic;
+        if (input.finding_id !== undefined && (typeof input.finding_id !== "string" || !/^[0-9a-f-]{36}$/i.test(input.finding_id))) return "finding_id must be a finding ID";
+        return null;
+      },
+      run: async (input) => {
+        try { return await takeNext(actor, false, typeof input.finding_id === "string" ? input.finding_id : null); }
         catch (err) { if (err instanceof ApiError) throw new ToolError(err.message); throw err; }
       },
     }),

@@ -19,7 +19,7 @@ describe("agent inbox text", () => {
   it("formats deploy and job evidence with the request origin", () => {
     const incidents: Incident[] = [
       {
-        kind: "deploy_failed",
+        kind: "deploy_failed", key: "n1@t",
         project: "owner/repo",
         environment: "production",
         host: "Vercel",
@@ -50,7 +50,7 @@ describe("agent inbox text", () => {
     expect(text).toContain("Build log: Type error on line 42");
     expect(text).toContain("Last note: Index command exited 1");
     expect(text).toContain("Link: https://spooky.example/app/jobs");
-    expect(text).toContain('printf \'Authorization: Bearer %s\\n\' "$SPOOKY_API_KEY" | curl -fsS -H @- "https://spooky.example/api/v1/incidents?project=owner%2Frepo&format=text"');
+    expect(text).toContain('printf \'Authorization: Bearer %s\\n\' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @- "https://spooky.example/api/v1/incidents/confirm?project=owner%2Frepo&format=text"');
   });
 
   it("does not print API keys, ping tokens, or extra incident fields", () => {

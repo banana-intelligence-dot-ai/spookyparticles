@@ -133,6 +133,15 @@ state_tmp="$cache_file.tmp.$$"
 printf '%s\n' "$body_sha" > "$state_tmp" 2>/dev/null || exit 0
 mv "$state_tmp" "$cache_file" 2>/dev/null || exit 0
 
+if [ "${1:-start}" = "cursor" ]; then
+  # Cursor sessionStart hooks must print JSON; "additional_context" is added to the session.
+  if [ -n "$body" ]; then
+    escaped=$(printf '%s' "$body" | tr -d '\r' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' | awk 'BEGIN { ORS = "\\n" } { print }')
+    printf '{"additional_context":"%s"}\n' "$escaped"
+  fi
+  exit 0
+fi
+
 if [ -n "$body" ]; then
   printf '%s\n' "$body"
 fi

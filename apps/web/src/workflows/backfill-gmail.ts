@@ -6,6 +6,10 @@
  * 2. exhaustive: every header from the last 24 months, under the per-user rate
  *    limiter, adding anything the search missed.
  *
+ * A re-read (input.since set) skips both: one pass over mail that arrived since the last
+ * read, through the same free header filter, so a daily re-read lists a day of mail, not
+ * two years. Models only ever see new candidates (reading skips what is already read).
+ *
  * Durable and resumable: a crashed run continues from its last completed step.
  * Only ids and connection references cross step boundaries, never bodies or tokens.
  */
@@ -19,10 +23,19 @@ export type BackfillInput = {
   exhaustive?: boolean;
   /** Stop condition for the exhaustive pass. Default 150,000 messages. */
   maxMessages?: number;
+  /** Re-read only mail that arrived after this ISO time. */
+  since?: string;
 };
 
 const BATCH = 100;
 const EXHAUSTIVE_QUERY = "newer_than:2y -in:chats";
+/** A re-read stops here; a day of mail is a few hundred messages. */
+const SINCE_MAX = 10_000;
+
+/** Gmail's query for mail after a moment (whole seconds), chats excluded. */
+export function sinceQuery(since: string): string {
+  return `after:${Math.floor(Date.parse(since) / 1000)} -in:chats`;
+}
 
 function chunks<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -37,6 +50,22 @@ export async function backfillGmail(input: BackfillInput) {
   let scanned = 0;
 
   try {
+    if (input.since) {
+      await setProgress(syncRunId, "exhaustive", 0);
+      let pageToken: string | undefined;
+      do {
+        const page = await listPage(connectionId, sinceQuery(input.since), pageToken);
+        for (const ids of chunks(page.ids, BATCH)) {
+          scanned += ids.length;
+          await fetchAndStore({ connectionId, syncRunId, ids, mode: "exhaustive", reason: "since", scannedAfter: scanned });
+        }
+        pageToken = page.nextPageToken;
+      } while (pageToken && scanned < SINCE_MAX);
+      await finishRun(syncRunId, connectionId, scanned);
+      await startReading(connectionId);
+      return { syncRunId, scanned };
+    }
+
     await setProgress(syncRunId, "search", 0);
     const queries = await getSearchQueries();
     for (const query of queries) {

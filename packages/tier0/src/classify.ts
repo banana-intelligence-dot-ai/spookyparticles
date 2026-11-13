@@ -3,6 +3,8 @@
  *
  * Decision order (first match wins):
  *
+ * 0. Spooky Particles' own mail (alerts, digests): skip ("own"). Reading our
+ *    own alert back in would count every failure twice.
  * 1. Threads the person sent: skip ("sent").
  * 2. Gmail social or forum category, or a known chatter address such as
  *    GitHub PR notifications: skip ("social" or "forum").
@@ -41,7 +43,7 @@ export interface Header {
 }
 
 export type Reason = 'known_sender' | 'receipt_subject' | 'ops_subject' | 'attachment' | 'none';
-export type SkipReason = 'sent' | 'newsletter' | 'social' | 'forum' | 'consumer';
+export type SkipReason = 'own' | 'sent' | 'newsletter' | 'social' | 'forum' | 'consumer';
 
 export interface Classification {
   candidate: boolean;
@@ -107,6 +109,15 @@ export function normalizeAddress(address: string): string {
 
 function domainMatches(host: string, domain: string): boolean {
   return host === domain || host.endsWith('.' + domain);
+}
+
+/** Domains Spooky Particles sends from. Its own alerts are never a vendor's signal. */
+export const OWN_DOMAINS: readonly string[] = ['spookyparticles.com', 'spookyparticles.ai'];
+
+/** True for mail Spooky Particles sent (any subdomain of its domains). */
+export function isOwnMail(from: string | undefined): boolean {
+  const host = parseAddress(from)?.domain;
+  return Boolean(host && OWN_DOMAINS.some((d) => domainMatches(host, d)));
 }
 
 // --- sender index -----------------------------------------------------------
@@ -186,6 +197,9 @@ const NONE: Classification = { candidate: false, reason: 'none' };
 export function classifyHeader(h: Header): Classification {
   const labels = new Set((h.labels ?? []).map((l) => l.toUpperCase()));
   const from = parseAddress(h.from);
+
+  // 0. Our own alerts and digests.
+  if (isOwnMail(h.from)) return { ...NONE, skipReason: 'own' };
 
   // 1. Threads the person sent.
   if (h.isSent || labels.has('SENT')) {

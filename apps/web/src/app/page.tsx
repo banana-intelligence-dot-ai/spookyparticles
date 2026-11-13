@@ -18,8 +18,8 @@ const COPY = {
     "Spooky Particles entangles your coding agent with every app you ship on Vercel. It checks every 5 minutes, and when one breaks, your agent knows why. Read-only.",
   quote: "“spooky action at a distance”",
   quoteSource: "Einstein to Max Born, 1947",
-  h1: ["Know when it breaks.", "Keep your agents going."],
-  sub: "Spooky entangles your coding agent with every app you ship on Vercel, checking every 5 minutes. When one breaks, your agent knows why.",
+  h1: ["Fixed by the time", "you realize it’s broken."],
+  sub: ["Entangle your coding agent with your Vercel apps.", "When one breaks, it knows why."],
   reassure: "Read-only. Never deletes anything. Revoke any time.",
 } as const;
 
@@ -68,7 +68,7 @@ export default function Landing() {
         <Wordmark />
       </header>
 
-      <main className="relative z-[1] mx-auto flex w-full max-w-[1216px] flex-1 flex-col px-4 pt-[176px] pb-[200px] text-left min-[821px]:items-center min-[821px]:justify-center min-[821px]:px-12 min-[821px]:py-8 min-[821px]:text-center">
+      <main className="relative z-[1] mx-auto flex w-full max-w-[1216px] flex-1 flex-col px-4 pt-[240px] pb-12 text-left min-[821px]:items-center min-[821px]:justify-center min-[821px]:px-12 min-[821px]:py-8 min-[821px]:text-center">
         <p className="font-mono text-[12.5px] leading-[1.5] text-fg-2">
           {COPY.quote}
           <span className="block text-fg-3 min-[821px]:ml-2.5 min-[821px]:inline">{COPY.quoteSource}</span>
@@ -76,7 +76,9 @@ export default function Landing() {
         <h1 className="mt-6 text-[34px] leading-[1.06] font-medium tracking-[-0.025em] text-fg min-[821px]:mt-9 min-[821px]:text-[60px] min-[821px]:leading-[1.03]">
           {COPY.h1[0]} <span className="block text-fg-2">{COPY.h1[1]}</span>
         </h1>
-        <p className="mt-3 max-w-[500px] text-[16px] leading-[1.6] text-pretty text-fg-2 min-[821px]:mt-[18px] min-[821px]:text-[17px]">{COPY.sub}</p>
+        <p className="mt-3 max-w-[500px] text-[16px] leading-[1.6] text-pretty text-fg-2 min-[821px]:mt-[18px] min-[821px]:text-[17px]">
+          {COPY.sub[0]} <span className="min-[821px]:block">{COPY.sub[1]}</span>
+        </p>
         <div className="mt-[22px] w-full min-[821px]:mt-[30px] min-[821px]:w-auto">
           <Suspense fallback={null}>
             <SignInNotice />
@@ -86,7 +88,7 @@ export default function Landing() {
           <SignIn large ink inline vercelEnabled={vercelEnabled} />
           <PastePrompt prompt={AGENT_PROMPT} />
         </div>
-        <p className="mt-4 font-mono text-[12px] text-fg-3">{COPY.reassure}</p>
+        <p className="mt-4 font-mono text-[12px] text-balance text-fg-3">{COPY.reassure}</p>
       </main>
 
       <footer className="relative z-[1] mx-auto flex w-full max-w-[1216px] flex-col gap-1 px-4 pb-6 font-mono text-[12px] text-fg-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:px-12">

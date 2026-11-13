@@ -134,4 +134,5 @@ These Terms and the Privacy Policy are the whole agreement between you and us ab
 ## 19. Contact
 
 Banana Intelligence LLC
+131 Continental Dr, Suite 305, Newark, DE 19713, US
 Email: hello@spookyparticles.com

@@ -1,6 +1,6 @@
 import { JobsView } from "./jobs-view";
 
-export const metadata = { title: "Jobs" };
+export const metadata = { title: "Schedules" };
 
 export default function JobsPage() {
   return (

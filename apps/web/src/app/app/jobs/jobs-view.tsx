@@ -7,7 +7,9 @@ import { useEffect, useState } from "react";
 import { CopyButton } from "@/components/copy-button";
 import { Empty, ErrorLine, List, PageHeader, SectionTitle, buttonStyles, surface } from "@/components/ui";
 import { apiPost, apiSend, useApi } from "@/components/use-api";
+import type { RunHistory } from "@/lib/run-history";
 import { JobSettingsFields, INPUT } from "./job-settings";
+import { RunHistoryChart } from "./run-history";
 import { buildSettingsInput, buildSettingsPatch, describeProbeRule, emptyJobSettings, settingsFromJob, type JobSettingsValue, type Probe } from "./job-settings-lib";
 
 type Job = {
@@ -70,6 +72,7 @@ const period = (m: number) => PERIODS.find(([, v]) => v === m)?.[0] ?? (m % 60 =
 
 export function JobsView() {
   const jobs = useApi<{ jobs: Job[] }>("/api/v1/checkins", { pollMs: () => 30_000 });
+  const history = useApi<RunHistory>("/api/v1/checkins/history", { pollMs: () => 60_000 });
   const channels = useApi<{ channels: Channel[] }>("/api/v1/alert-channels");
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => setNow(Date.now()), [jobs.data]);
@@ -80,7 +83,7 @@ export function JobsView() {
 
   return (
     <>
-      <PageHeader title="Jobs" lede="Every scheduled thing you run checks in here. When one goes quiet, you hear on your phone, in Slack or Teams, or by email, and again when it is back.">
+      <PageHeader title="Schedules" lede="Your scheduled jobs, like crons and nightly builds, and whether each ran on time. When one misses, you hear by phone, Slack, Teams or email, and again when it's back.">
         <button type="button" className={list.length ? buttonStyles.secondary : buttonStyles.primary} onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
           Add a job
         </button>
@@ -106,6 +109,8 @@ export function JobsView() {
         </Empty>
         </div>
       ) : null}
+
+      {list.length && history.data?.jobs.length && now ? <RunHistoryChart data={history.data} now={now} /> : null}
 
       {list.length ? (
         <section aria-labelledby="jobs-list" className="mb-12">
@@ -235,7 +240,7 @@ function JobRow({ j, now, onChanged, onNotice }: { j: Job; now: number; onChange
   const statusWord = j.watchNote ?? STATUS_WORD[j.status];
   const statusDisplay = j.evidenceState === "not_readable" && j.watchNote ? <>{j.watchNote.split("Connections")[0]}<a href="/app/connections?vercel=open#vercel" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">Connections</a>{j.watchNote.split("Connections")[1]}</> : statusWord;
   return (
-    <li className={`border-b border-line-1 px-4 py-3 last:border-b-0 sm:px-6${j.status === "retired" ? " opacity-55" : ""}`}>
+    <li id={`job-${j.id}`} className={`scroll-mt-24 border-b border-line-1 px-4 py-3 last:border-b-0 sm:px-6${j.status === "retired" ? " opacity-55" : ""}`}>
       <div className="flex items-center gap-3">
         <span aria-hidden className={`size-[7px] shrink-0 rounded-full ${STATUS_DOT[j.status]}`} />
         <span className="min-w-0 flex-1 truncate text-[14px] text-fg">{j.name}</span>

@@ -214,3 +214,11 @@ test('consumerKind matches subdomains and bare domains', async () => {
   assert.equal(consumerKind('robinhood.com'), 'finance');
   assert.equal(consumerKind('billing@vercel.com'), undefined);
 });
+
+test('skips Spooky Particles own alerts, which would count each failure twice', () => {
+  const own = classifyHeader({ from: 'Spooky Particles <alerts@mail.spookyparticles.com>', subject: 'supportgrid: preview deploy failed on GitHub Actions (CI)' });
+  assert.equal(own.candidate, false);
+  assert.equal(own.skipReason, 'own');
+  assert.equal(classifyHeader({ from: 'hello@spookyparticles.ai', subject: 'Your invoice' }).skipReason, 'own');
+  assert.notEqual(classifyHeader({ from: 'notifications@vercel.com', subject: 'Production deployment failed for site' }).skipReason, 'own');
+});
