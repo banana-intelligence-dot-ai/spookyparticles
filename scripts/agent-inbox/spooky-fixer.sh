@@ -97,7 +97,17 @@ if [ "$key_from_clipboard" = true ]; then
   esac
   export SPOOKY_API_KEY
 fi
-if [ -z "${SPOOKY_API_KEY:-}" ]; then
+# No key (or not a Spooky key) in a terminal: ask for it, hidden. Easier than the clipboard,
+# which the start command itself overwrites when it is copied.
+case "${SPOOKY_API_KEY:-}" in sp_?*) ;; *) SPOOKY_API_KEY= ;; esac
+if [ -z "$SPOOKY_API_KEY" ] && [ -t 0 ]; then
+  printf 'Paste your Spooky key (from Connections, Make key, Read). It stays hidden: '
+  stty -echo 2>/dev/null; IFS= read -r SPOOKY_API_KEY || SPOOKY_API_KEY=; stty echo 2>/dev/null; printf '\n'
+  SPOOKY_API_KEY=$(printf '%s' "$SPOOKY_API_KEY" | tr -d ' \t\r\n')
+  case "$SPOOKY_API_KEY" in sp_?*) ;; *) SPOOKY_API_KEY=; printf 'That is not a Spooky key (they start with sp_).\n' >&2; exit 1 ;; esac
+  export SPOOKY_API_KEY
+fi
+if [ -z "$SPOOKY_API_KEY" ]; then
   printf 'No key. Copy a Read key from Connections in Spooky and add --key-from-clipboard, or set SPOOKY_API_KEY in this shell.\n' >&2
   exit 1
 fi
@@ -626,6 +636,11 @@ fi
 if [ "$once" = true ]; then
   one_pass
   exit 0
+fi
+# A wrong or revoked key would fail every pass in silence; say so once and stop.
+if ! printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -fsS -m 30 -o /dev/null -H @- -H "User-Agent: spooky-fixer" "$base_url/api/v1/me" 2>/dev/null; then
+  printf 'Spooky did not accept that key (wrong, revoked or expired). Make a new Read key on Connections and start again.\n' >&2
+  exit 1
 fi
 log "fixer start: $agent, every ${interval}s, budget $budget a day"
 while [ "$(date -u +%s)" -lt "$stop" ]; do

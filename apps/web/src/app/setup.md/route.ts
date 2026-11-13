@@ -133,6 +133,18 @@ mkdir -p ~/.config/spooky && printf '%s\\n' "$SPOOKY_API_KEY" > ~/.config/spooky
 sh scripts/agent-inbox/install.sh
 \`\`\`
 
+## When no session is open
+
+The fixer starts a fix when nobody is at the keyboard. It runs on your human's machine with their own Claude Code or Codex, never on Spooky's servers. Every few minutes it asks Spooky what is broken. For a new problem no other session has claimed, it claims it, runs the agent headless in a clean copy of that repo, then asks Spooky to check production. At most 4 runs a day, never the same problem twice.
+
+Offer it once setup is done. If your human wants it, set it up from the same clone. It lists their repos, clones the ones they keep into \`~/spooky-fixer\`, and writes its config. Show them the numbered list it prints and drop the repos they say to drop:
+
+\`\`\`sh
+sh scripts/agent-inbox/spooky-fixer.sh --setup
+\`\`\`
+
+Then hand your human the start line it prints, to run in their own terminal. It runs in the foreground for 12 hours and uses their Claude login, not an API key in the shell. Do not start it yourself, and never put the key in a file or in chat.
+
 ## Check-ins for scheduled jobs
 
 Anything you run on a schedule for your human (a nightly build, a daily publish, a launchd or cron job) can check in with Spooky Particles each time it runs. If it goes quiet, your human hears on their phone, Slack, Teams or email, within the grace period, and again when it recovers. Creating a job needs a key with the **write** scope; ask your human for one if yours is read-only.

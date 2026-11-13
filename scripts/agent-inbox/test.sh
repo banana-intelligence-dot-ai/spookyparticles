@@ -54,7 +54,7 @@ while [ $# -gt 0 ]; do
     -X) method=$2; shift ;;
     --data-urlencode) case "$2" in project=*) project=${2#project=} ;; esac; shift ;;
     -K) push=true; shift ;;
-    -H|-d|-m) shift ;;
+    -H|-d|-m|-o) shift ;;
     http*) url=$1 ;;
   esac
   shift
@@ -63,6 +63,7 @@ if [ "$push" = true ]; then echo "push" >> "$FAKE/calls"; exit 0; fi
 [ "$input" = "Authorization: Bearer $SPOOKY_API_KEY" ] || { echo "bad auth" >> "$FAKE/calls"; exit 22; }
 file=$(printf '%s' "$project" | tr / _)
 case "$method $url" in
+  "GET "*/api/v1/me) [ -e "$FAKE/reject-key" ] && exit 22; echo '{}' ;;
   "GET "*/api/v1/projects) echo "projects" >> "$FAKE/calls"; cat "$FAKE/projects.json" ;;
   "GET "*/api/v1/incidents) cat "$FAKE/incidents-$file.txt" 2>/dev/null ;;
   "POST "*/api/v1/incidents/claim) echo "claim $project" >> "$FAKE/calls"; cat "$FAKE/claim.txt" ;;
@@ -131,7 +132,7 @@ EOF
 count() { grep -c "^$1\$" "$FAKE/calls" 2>/dev/null || true; }
 fixer() { sh "$here/spooky-fixer.sh" --once "$@" >> "$FAKE/out" 2>&1; }
 
-SPOOKY_API_KEY="k3y-SECRET-value-98765"
+SPOOKY_API_KEY="sp_k3y-SECRET-value-98765"
 SPOOKY_NTFY_TOPIC="topic-SECRET-4242"
 export SPOOKY_API_KEY SPOOKY_NTFY_TOPIC
 mkdir -p "$HOME/.config/spooky"
