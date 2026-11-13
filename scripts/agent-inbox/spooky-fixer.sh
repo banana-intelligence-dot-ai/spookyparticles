@@ -461,17 +461,17 @@ You are fixing a production problem in this repository. Spooky Particles found i
 2. Find the cause. Start from the incident below, then the code, the logs and recent commits.
 3. If the cause is clear, make the smallest fix, add or update a test, and run the repo's own tests. If the cause is not clear, or the fix needs secrets, environment variables, DNS, billing, a database schema change or deleting data, change nothing and say why.
 4. Deploy only the way the repo's rules allow.
-5. Then ask Spooky to check production with the confirm command at the end of the incident. Say fixed only when it answers fixed.
+5. Do not run the claim or confirm commands in the incident, and do not try to reach Spooky. The fixer that started you has claimed this problem and asks Spooky to check production as soon as you finish.
 
 Never read or print .env files, keys or tokens. One fix per run.
 
-End with three short lines: what broke, what you did (commit hash or "no change"), and what Spooky's check said.
+End with three short lines: what broke, what you did (commit hash or "no change"), and whether it is deployed, committed only, or not changed.
 
 Incident:
 EOF
 }
 
-claude_tools="Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(npm test:*),Bash(npm run:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(bun:*),Bash(make:*),Bash(pytest:*),Bash(cargo:*),Bash(go:*),Bash(ls:*),Bash(grep:*),Bash(sed:*),Bash(curl:*),Bash(sleep:*)"
+claude_tools="Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(npm test:*),Bash(npm run:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(bun:*),Bash(make:*),Bash(pytest:*),Bash(python3 -m pytest:*),Bash(python -m pytest:*),Bash(python3 -m unittest:*),Bash(python -m unittest:*),Bash(uv run:*),Bash(poetry run:*),Bash(cargo:*),Bash(go:*),Bash(ls:*),Bash(grep:*),Bash(sed:*),Bash(curl:*),Bash(sleep:*)"
 
 # run_agent <repo> <prompt> <log>: one headless run with a hard timeout. Prints the exit code.
 run_agent() {

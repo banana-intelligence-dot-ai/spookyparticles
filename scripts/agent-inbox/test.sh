@@ -152,6 +152,8 @@ grep -q 'owner/app1: fixed' "$FAKE/out" || fail "verdict not logged"
 grep -q 'claimed by another session' "$FAKE/out" || fail "held claim not reported"
 grep -qx -- '--permission-mode' "$FAKE/claude-args" || fail "claude run without permission mode"
 grep -qx -- '--allowedTools' "$FAKE/claude-args" || fail "claude run without an allowlist"
+grep -q 'Bash(python3 -m pytest:\*)' "$FAKE/claude-args" || fail "python repos cannot run their tests"
+grep -q 'Do not run the claim or confirm commands' "$FAKE/claude-args" || fail "agent told to call Spooky itself"
 [ "$(count push)" -ge 1 ] || fail "push not sent when a topic is set"
 
 # The same problem is never run twice.
