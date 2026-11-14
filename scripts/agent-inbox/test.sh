@@ -135,7 +135,7 @@ cat > "$HOME/bin/security" <<'EOF'
 #!/bin/sh
 case "$*" in *sp_*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
 case "$1" in
-  -i) cmd=$(cat); echo "keychain add" >> "$FAKE/calls"; printf '%s\n' "$cmd" | sed -n 's/.* -w \(.*\)$/\1/p' > "$FAKE/keychain" ;;
+  -i) cmd=$(cat); echo "keychain add" >> "$FAKE/calls"; [ -f "$FAKE/kc-locked" ] && exit 0; printf '%s\n' "$cmd" | sed -n 's/.* -w \(.*\)$/\1/p' > "$FAKE/keychain" ;;
   find-generic-password) [ -s "$FAKE/keychain" ] || exit 44; cat "$FAKE/keychain" ;;
   delete-generic-password) echo "keychain delete" >> "$FAKE/calls"; rm -f "$FAKE/keychain" ;;
   *) exit 1 ;;
@@ -346,6 +346,21 @@ if script -q /dev/null true < /dev/null >/dev/null 2>&1; then
   grep -q 'Already signed in' "$FAKE/si2" || fail "--sign-in signed in twice"
   [ "$(count 'device start')" = $((starts + 1)) ] || fail "--sign-in started a second sign-in"
   rm -f "$FAKE/si2"
+  # A locked Keychain (a Mac reached over ssh): the key goes to a file only the owner can read.
+  sh "$here/spooky-fixer.sh" --sign-out > /dev/null || fail "sign-out before locked test failed"
+  touch "$FAKE/kc-locked"
+  sh "$here/spooky-fixer.sh" --sign-in < /dev/null > "$FAKE/si3" 2>&1 || fail "--sign-in with a locked Keychain failed"
+  kf="$HOME/.config/spooky/agent-key"
+  grep -qx 'sp_DEVICEkey-SECRET-777' "$kf" || fail "locked Keychain: key not saved to the file"
+  [ "$(ls -l "$kf" | cut -c1-10)" = "-rw-------" ] || fail "locked Keychain: key file readable by others"
+  grep -q 'Keychain is locked' "$FAKE/si3" || fail "locked Keychain: no notice"
+  sh "$here/spooky-fixer.sh" --sign-in < /dev/null > "$FAKE/si3" 2>&1 || fail "second locked --sign-in failed"
+  grep -q 'Already signed in' "$FAKE/si3" || fail "locked Keychain: saved file key not used"
+  rm -f "$FAKE/kc-locked"
+  sh "$here/spooky-fixer.sh" --sign-out > /dev/null || fail "sign-out after locked test failed"
+  [ ! -e "$kf" ] || fail "sign-out kept the key file"
+  if grep -lE "sp_DEVICEkey" "$FAKE/si3"; then fail "locked Keychain: key printed"; fi
+  rm -f "$FAKE/si3"
   [ "$(count 'KEY IN ARGV')" = 0 ] || fail "a key or device code in a process argument"
   if grep -rlE "sp_DEVICEkey|dc-SECRET" "$FAKE/signin-out" "$FAKE/out" "$HOME/.local/state"; then fail "sign-in secret written"; fi
 else

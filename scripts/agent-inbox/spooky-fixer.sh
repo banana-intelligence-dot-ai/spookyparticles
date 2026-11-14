@@ -112,18 +112,19 @@ while [ "${base_url%/}" != "$base_url" ]; do base_url=${base_url%/}; done
 # --- The agent's key ------------------------------------------------------------------------
 # Order: SPOOKY_API_KEY, the clipboard flag, the key this computer saved at sign-in, then (in a
 # terminal) sign-in: Spooky shows a code, you approve it in your browser, and this computer gets
-# its own named read key. It is saved in the macOS Keychain (elsewhere: a file only you can
-# read, ~/.config/spooky/agent-key). It goes to curl on stdin and is never printed or logged.
+# its own named read key. It is saved in the macOS Keychain (when that is locked, as over ssh,
+# or off a Mac: a file only you can read, ~/.config/spooky/agent-key). It goes to curl on
+# stdin and is never printed or logged.
 key_service=spookyparticles.com
 key_account=spooky-agent
 key_file=${XDG_CONFIG_HOME:-"$HOME/.config"}/spooky/agent-key
 
 load_key() {
-  if command -v security >/dev/null 2>&1; then
-    security find-generic-password -s "$key_service" -a "$key_account" -w 2>/dev/null
-  elif [ -r "$key_file" ]; then
-    cat "$key_file"
+  if command -v security >/dev/null 2>&1 \
+    && security find-generic-password -s "$key_service" -a "$key_account" -w 2>/dev/null; then
+    return 0
   fi
+  [ -r "$key_file" ] && cat "$key_file"
 }
 
 store_key() {
@@ -131,9 +132,12 @@ store_key() {
     # security -i reads its command on stdin, so the key never appears in a process list.
     printf 'add-generic-password -U -s %s -a %s -l "Spooky Particles agent key" -w %s\n' \
       "$key_service" "$key_account" "$1" | security -i >/dev/null 2>&1
-  else
-    (umask 077; mkdir -p "$(dirname "$key_file")" && printf '%s\n' "$1" > "$key_file")
+    # security -i can exit 0 after a failed add, so check the key is really there.
+    [ "$(security find-generic-password -s "$key_service" -a "$key_account" -w 2>/dev/null)" = "$1" ] && return 0
+    # Over ssh the login Keychain is locked, so a headless Mac keeps the key in the file instead.
+    printf 'The Keychain is locked (normal over ssh), so the key is saved in %s, readable only by you.\n' "$key_file" >&2
   fi
+  (umask 077; mkdir -p "$(dirname "$key_file")" && printf '%s\n' "$1" > "$key_file")
 }
 
 forget_key() {
