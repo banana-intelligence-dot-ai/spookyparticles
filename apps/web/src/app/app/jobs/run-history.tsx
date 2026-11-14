@@ -3,6 +3,8 @@
  * Runs and misses: the top of Schedules. One lane per job across the last 14 days. Each tick is
  * a run; a red stretch is a miss Spooky caught, from when the run was due to when the job came
  * back (green dot). Tap a lane for that job's latest miss as a short story. Real rows only.
+ * The dot by a job's name is how it stands now, not its history: a job that came back is green
+ * even though its misses stay red on the strip. Jobs broken now sort first.
  */
 import { useState } from "react";
 import type { Miss, RunHistory, RunRow } from "@/lib/run-history";
@@ -11,6 +13,22 @@ import { duration } from "../catch-log";
 
 const HOUR = 3_600_000;
 const SHOW = 8;
+
+/** Pure: the row dot from the job's current status. Red only when it is quiet or failing now. */
+export function jobDot(status: string): { tone: "red" | "amber" | "accent" | "grey"; word: string } {
+  if (status === "down") return { tone: "red", word: "broken now" };
+  if (status === "late") return { tone: "amber", word: "late now" };
+  if (status === "never_checked_in") return { tone: "amber", word: "never checked in" };
+  if (status === "up") return { tone: "accent", word: "on time" };
+  return { tone: "grey", word: status === "retired" ? "retired" : status === "paused" ? "paused" : "waiting for a first run" };
+}
+
+/** Pure: broken now first, then late, then the rest in their given order. */
+export function byCurrentStatus<R extends { status: string }>(rows: R[]): R[] {
+  const rank = { red: 0, amber: 1, accent: 2, grey: 2 } as const;
+  return rows.map((r, i) => ({ r, i })).sort((a, b) => rank[jobDot(a.r.status).tone] - rank[jobDot(b.r.status).tone] || a.i - b.i).map((x) => x.r);
+}
+const DOT_CLASS = { red: "bg-red", amber: "bg-amber", accent: "bg-accent", grey: "bg-fg-3" } as const;
 
 const at = (iso: string) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -21,8 +39,9 @@ export function RunHistoryChart({ data, now }: { data: RunHistory; now: number }
   const [all, setAll] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
-  const rows = all ? data.jobs : data.jobs.slice(0, SHOW);
-  const fallback = data.jobs.find((r) => r.misses.length) ?? data.jobs[0] ?? null;
+  const sorted = byCurrentStatus(data.jobs);
+  const rows = all ? sorted : sorted.slice(0, SHOW);
+  const fallback = sorted.find((r) => jobDot(r.status).tone === "red") ?? sorted.find((r) => r.misses.length) ?? sorted[0] ?? null;
   const shown = data.jobs.find((r) => r.id === (hover ?? picked)) ?? fallback;
   const s = data.summary;
 
@@ -55,13 +74,13 @@ export function RunHistoryChart({ data, now }: { data: RunHistory; now: number }
         <ul className="flex flex-col">
           {rows.map((r) => {
             const active = shown?.id === r.id;
-            const down = r.misses.some((m) => !m.backAt);
+            const dot = jobDot(r.status);
             return (
               <li key={r.id}>
                 <button
                   type="button"
                   aria-pressed={picked === r.id}
-                  aria-label={`${r.name}: ${r.runs} runs, ${r.misses.length} ${r.misses.length === 1 ? "miss" : "misses"}${down ? ", missing now" : ""}`}
+                  aria-label={`${r.name}: ${r.runs} runs, ${r.misses.length} ${r.misses.length === 1 ? "miss" : "misses"}, ${dot.word}`}
                   onMouseEnter={() => setHover(r.id)}
                   onMouseLeave={() => setHover(null)}
                   onFocus={() => setHover(r.id)}
@@ -70,7 +89,7 @@ export function RunHistoryChart({ data, now }: { data: RunHistory; now: number }
                   className={`group flex min-h-11 w-full flex-col gap-1 rounded-xl px-2 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-fg/40 sm:flex-row sm:items-center sm:gap-4 sm:px-3 ${active ? "bg-raised-2" : "hover:bg-raised-2/60"}`}
                 >
                   <span className="flex min-w-0 items-center gap-2 sm:w-48 sm:shrink-0">
-                    <span aria-hidden className={`size-[7px] shrink-0 rounded-full ${down ? "bg-red" : r.status === "up" ? "bg-accent" : "bg-fg-3"}`} />
+                    <span aria-hidden className={`size-[7px] shrink-0 rounded-full ${DOT_CLASS[dot.tone]}`} />
                     <span className="truncate text-[13px] text-fg" title={r.name}>
                       {r.name}
                     </span>

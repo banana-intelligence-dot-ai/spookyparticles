@@ -56,6 +56,10 @@ export type Catch = {
   note: string | null;
   /** Waiting jobs: when the next run is due. */
   nextRunAt?: string | null;
+  /** Deploys: the build log line that names the failure, when the host gave one. */
+  cause?: string | null;
+  /** Jobs: which watched job, so the view can show its last note and offer Retire. */
+  jobId?: string | null;
 };
 export type Catches = {
   catches: Catch[];
@@ -119,7 +123,7 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
     if (a.kind === "job_quiet" || a.kind === "job_failed") {
       if (openJobs.has(jobId)) continue;
       const job = str(a.payload.job) ?? "A job";
-      const c: Catch = { id: a.key, kind: "job", project: str(a.payload.project), what: a.kind === "job_failed" ? `${job} run failed` : `${job} went quiet`, caughtAt: a.createdAt.toISOString(), alertedAt: alertAt(a), heardAt: null, agent: null, fixedAt: null, fixedBy: null, status: "open", note: null };
+      const c: Catch = { id: a.key, kind: "job", project: str(a.payload.project), what: a.kind === "job_failed" ? `${job} run failed` : `${job} went quiet`, caughtAt: a.createdAt.toISOString(), alertedAt: alertAt(a), heardAt: null, agent: null, fixedAt: null, fixedBy: null, status: "open", note: null, jobId };
       openJobs.set(jobId, c);
       out.push(c);
     } else if (a.kind === "job_recovered") {
@@ -192,6 +196,7 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
       agent: null,
       fixedAt: fix ? (str(fix.properties.at) ?? fix.createdAt.toISOString()) : null,
       fixedBy: sha ? { kind: "commit", sha, message: str(fix?.properties.message) } : null,
+      cause,
       ...closed,
     });
   }

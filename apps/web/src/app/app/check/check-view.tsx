@@ -12,7 +12,8 @@ import { Empty, PageHeader, SectionTitle, buttonStyles, surface } from "@/compon
 import { apiSend, useApi } from "@/components/use-api";
 import { REASON_TEXT } from "@/lib/checks/catalog";
 import { prLabel } from "@/lib/checks/handoff";
-import { CopyForAgent } from "../copy-for-agent";
+import { CopyForAgent, RoutingLine } from "../copy-for-agent";
+import { routingStatus } from "@/lib/break-guide";
 import { ago } from "../project-model";
 import { CheckMatrix } from "./check-matrix";
 import { checkPrompt, findingAnchor } from "./check-prompt";
@@ -194,7 +195,12 @@ function OpenRow({ c, project, busy, now, onDismiss }: { c: Check; project: Chec
         <Evidence evidence={c.evidence} />
         {c.limit ? <p className="mt-3 max-w-[60ch] text-[12px] text-pretty text-fg-3">{c.limit}</p> : null}
         <HandoffLine handoff={c.handoff} now={now} />
-        {canHandOff(c, Boolean(pr)) ? <CopyForAgent prompt={checkPrompt(project, c)} className="mt-4" /> : null}
+        {canHandOff(c, Boolean(pr)) ? (
+          <div className="mt-4 flex flex-col gap-1">
+            <RoutingLine {...routingStatus("check", null, now)} />
+            <CopyForAgent prompt={checkPrompt(project, c)} className="-ml-3" />
+          </div>
+        ) : null}
         <p className="mt-4 max-w-[60ch] text-pretty text-fg">{c.fix.text}</p>
         {c.fix.steps ? <pre className="mt-3 overflow-x-auto rounded-lg bg-bg-deep p-3 font-mono text-[12px] leading-[1.6] text-fg select-all">{c.fix.steps.join("\n")}</pre> : null}
         <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5">

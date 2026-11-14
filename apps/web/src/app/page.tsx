@@ -13,13 +13,13 @@ import { vercelSignInConfig } from "@/lib/env";
  * Einstein's entangled pair, your app and your agent. Claim only what is live.
  */
 const COPY = {
-  title: "Spooky Particles: entangle your coding agent with your app",
+  title: "Spooky Particles: self-healing apps on Vercel",
   description:
-    "Spooky Particles entangles your coding agent with every app you ship on Vercel. It checks every 5 minutes, and when one breaks, your agent knows why. Read-only.",
+    "Self-healing apps on Vercel. Spooky checks your apps every 5 minutes. When one breaks, your coding agent fixes it and Spooky proves it's fixed. Read-only.",
   quote: "“spooky action at a distance”",
   quoteSource: "Einstein to Max Born, 1947",
   h1: ["Fixed by the time", "you realize it’s broken."],
-  sub: ["Entangle your coding agent with your Vercel apps.", "When one breaks, it knows why."],
+  sub: ["Self-healing apps on Vercel.", "Your coding agent fixes the break. Spooky proves it’s fixed."],
   reassure: "Read-only. Never deletes anything. Revoke any time.",
 } as const;
 

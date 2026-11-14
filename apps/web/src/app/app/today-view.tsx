@@ -17,7 +17,9 @@ import { absoluteTime, plural } from "./data-model";
 import { Onboarding, onboardingComplete } from "./onboarding";
 import { ago, type ActivityReport, type ProjectsReport } from "./project-model";
 import { buildToday, type JobRow, type TodayFix, type TodayRow, type TodayTone } from "./today-model";
-import { agentButton, CopyForAgent } from "./copy-for-agent";
+import { agentButton, CopyForAgent, RoutingLine } from "./copy-for-agent";
+import { claimOn, routingStatus } from "@/lib/break-guide";
+import type { Claim } from "@/lib/claims";
 
 export function TodayView() {
   const params = useSearchParams();
@@ -34,7 +36,7 @@ export function TodayView() {
   });
   const listening = useApi<Listening>("/api/v1/agents/listening", { pollMs: () => 60_000 });
   const { reload: reloadListening } = listening;
-  const catches = useApi<Catches>("/api/v1/catches", { pollMs: () => 60_000 });
+  const catches = useApi<Catches & { claims?: Claim[] }>("/api/v1/catches", { pollMs: () => 60_000 });
   const { reload: reloadProjects } = projects;
 
   // While a sync runs, connections poll and the list refills on the same beat.
@@ -99,8 +101,8 @@ export function TodayScreen({
   checkOpen?: number;
   /** Which sessions hear about which projects; null until loaded. */
   listening?: Listening | null;
-  /** What was caught in 30 days and how fast it was fixed; null until loaded. */
-  catches?: Catches | null;
+  /** What was caught in 30 days and how fast it was fixed, with who holds which project; null until loaded. */
+  catches?: (Catches & { claims?: Claim[] }) | null;
   params: URLSearchParams;
   error: string | null;
   now: number;
@@ -155,7 +157,7 @@ export function TodayScreen({
 
       {ready && hasData ? (
         <>
-          {catches ? <CatchLog data={catches} now={now} /> : null}
+          {catches ? <CatchLog data={catches} now={now} claims={catches.claims ?? []} jobs={jobs} projects={projects?.projects ?? []} onChanged={onChanged} /> : null}
 
           <section aria-label="Today in two numbers" className="mb-14 grid max-w-[720px] grid-cols-1 gap-y-5 sm:grid-cols-2 sm:gap-x-12">
             <Figure
@@ -209,7 +211,12 @@ export function TodayScreen({
                       </h3>
                       <ol>
                         {list.map((r) => (
-                          <Row key={r.id} r={r} onIgnore={r.fix?.ignoreKey ? () => ignore(r.fix as TodayFix, r.what, true) : undefined} />
+                          <Row
+                            key={r.id}
+                            r={r}
+                            routing={r.breakKind ? routingStatus(r.breakKind, claimOn(catches?.claims ?? [], r.project ?? null), now) : null}
+                            onIgnore={r.fix?.ignoreKey ? () => ignore(r.fix as TodayFix, r.what, true) : undefined}
+                          />
                         ))}
                       </ol>
                     </div>
@@ -330,7 +337,7 @@ function metaParts(r: TodayRow): string[] {
   return [r.when, ...r.source.split(" · ")].filter((x): x is string => Boolean(x));
 }
 
-function Row({ r, onIgnore }: { r: TodayRow; onIgnore?: () => Promise<boolean> }) {
+function Row({ r, routing, onIgnore }: { r: TodayRow; routing: { sent: boolean; text: string } | null; onIgnore?: () => Promise<boolean> }) {
   const meta = metaParts(r);
   return (
     <li className="grid grid-cols-[minmax(0,1fr)] gap-x-3 border-b border-line-1 py-4 sm:grid-cols-[minmax(0,1fr)_104px_120px] sm:items-center sm:gap-x-6">
@@ -353,6 +360,11 @@ function Row({ r, onIgnore }: { r: TodayRow; onIgnore?: () => Promise<boolean> }
               </span>
             ))}
           </p>
+        ) : null}
+        {routing ? (
+          <div className="mt-2">
+            <RoutingLine {...routing} />
+          </div>
         ) : null}
         {r.fix ? <FixActions prompt={r.fix.prompt} onIgnore={onIgnore} /> : null}
       </div>
@@ -400,8 +412,8 @@ function FixActions({ prompt, onIgnore }: { prompt: string; onIgnore?: () => Pro
   const [busy, setBusy] = useState(false);
   const [ignoreFailed, setIgnoreFailed] = useState(false);
   return (
-    <div className="mt-3">
-      <CopyForAgent prompt={prompt}>
+    <div className="mt-1 -ml-3">
+      <CopyForAgent prompt={prompt} label="Copy fix prompt">
         {onIgnore ? (
           <button
             type="button"

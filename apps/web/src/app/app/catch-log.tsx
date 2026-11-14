@@ -4,14 +4,21 @@
  * placed by when it broke (across) and how long it took to fix (up: higher took longer).
  * Still-open ones sit in a red band at the top; one waiting on its next run sits there hollow.
  * Ones closed without a fix (a retired project, an ignored failure) are listed under the chart.
- * Tap a dot for its story: broke, alerted, an agent asked, fixed, and by what. Real rows only;
- * an empty month says so. A line under the numbers says where every catch stands, so the
- * counts always add up.
+ * Tap a dot for its story: broke, alerted, an agent asked, fixed, and by what. An open one also
+ * says what happened, whether an agent has it, the one thing to do, and links that do it. Real
+ * rows only; an empty month says so. A line under the numbers says where every catch stands, so
+ * the counts always add up, and why "Open" can be more than Today's "Broken now".
  */
 import { useMemo, useState } from "react";
 import { Chips } from "@/components/ui";
+import { apiSend } from "@/components/use-api";
+import { breakKind, breakPrompt, claimOn, openSplit, routingStatus, whatHappened, whatToDo, type ClaimLike } from "@/lib/break-guide";
 import type { Catch, CatchKind, Catches } from "@/lib/catches";
+import { CopyForAgent, RoutingLine, agentButton } from "./copy-for-agent";
 import { absoluteTime } from "./data-model";
+import type { Project } from "./project-model";
+import { projectHref } from "./projects-view";
+import type { JobRow } from "./today-model";
 
 const DAY = 86_400_000;
 const KIND_LABEL: Record<CatchKind, [string, string]> = {
@@ -75,19 +82,29 @@ export function catchPoints(list: Catch[], now: number, windowDays: number): Poi
   });
 }
 
-export function CatchLog({ data, now }: { data: Catches; now: number }) {
+/** Pure: the story the card opens on. The oldest open break, else the newest fix, else the first. */
+export function defaultCatch(list: Catch[]): Catch | null {
+  const open = list.filter((c) => c.status === "open").sort((a, b) => a.caughtAt.localeCompare(b.caughtAt))[0];
+  if (open) return open;
+  const fixed = list.filter((c) => c.fixedAt).sort((a, b) => (b.fixedAt as string).localeCompare(a.fixedAt as string))[0];
+  return fixed ?? list[0] ?? null;
+}
+
+type Extra = { claims?: ClaimLike[]; jobs?: JobRow[]; projects?: Project[]; onChanged?: () => void };
+
+export function CatchLog({ data, now, claims = [], jobs = [], projects = [], onChanged }: { data: Catches; now: number } & Extra) {
   const kinds = useMemo(() => [...new Set(data.catches.map((c) => c.kind))], [data]);
   const [kind, setKind] = useState<CatchKind | "all">("all");
   const list = kind === "all" ? data.catches : data.catches.filter((c) => c.kind === kind);
   const points = useMemo(() => catchPoints(list, now, data.windowDays), [list, now, data.windowDays]);
   const [picked, setPicked] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
-  // Default story: the newest fix, else the newest open one.
-  const fallback = list.find((c) => c.fixedAt) ?? list[0] ?? null;
+  const fallback = defaultCatch(list);
   const shown = list.find((c) => c.id === (hover ?? picked)) ?? fallback;
   const s = data.summary;
   const closed = list.filter(isClosed);
   const line = ledger(s);
+  const split = openSplit(data.catches);
   const days = [...Array(5)].map((_, i) => now - (data.windowDays - (i * data.windowDays) / 4) * DAY);
 
   return (
@@ -101,6 +118,7 @@ export function CatchLog({ data, now }: { data: Catches; now: number }) {
             Fixed by the time you realize it&apos;s broken. Each dot is something that broke in the last {data.windowDays} days; the lower it sits, the faster it was fixed.
           </p>
           {line ? <p className="mt-2 max-w-[520px] text-[13px] leading-[1.5] text-fg">{line}</p> : null}
+          {split && split.open !== split.broken ? <p className="mt-1 max-w-[520px] text-[13px] leading-[1.5] text-fg-2">{split.words}</p> : null}
         </div>
         <dl className="flex gap-8">
           <Stat label="Caught" value={String(s.caught)} />
@@ -193,7 +211,7 @@ export function CatchLog({ data, now }: { data: Catches; now: number }) {
                       cx={`${p.x}%`}
                       cy={p.y}
                       r={active ? 7 : 5}
-                      className={`transition-[r] duration-150 ${p.c.status === "waiting" ? `fill-bg ${active ? "stroke-fg" : "stroke-fg-2"}` : `${p.open ? "fill-red" : "fill-accent"} ${active ? "stroke-fg" : "stroke-bg"}`}`}
+                      className={`transition-[r] duration-150 motion-reduce:transition-none ${p.c.status === "waiting" ? `fill-bg ${active ? "stroke-fg" : "stroke-fg-2"}` : `${p.open ? "fill-red" : "fill-accent"} ${active ? "stroke-fg" : "stroke-bg"}`}`}
                       strokeWidth={active ? 2 : 1.5}
                     />
                   </g>
@@ -220,7 +238,7 @@ export function CatchLog({ data, now }: { data: Catches; now: number }) {
             </p>
           ) : null}
 
-          {shown ? <Story c={shown} now={now} /> : null}
+          {shown ? <Story c={shown} now={now} claims={claims} jobs={jobs} projects={projects} onChanged={onChanged} /> : null}
         </>
       ) : (
         <p className="rounded-2xl border border-line-2 bg-raised px-5 py-6 text-[14px] leading-[1.6] text-fg-2">
@@ -241,7 +259,7 @@ function Stat({ label, value, tone = null }: { label: string; value: string; ton
 }
 
 /** One catch as a short story: broke, alerted, an agent asked, fixed. Each step says how long after the break. */
-function Story({ c, now }: { c: Catch; now: number }) {
+function Story({ c, now, claims = [], jobs = [], projects = [], onChanged }: { c: Catch; now: number } & Extra) {
   const broke = Date.parse(c.caughtAt);
   const after = (at: string) => `+${duration(Date.parse(at) - broke)}`;
   const steps: { label: string; at: string | null; note?: string; tone?: "red" | "accent" }[] = [
@@ -256,11 +274,12 @@ function Story({ c, now }: { c: Catch; now: number }) {
           ? { label: "Closed: project retired", at: null }
           : c.status === "ignored"
             ? { label: "Closed: you ignored it", at: null }
-            : { label: `Open for ${duration(now - broke)}`, at: null },
+            : { label: `Still open, ${duration(now - broke)}`, at: null },
     ...(c.fixedAt && c.confirmedAt ? [{ label: "Checked on production", at: c.confirmedAt, tone: "accent" as const }] : []),
   ];
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-line-1 px-4 py-4 sm:flex-row sm:items-start sm:gap-8 sm:px-5" aria-live="polite">
+    <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-line-1 px-4 py-4 sm:px-5" aria-live="polite">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-8">
       <div className="min-w-0 sm:w-[38%]">
         <p className="text-[12px] text-fg-3">
           {KIND_LABEL[c.kind][0]}
@@ -293,6 +312,95 @@ function Story({ c, now }: { c: Catch; now: number }) {
           </li>
         ))}
       </ol>
+      </div>
+      {c.status === "open" ? <OpenHelp c={c} now={now} claims={claims} jobs={jobs} projects={projects} onChanged={onChanged} /> : null}
+    </div>
+  );
+}
+
+const sameRepo = (a: string, b: string) => a.toLowerCase() === b.toLowerCase() || a.toLowerCase().split("/").pop() === b.toLowerCase().split("/").pop();
+
+/** For an open break: what happened, who has it, the one thing to do, and the links that do it. */
+function OpenHelp({ c, now, claims = [], jobs = [], projects = [], onChanged }: { c: Catch; now: number } & Extra) {
+  const job = c.jobId ? (jobs.find((j) => j.id === c.jobId) ?? null) : null;
+  const kind = breakKind(c, job?.status);
+  const project = c.project ? (projects.find((p) => sameRepo(p.name, c.project as string)) ?? null) : null;
+  const deploy = kind === "deploy_failed" ? (project?.deployments.find((d) => d.at === c.caughtAt) ?? null) : null;
+  const due = job?.nextDueAt ?? (job?.lastPingAt ? new Date(Date.parse(job.lastPingAt) + job.periodMinutes * 60_000).toISOString() : null);
+  const happened = whatHappened({ kind, what: c.what, cause: c.cause ?? deploy?.cause ?? null, note: job?.lastNote ?? null, lastCheckIn: job?.lastPingAt ?? null, dueAt: due }, now);
+  const routing = routingStatus(kind, claimOn(claims, c.project), now);
+  const source: { label: string; href: string; external: boolean } | null =
+    kind === "deploy_failed"
+      ? deploy?.inspectorUrl
+        ? { label: "Open build log", href: deploy.inspectorUrl, external: true }
+        : deploy?.url
+          ? { label: "Open deploy", href: deploy.url, external: true }
+          : c.project
+            ? { label: "Open project", href: projectHref(project?.name ?? c.project), external: false }
+            : null
+      : kind === "site_down" && project?.productionUrl
+        ? { label: "Open site", href: project.productionUrl, external: true }
+        : kind === "check"
+          ? { label: "Open the finding", href: "/app/check", external: false }
+          : kind.startsWith("job_")
+            ? { label: "Open the job", href: c.jobId ? `/app/jobs#job-${c.jobId}` : "/app/jobs", external: false }
+            : c.project
+              ? { label: "Open project", href: projectHref(project?.name ?? c.project), external: false }
+              : null;
+  const prompt = breakPrompt({ project: project?.name ?? c.project ?? "my project", what: c.what, cause: c.cause ?? deploy?.cause ?? null, link: source?.external ? source.href : null, at: c.caughtAt });
+  const [retire, setRetire] = useState<"idle" | "busy" | "done" | "failed">("idle");
+  const canRetire = Boolean(job && job.status !== "retired" && kind.startsWith("job_"));
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-line-1 pt-3 text-[14px] leading-[1.5]">
+      <RoutingLine {...routing} />
+      <p className="text-pretty text-fg-2">
+        <span className="text-fg-3">What happened: </span>
+        {happened}
+      </p>
+      <p className="text-pretty text-fg-2">
+        <span className="text-fg-3">What to do: </span>
+        {whatToDo(kind)}
+      </p>
+      <div className="-ml-3 flex flex-wrap items-center gap-x-1">
+        {source ? (
+          source.external ? (
+            <a href={source.href} target="_blank" rel="noreferrer" className={`${agentButton} text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg`}>
+              {source.label}
+            </a>
+          ) : (
+            <a href={source.href} className={`${agentButton} text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg`}>
+              {source.label}
+            </a>
+          )
+        ) : null}
+        <CopyForAgent prompt={prompt} label="Copy fix prompt" />
+        {canRetire && retire !== "done" ? (
+          <button
+            type="button"
+            disabled={retire === "busy"}
+            onClick={async () => {
+              setRetire("busy");
+              const r = await apiSend("PATCH", `/api/v1/checkins/${job!.id}`, { retired: true }).catch(() => ({ ok: false }));
+              setRetire(r.ok ? "done" : "failed");
+              if (r.ok) onChanged?.();
+            }}
+            className={`${agentButton} text-fg-2 hover:text-fg disabled:opacity-60`}
+          >
+            {retire === "busy" ? "Retiring…" : "Retire the job"}
+          </button>
+        ) : null}
+      </div>
+      {retire === "done" ? (
+        <p className="text-[13px] text-fg-2" aria-live="polite">
+          Retired. Bring it back any time on{" "}
+          <a href="/app/jobs" className="underline decoration-line-3 underline-offset-4 hover:text-fg">
+            Schedules
+          </a>
+          .
+        </p>
+      ) : null}
+      {retire === "failed" ? <p className="text-[13px] text-red">Spooky couldn&apos;t retire it. Try again on Schedules.</p> : null}
     </div>
   );
 }

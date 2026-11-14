@@ -7,6 +7,7 @@ import type { Connection } from "./connection-model";
 import { plural, type Finding, type Spend } from "./data-model";
 import { ago, dueWords, host, isFailedState, siteConfirmedDown, type Notice, type Project } from "./project-model";
 import { money, scopeOf } from "./spend-model";
+import type { BreakKind } from "@/lib/break-guide";
 
 const DAY = 86_400_000;
 const WINDOW = 30 * DAY;
@@ -36,6 +37,9 @@ export type TodayRow = {
   cents: number;
   /** The money on the row, as shown: "$22.30/mo", "$70.00". */
   amount: string | null;
+  /** For a break: which kind and which project, so the view can say whether an agent has it. */
+  breakKind?: BreakKind;
+  project?: string | null;
 };
 
 export type Today = {
@@ -85,7 +89,7 @@ export function siteOf(url: string): string {
 }
 
 /** A check-in job as the API lists it; only what Today needs. */
-export type JobRow = { id: string; name: string; project: string | null; status: "new" | "never_checked_in" | "up" | "late" | "down" | "paused" | "retired"; lastPingAt: string | null; lastPingKind: string | null; lastNote: string | null; periodMinutes: number; missCount: number };
+export type JobRow = { id: string; name: string; project: string | null; status: "new" | "never_checked_in" | "up" | "late" | "down" | "paused" | "retired"; lastPingAt: string | null; lastPingKind: string | null; lastNote: string | null; periodMinutes: number; missCount: number; nextDueAt?: string | null };
 
 export function buildToday(
   input: {
@@ -128,13 +132,15 @@ export function buildToday(
       action: { label: "Open schedules", href: "/app/jobs", external: false },
       cents: 0,
       amount: null,
+      breakKind: failed ? "job_failed" : "job_quiet",
+      project: j.project,
     });
   }
 
   // 1. Failed deploys in the last 30 days: GitHub's deploy state, or the host's mail.
   for (const p of projects) {
     if (!siteConfirmedDown(p) || !p.uptime) continue;
-    rows.push({ id: `uptime-${p.id}`, tone: "red", what: `${repoShort(p.name)}: site is down`, why: `The production site answered ${p.uptime.lastStatus} on two uptime checks in a row.`, when: ago(p.uptime.since, now), at: Date.parse(p.uptime.since), source: "uptime check", action: p.productionUrl ? { label: "Open site", href: p.productionUrl, external: true } : { label: "See the project", href: "/app/projects", external: false }, cents: 0, amount: null });
+    rows.push({ id: `uptime-${p.id}`, tone: "red", what: `${repoShort(p.name)}: site is down`, why: `The production site answered ${p.uptime.lastStatus} on two uptime checks in a row.`, when: ago(p.uptime.since, now), at: Date.parse(p.uptime.since), source: "uptime check", action: p.productionUrl ? { label: "Open site", href: p.productionUrl, external: true } : { label: "See the project", href: "/app/projects", external: false }, cents: 0, amount: null, breakKind: "site_down", project: p.name });
   }
   for (const p of projects) {
     if (p.health === "archived") continue;
@@ -179,6 +185,8 @@ export function buildToday(
             : null,
       cents: 0,
       amount: null,
+      breakKind: "deploy_failed",
+      project: p.name,
     });
   }
 

@@ -12,6 +12,7 @@ import { FleetMap } from "./fleet-map";
 import { Chevron, Chips, Empty, ErrorLine } from "@/components/ui";
 import { formatCents, useApi } from "@/components/use-api";
 import { touch } from "@/lib/analytics/client";
+import { cleanNoticeSubject, noticeRemedy } from "@/lib/notice-remedy";
 import { countLabel, isRunning, type Connection } from "./connection-model";
 import { absoluteTime, plural } from "./data-model";
 import {
@@ -177,9 +178,7 @@ export function ProjectsScreen({
   const syncing = connections.some((c) => isRunning(c.sync));
   const last = connections.map((c) => c.lastSyncedAt).filter((x): x is string => Boolean(x)).sort().at(-1);
   const sumOf = (list: Project[]) => list.reduce((a, p) => a + (p.currency === null || p.currency === report?.totals.currency ? (p.monthlyCents ?? 0) : 0), 0);
-  const billed = sumOf(projects);
   const shownBilled = sumOf(matches);
-  const rest = Math.max(0, (report?.totals.monthlyCents ?? 0) - billed);
 
   const toggle = (id: string) =>
     setOpen((s) => {
@@ -210,16 +209,6 @@ export function ProjectsScreen({
             {projects.some((p) => p.kind === "host") ? ` and ${plural(projects.filter((p) => p.kind === "host").length, "Vercel project", "Vercel projects")}` : ""}
             {inboxes ? `, costs from receipts in ${countLabel("gmail", inboxes)}` : ""}.{" "}
             {last ? <span title={absoluteTime(last)}>{syncing ? "Syncing now; last finished" : "Synced"} {ago(last, now)}.</span> : syncing ? "Syncing now." : null}
-            {rest > 0 ? (
-              <>
-                {" "}
-                <span className="num font-mono">{formatCents(rest)}</span>/mo of work bills names no project; it&apos;s on{" "}
-                <Link href="/app/findings" className="text-fg-2 underline decoration-line-3 underline-offset-4 hover:text-fg">
-                  Spend
-                </Link>
-                .
-              </>
-            ) : null}
           </p>
         ) : null}
       </header>
@@ -470,9 +459,7 @@ function ProjectRow({
               {formatCents(p.monthlyCents)}
             </span>
           ) : (
-            <span className="text-[12px] text-fg-3" title="You have receipts, but none of them names this project. Vendors bill the account, not the app.">
-              no bill names it
-            </span>
+            <span className="sr-only">Cost unknown</span>
           )}
         </div>
         <div className="hidden min-w-0 lg:block">
@@ -542,10 +529,34 @@ function ExpandButton({ open, onToggle, panelId, name }: { open: boolean; onTogg
   );
 }
 
-/** A notice as plain text, for a one-line cell. */
+/** A notice as plain text, for a one-line cell. "GitHub: [GitHub] ..." loses the repeat. */
 function noticeText(n: Notice, now: number): string {
   const s = noticeSentence(n, now);
-  return `${s.vendor ? `${s.vendor}: ` : ""}${s.text}${s.amount ? `, ${s.amount}` : ""}${s.detail ? `, ${s.detail}` : ""}`;
+  const text = s.vendor ? (cleanNoticeSubject(s.text, s.vendor) ?? s.text) : s.text;
+  return `${s.vendor ? `${s.vendor}: ` : ""}${text}${s.amount ? `, ${s.amount}` : ""}${s.detail ? `, ${s.detail}` : ""}`;
+}
+
+/** For a red or amber notice: what it means, what to do, and the link that does it. */
+function NoticeRemedy({ n, now }: { n: Notice; now: number }) {
+  if (!n.verified || !noticeTone(n, now) || n.kind === "deployment") return null;
+  const r = noticeRemedy(n);
+  return (
+    <div className="mt-1 text-[13px] leading-[1.5] text-fg-2">
+      <p className="text-pretty">
+        <span className="text-fg-3">What it means: </span>
+        {r.means}
+      </p>
+      <p className="text-pretty">
+        <span className="text-fg-3">What to do: </span>
+        {r.todo}{" "}
+        {r.action ? (
+          <a href={r.action.href} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg sm:min-h-0">
+            {r.action.label}
+          </a>
+        ) : null}
+      </p>
+    </div>
+  );
 }
 
 /** Kind label, tinted by severity: the one place a notice carries color. */
@@ -676,6 +687,7 @@ function ProjectDetail({
                 <span title={n.inbox}> · from {inboxName(n.inbox)}</span>
                 {!n.verified ? <span className="text-amber"> · sender not verified</span> : null}
               </p>
+              <NoticeRemedy n={n} now={now} />
             </li>
           ))}
         </Field>
