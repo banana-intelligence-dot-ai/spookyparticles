@@ -2,7 +2,7 @@
 /**
  * Browser-side measurement, cookieless.
  *
- * - On the first page of a visit, the link tag (?ref=, utm_source, utm_campaign) is kept in
+ * - On the first page of a visit, the link tag (?ref= or its alias ?ct=, utm_source, utm_campaign) is kept in
  *   sessionStorage (not a cookie) and a "landed" beacon goes to /api/t.
  * - Clicks on links that leave the site send "outbound_clicked" with the destination host.
  * - `touch(event, props)` lets buttons report the few client steps the funnel needs.
@@ -34,7 +34,7 @@ function captureArrival(): Arrival {
   const stored = readArrival();
   const q = new URLSearchParams(window.location.search);
   const fresh: Arrival = {};
-  for (const [from, to] of [["ref", "ref"], ["utm_source", "utm_source"], ["utm_campaign", "utm_campaign"]] as const) {
+  for (const [from, to] of [["ct", "ref"], ["ref", "ref"], ["utm_source", "utm_source"], ["utm_campaign", "utm_campaign"]] as const) {
     const v = q.get(from);
     if (v) fresh[to] = v.slice(0, 40);
   }
