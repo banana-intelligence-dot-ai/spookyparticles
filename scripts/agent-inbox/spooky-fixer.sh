@@ -582,20 +582,35 @@ unsave_state() {
   } > "$tmp" && mv "$tmp" "$state_file"
 }
 
+# prune_done <project> [open keys...]: forget this project's done marks for problems that are no
+# longer open, so a job that recovers and later fails again is a new problem.
+prune_done() {
+  pd_project=$1; shift
+  [ -r "$state_file" ] || return 0
+  tmp="$state_file.tmp.$$"
+  {
+    grep -v '^done ' "$state_file"
+    grep '^done ' "$state_file" | awk -v p="$pd_project" -v keep=" $* " '$4 != p || index(keep, " " $2 " ")'
+  } > "$tmp" && mv "$tmp" "$state_file"
+}
+
 hash_text() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -c1-16
   else sha256sum | cut -c1-16
   fi
 }
 
-# Prints "<claimed yes|no><TAB><identity>" per incident block in the inbox text. A failure's
-# identity is its first line, its When line and its Change line, which stay put while it is open.
+# Prints "<claimed yes|no><TAB><identity>" per incident block in the inbox text. A failed
+# deploy's identity is its first line, When line and Change line: one deploy, one problem. A
+# job's is its first line only, because its When line moves with every failed run: a job that
+# keeps failing is one problem until it recovers (see prune_done).
 incident_rows() {
   awk '
     function flush() { if (key != "") print (claimed ? "yes" : "no") "\t" key; key = ""; claimed = 0; inblock = 0 }
-    /^(Deploy failed: |Job (failed|went quiet|never checked in): )/ { flush(); inblock = 1; key = $0; next }
+    /^Deploy failed: / { flush(); inblock = 1; isjob = 0; key = $0; next }
+    /^Job (failed|went quiet|never checked in): / { flush(); inblock = 1; isjob = 1; key = $0; next }
     inblock && /^$/ { flush(); next }
-    inblock && /^(When|Change): / { key = key " | " $0; next }
+    inblock && /^(When|Change): / { if (!isjob) key = key " | " $0; next }
     inblock && /^Claimed: / { claimed = 1; next }
     END { flush() }'
 }
@@ -673,13 +688,21 @@ check_project() {
     log "$project: could not read Spooky ($(printf '%s' "$body" | head -n 1))"
     return 0
   fi
-  [ -n "$body" ] || return 0
-
-  rows=$(printf '%s\n' "$body" | incident_rows)
+  rows=
+  [ -z "$body" ] || rows=$(printf '%s\n' "$body" | incident_rows)
+  tab=$(printf '\t')
+  open_keys=
+  while IFS="$tab" read -r claimed identity; do
+    [ -n "$identity" ] || continue
+    open_keys="$open_keys $(printf '%s' "$identity" | hash_text)"
+  done <<EOF
+$rows
+EOF
+  # shellcheck disable=SC2086
+  prune_done "$project" $open_keys
   [ -n "$rows" ] || return 0
   new_keys=
   held=false
-  tab=$(printf '\t')
   while IFS="$tab" read -r claimed identity; do
     [ -n "$identity" ] || continue
     k=$(printf '%s' "$identity" | hash_text)

@@ -273,6 +273,25 @@ fixer --budget 99
 [ "$("$REAL_GIT" -C "$HOME/code/app1" log -1 --format=%s)" = mine ] || fail "local commit lost"
 grep -q 'could not bring' "$FAKE/out" || fail "diverged repo not reported"
 
+# A job that keeps failing is one problem: a new failed run moves its When line but starts no new
+# fix. Once it recovers (gone from the inbox) and fails again, that is a new problem.
+job_block() {
+  printf 'Spooky Particles: 1 open problem for %s\n\nJob failed: Nightly (%s)\nWhen: last check-in %s; next due 2026-11-13T07:30:00Z\nLast note: exit 1\nLink: https://spookyparticles.com/app/jobs\n\n' "$1" "$1" "$2"
+}
+: > "$FAKE/incidents-owner_app1.txt"
+job_block owner/app2 2026-11-12T07:33:00Z > "$FAKE/incidents-owner_app2.txt"
+runs_before=$(count "agent claude $HOME/code/app2")
+fixer --budget 99
+[ "$(count "agent claude $HOME/code/app2")" = $((runs_before + 1)) ] || fail "failed job not run"
+job_block owner/app2 2026-11-12T08:33:00Z > "$FAKE/incidents-owner_app2.txt"
+fixer --budget 99
+[ "$(count "agent claude $HOME/code/app2")" = $((runs_before + 1)) ] || fail "a job's next failed run counted as a new problem"
+: > "$FAKE/incidents-owner_app2.txt"
+fixer --budget 99
+job_block owner/app2 2026-11-13T07:33:00Z > "$FAKE/incidents-owner_app2.txt"
+fixer --budget 99
+[ "$(count "agent claude $HOME/code/app2")" = $((runs_before + 2)) ] || fail "a job that recovered and failed again got no run"
+
 # Sign-in (needs a terminal; script(1) gives one): no key anywhere, so the fixer shows a code,
 # opens the link, waits for approval, saves its own key in the Keychain and runs.
 if script -q /dev/null true < /dev/null >/dev/null 2>&1; then
