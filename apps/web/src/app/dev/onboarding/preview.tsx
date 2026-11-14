@@ -136,7 +136,7 @@ export function Preview({ only, view }: { only: string | null; view: View }) {
           </nav>
 
           {view === "today" ? (
-            <TodayScreen ready connections={f.list} projects={d.projects} findings={findings} spend={spend} activity={d.activity} jobs={[]} listening={f.key === "done-expired" ? { checkedAt: new Date(NOW).toISOString(), listeners: [], unheard: [] } : LISTENING} catches={f.key === "done-expired" ? CATCHES_NONE : CATCHES} params={NO_PARAMS} error={null} now={NOW} />
+            <TodayScreen ready connections={f.list} projects={d.projects} activity={d.activity} jobs={[]} listening={f.key === "done-expired" ? { checkedAt: new Date(NOW).toISOString(), listeners: [], unheard: [] } : LISTENING} catches={f.key === "done-expired" ? CATCHES_NONE : CATCHES} params={NO_PARAMS} error={null} now={NOW} />
           ) : null}
 
           {view === "projects" ? (
@@ -179,7 +179,7 @@ export function Preview({ only, view }: { only: string | null; view: View }) {
 
           {/* many: findings open. done: all clear. empty: no Vercel yet. Any other state: before the table exists. */}
           {view === "check" ? (
-            <CheckScreen report={f.key === "many" ? CHECK_FULL : f.key === "done" ? CHECK_CLEAR : f.list.length ? CHECK_NOT_READY : CHECK_NONE} error={null} now={NOW} services={f.key === "many" ? SERVICES_SAMPLE : null} onDismiss={noop} onRestore={noop} />
+            <CheckScreen report={f.key === "many" ? CHECK_FULL : f.key === "done" ? CHECK_CLEAR : f.list.length ? CHECK_NOT_READY : CHECK_NONE} error={null} now={NOW} onDismiss={noop} onRestore={noop} />
           ) : null}
 
           {view === "connections" ? (

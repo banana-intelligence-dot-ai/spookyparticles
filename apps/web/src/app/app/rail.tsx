@@ -9,10 +9,16 @@ export const RAIL_ITEMS = [
   { href: "/app", label: "Today" },
   { href: "/app/projects", label: "Projects" },
   { href: "/app/check", label: "Check" },
-  { href: "/app/findings", label: "Spend" },
   { href: "/app/activity", label: "History" },
   { href: "/app/jobs", label: "Schedules" },
   { href: "/app/connections", label: "Connections" },
+] as const;
+
+/** Side features that left the nav. They keep working by URL and through the API. */
+export const PARKED = [
+  { href: "/app/findings", label: "Spend" },
+  { href: "/app/services", label: "Services" },
+  { href: "/app/expirations", label: "Expirations" },
 ] as const;
 
 type Me = { user: { email: string; name: string } };
@@ -66,6 +72,17 @@ export function RailView({ pathname, email, onSignOut }: { pathname: string; ema
         <button type="button" className="self-start text-[14px] text-fg-2 hover:text-fg" onClick={onSignOut}>
           Sign out
         </button>
+        <p className="text-[12px] text-fg-3">
+          More:{" "}
+          {PARKED.map((item, i) => (
+            <span key={item.href}>
+              {i ? ", " : null}
+              <Link href={item.href} className="text-fg-2 underline decoration-line-3 underline-offset-4 hover:text-fg">
+                {item.label}
+              </Link>
+            </span>
+          ))}
+        </p>
         <Footer className="text-[12px]" />
       </div>
     </aside>

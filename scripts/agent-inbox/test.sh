@@ -47,7 +47,8 @@ cat > "$HOME/bin/curl" <<'EOF'
 # Records each call and answers from $FAKE. Fails like curl -f when the header is wrong.
 all="$*"
 input=$(cat)
-case "$all" in *"$SPOOKY_API_KEY"*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
+[ -n "${SPOOKY_API_KEY:-}" ] && case "$all" in *"$SPOOKY_API_KEY"*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
+case "$all" in *sp_DEVICEkey*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
 method=GET url= project= push=false
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -60,7 +61,24 @@ while [ $# -gt 0 ]; do
   shift
 done
 if [ "$push" = true ]; then echo "push" >> "$FAKE/calls"; exit 0; fi
-[ "$input" = "Authorization: Bearer $SPOOKY_API_KEY" ] || { echo "bad auth" >> "$FAKE/calls"; exit 22; }
+# Agent sign-in: no key; the device code travels on stdin only.
+case "$all" in *dc-SECRET-1*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
+case "$url" in
+  */api/v1/device/start)
+    echo "device start" >> "$FAKE/calls"
+    [ -e "$FAKE/no-device" ] && exit 22
+    echo '{"deviceCode":"dc-SECRET-1","userCode":"ABCD-EFGH","verificationUri":"https://x.example/link","verificationUriComplete":"https://x.example/link?code=ABCD-EFGH","expiresIn":600,"interval":0}'
+    exit 0 ;;
+  */api/v1/device/token)
+    case "$input" in *dc-SECRET-1*) ;; *) echo "bad device code" >> "$FAKE/calls" ;; esac
+    n=$(( $(cat "$FAKE/polls" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FAKE/polls"
+    if [ -e "$FAKE/device-deny" ]; then echo '{"error":"access_denied","message":"Denied."}'
+    elif [ "$n" -lt 2 ]; then echo '{"error":"authorization_pending","message":"Waiting."}'
+    else echo '{"key":"sp_DEVICEkey-SECRET-777","name":"Claude Code on test","prefix":"sp_DEVI","scopes":["read"]}'; fi
+    exit 0 ;;
+esac
+[ "$input" = "Authorization: Bearer $SPOOKY_API_KEY" ] || [ "$input" = "Authorization: Bearer sp_DEVICEkey-SECRET-777" ] \
+  || { echo "bad auth" >> "$FAKE/calls"; exit 22; }
 file=$(printf '%s' "$project" | tr / _)
 case "$method $url" in
   "GET "*/api/v1/me) [ -e "$FAKE/reject-key" ] && exit 22; echo '{}' ;;
@@ -112,7 +130,22 @@ cat > "$HOME/bin/pbpaste" <<'EOF'
 #!/bin/sh
 cat "$FAKE/clipboard"
 EOF
-chmod +x "$HOME/bin/curl" "$HOME/bin/claude" "$HOME/bin/codex" "$HOME/bin/gh" "$HOME/bin/git" "$HOME/bin/pbpaste"
+# A fake Keychain, so the tests never touch the real one. A key on the command line is a leak.
+cat > "$HOME/bin/security" <<'EOF'
+#!/bin/sh
+case "$*" in *sp_*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
+case "$1" in
+  -i) cmd=$(cat); echo "keychain add" >> "$FAKE/calls"; printf '%s\n' "$cmd" | sed -n 's/.* -w \(.*\)$/\1/p' > "$FAKE/keychain" ;;
+  find-generic-password) [ -s "$FAKE/keychain" ] || exit 44; cat "$FAKE/keychain" ;;
+  delete-generic-password) echo "keychain delete" >> "$FAKE/calls"; rm -f "$FAKE/keychain" ;;
+  *) exit 1 ;;
+esac
+EOF
+cat > "$HOME/bin/open" <<'EOF'
+#!/bin/sh
+echo "open $*" >> "$FAKE/calls"
+EOF
+chmod +x "$HOME/bin/curl" "$HOME/bin/claude" "$HOME/bin/codex" "$HOME/bin/gh" "$HOME/bin/git" "$HOME/bin/pbpaste" "$HOME/bin/security" "$HOME/bin/open"
 
 deploy_block() {
   cat <<EOF
@@ -240,6 +273,58 @@ fixer --budget 99
 [ "$("$REAL_GIT" -C "$HOME/code/app1" log -1 --format=%s)" = mine ] || fail "local commit lost"
 grep -q 'could not bring' "$FAKE/out" || fail "diverged repo not reported"
 
+# Sign-in (needs a terminal; script(1) gives one): no key anywhere, so the fixer shows a code,
+# opens the link, waits for approval, saves its own key in the Keychain and runs.
+if script -q /dev/null true < /dev/null >/dev/null 2>&1; then
+  in_tty() { (unset SPOOKY_API_KEY; script -q /dev/null sh "$here/spooky-fixer.sh" "$@" < /dev/null >> "$FAKE/signin-out" 2>&1); }
+  rm -f "$FAKE/keychain" "$FAKE/polls"
+  in_tty --once --budget 0 || fail "first sign-in run failed"
+  grep -q 'ABCD-EFGH' "$FAKE/signin-out" || fail "sign-in code not shown"
+  [ "$(count 'open https://x.example/link?code=ABCD-EFGH')" = 1 ] || fail "sign-in link not opened"
+  grep -qx 'sp_DEVICEkey-SECRET-777' "$FAKE/keychain" || fail "key not saved in the Keychain"
+  grep -q 'Signed in' "$FAKE/signin-out" || fail "sign-in not confirmed"
+  [ "$(count 'bad device code')" = 0 ] || fail "device code not sent"
+  # Next start uses the saved key: no second sign-in.
+  in_tty --once --budget 0 || fail "run with a saved key failed"
+  [ "$(count 'device start')" = 1 ] || fail "signed in again with a saved key"
+  # A saved key Spooky rejects is removed, and sign-in runs again.
+  touch "$FAKE/reject-key"
+  in_tty --once --budget 0 || true
+  [ "$(count 'keychain delete')" -ge 1 ] || fail "rejected saved key kept"
+  grep -q 'revoked or expired' "$FAKE/signin-out" || fail "rejected key not explained"
+  [ "$(count 'device start')" = 2 ] || fail "no new sign-in after a rejected key"
+  rm -f "$FAKE/reject-key"
+  # Denied in the browser: nothing saved, a plain message, a failing exit.
+  rm -f "$FAKE/keychain" "$FAKE/polls"; touch "$FAKE/device-deny"
+  if in_tty --once --budget 0; then fail "ran after a denied sign-in"; fi
+  grep -q 'denied in the browser' "$FAKE/signin-out" || fail "denial not explained"
+  [ ! -s "$FAKE/keychain" ] || fail "key saved after a denial"
+  rm -f "$FAKE/device-deny"
+  # A Spooky without sign-in: ask for a key instead.
+  touch "$FAKE/no-device"
+  in_tty --once --budget 0 || true
+  grep -q 'Paste your Spooky key' "$FAKE/signin-out" || fail "no key prompt without sign-in"
+  rm -f "$FAKE/no-device"
+  # Sign out removes the saved key.
+  printf 'sp_DEVICEkey-SECRET-777\n' > "$FAKE/keychain"
+  sh "$here/spooky-fixer.sh" --sign-out > /dev/null || fail "sign-out failed"
+  [ ! -s "$FAKE/keychain" ] || fail "sign-out kept the key"
+  # --sign-in, with no terminal (an agent runs it for its human): shows the code, saves the
+  # key, prints no key, ignores a key in the environment, and does nothing when already signed in.
+  rm -f "$FAKE/polls"; starts=$(count 'device start')
+  SPOOKY_API_KEY=sp_ENVkey123 sh "$here/spooky-fixer.sh" --sign-in < /dev/null >> "$FAKE/signin-out" 2>&1 || fail "--sign-in failed"
+  grep -qx 'sp_DEVICEkey-SECRET-777' "$FAKE/keychain" || fail "--sign-in did not save the key"
+  [ "$(count 'device start')" = $((starts + 1)) ] || fail "--sign-in did not start a sign-in"
+  sh "$here/spooky-fixer.sh" --sign-in < /dev/null > "$FAKE/si2" 2>&1 || fail "second --sign-in failed"
+  grep -q 'Already signed in' "$FAKE/si2" || fail "--sign-in signed in twice"
+  [ "$(count 'device start')" = $((starts + 1)) ] || fail "--sign-in started a second sign-in"
+  rm -f "$FAKE/si2"
+  [ "$(count 'KEY IN ARGV')" = 0 ] || fail "a key or device code in a process argument"
+  if grep -rlE "sp_DEVICEkey|dc-SECRET" "$FAKE/signin-out" "$FAKE/out" "$HOME/.local/state"; then fail "sign-in secret written"; fi
+else
+  echo "skipped sign-in tests: no script(1)"
+fi
+
 # No key, push topic, ping link or sp_ key in any output, log, run log or state file.
 [ "$(count 'bad auth')" = 0 ] || fail "key not sent on stdin"
 [ "$(count 'KEY IN ARGV')" = 0 ] || fail "key in a process argument"
@@ -317,8 +402,8 @@ grep -qxF "other/app3=$HOME/sf2/app3" "$HOME/sf2/fixer.conf" || fail "kept repo 
 
 # Agent: codex when claude is missing; a plain stop, with nothing cloned, when neither is there.
 mkdir -p "$HOME/bin-codex" "$HOME/bin-none"
-for t in curl gh git pbpaste codex; do ln -s "$HOME/bin/$t" "$HOME/bin-codex/$t"; done
-for t in curl gh git pbpaste; do ln -s "$HOME/bin/$t" "$HOME/bin-none/$t"; done
+for t in curl gh git pbpaste security open codex; do ln -s "$HOME/bin/$t" "$HOME/bin-codex/$t"; done
+for t in curl gh git pbpaste security open; do ln -s "$HOME/bin/$t" "$HOME/bin-none/$t"; done
 (PATH="$HOME/bin-codex:/usr/bin:/bin"; setup --yes --dir "$HOME/sf3") || fail "setup with codex failed"
 grep -qF -- "--agent codex --config '$HOME/sf3/fixer.conf'" "$FAKE/setup-out" || fail "codex not detected"
 if (PATH="$HOME/bin-none:/usr/bin:/bin"; setup --yes --dir "$HOME/sf4"); then fail "setup ran with no agent"; fi
@@ -349,4 +434,24 @@ echo "mine=/x" > "$HOME/.config/spooky/fixer.conf"
 sh "$here/install.sh" --fixer > /dev/null
 grep -qx 'mine=/x' "$HOME/.config/spooky/fixer.conf" || fail "install overwrote the config"
 [ ! -e "$HOME/.config/spooky/spooky-inbox.sh" ] || fail "--fixer touched the agent inbox"
+
+# Session hook: with no key file, profile line or env key, it uses the key this computer saved
+# when it signed in (Keychain first, then the agent-key file), and sends it on stdin.
+IB=$(mktemp -d); mkdir -p "$IB/bin" "$IB/home/.config/spooky"
+cat > "$IB/bin/curl" <<EOF
+#!/bin/sh
+case "\$*" in *sp_*) echo "KEY IN ARGV" >> "$IB/log";; esac
+cat >> "$IB/log"
+echo "Spooky Particles: 0 open problems"
+EOF
+# shellcheck disable=SC2016
+printf '#!/bin/sh\ncase "$*" in "find-generic-password -s spookyparticles.com -a spooky-agent -w") [ -f "%s/kc" ] && cat "%s/kc";; esac\n' "$IB" "$IB" > "$IB/bin/security"
+chmod +x "$IB/bin/curl" "$IB/bin/security"
+inbox() { (cd "$IB" && env -i HOME="$IB/home" PATH="$IB/bin:/usr/bin:/bin" SPOOKY_PROJECT=o/r sh "$here/spooky-inbox.sh" > /dev/null 2>&1); }
+printf 'sp_KEYCHAINsaved1' > "$IB/kc"; inbox
+grep -q 'sp_KEYCHAINsaved1' "$IB/log" || fail "inbox did not use the Keychain key"
+rm "$IB/kc" "$IB/log"; printf 'sp_FILEsaved2\n' > "$IB/home/.config/spooky/agent-key"; inbox
+grep -q 'sp_FILEsaved2' "$IB/log" || fail "inbox did not use the agent-key file"
+if grep -q 'KEY IN ARGV' "$IB/log"; then fail "inbox put the key in argv"; fi
+rm -rf "$IB"
 echo "ok"

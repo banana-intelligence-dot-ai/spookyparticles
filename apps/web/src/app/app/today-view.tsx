@@ -1,8 +1,8 @@
 "use client";
 /**
  * Today: is anything broken, and does my agent know? Spend is a column in the rows, never a headline.
- * What was caught and fixed in 30 days on top, two figures, who hears, then one ranked list of at most ten rows. Setup shows only until
- * GitHub and Gmail have each finished a first sync.
+ * What was caught and fixed in 30 days on top, two figures, who hears, then one ranked list of at most ten rows. Money rows (spend,
+ * renewals, trials, duplicate plans) are parked on /app/findings and never show here. Setup shows only until GitHub has finished a first sync.
  */
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -13,7 +13,7 @@ import type { Listening } from "@/lib/agent-listening";
 import type { Catches } from "@/lib/catches";
 import { CatchLog } from "./catch-log";
 import { isRunning, type Connection } from "./connection-model";
-import { absoluteTime, plural, type Finding, type Findings, type Spend } from "./data-model";
+import { absoluteTime, plural } from "./data-model";
 import { Onboarding, onboardingComplete } from "./onboarding";
 import { ago, type ActivityReport, type ProjectsReport } from "./project-model";
 import { buildToday, type JobRow, type TodayFix, type TodayRow, type TodayTone } from "./today-model";
@@ -25,8 +25,6 @@ export function TodayView() {
     pollMs: (d) => (d?.connections.some((c) => isRunning(c.sync)) ? 5000 : null),
   });
   const projects = useApi<ProjectsReport>("/api/v1/projects");
-  const findings = useApi<Findings>("/api/v1/findings");
-  const spend = useApi<Spend>("/api/v1/spend");
   const activity = useApi<ActivityReport>("/api/v1/activity");
   const checkins = useApi<{ jobs: JobRow[] }>("/api/v1/checkins", {
     pollMs: () => 60_000,
@@ -52,8 +50,6 @@ export function TodayView() {
       ready={Boolean(conns.data) && now !== null}
       connections={conns.data?.connections ?? []}
       projects={projects.data}
-      findings={findings.status === 404 ? [] : (findings.data?.findings ?? [])}
-      spend={spend.status === 404 ? null : spend.data}
       activity={activity.data}
       jobs={checkins.data?.jobs ?? []}
       checkOpen={checks.data?.summary.open ?? 0}
@@ -85,8 +81,6 @@ export function TodayScreen({
   ready,
   connections,
   projects,
-  findings,
-  spend,
   activity,
   jobs,
   checkOpen = 0,
@@ -100,8 +94,6 @@ export function TodayScreen({
   ready: boolean;
   connections: Connection[];
   projects: ProjectsReport | null;
-  findings: Finding[];
-  spend: Spend | null;
   activity: ActivityReport | null;
   jobs: JobRow[];
   checkOpen?: number;
@@ -132,26 +124,25 @@ export function TodayScreen({
     () =>
       buildToday({
         projects: projects?.projects ?? [],
-        findings,
-        spend,
+        findings: [],
+        spend: null,
+        money: false,
         notices: activity?.items ?? [],
         connections,
         jobs,
         checkOpen,
         now,
       }),
-    [projects, findings, spend, activity, connections, jobs, checkOpen, now],
+    [projects, activity, connections, jobs, checkOpen, now],
   );
   const setup = ready && !onboardingComplete(connections);
-  const hasData = Boolean(projects?.projects.length || spend?.subscriptions.length);
+  const hasData = Boolean(projects?.projects.length);
   const last = connections
     .map((c) => c.lastSyncedAt)
     .filter((x): x is string => Boolean(x))
     .sort()
     .at(-1);
   const syncing = connections.some((c) => isRunning(c.sync));
-  const mailSynced = connections.some((c) => c.provider === "gmail" && c.status !== "revoked" && c.sync?.phase === "done" && Boolean(c.sync.finishedAt));
-  const mailCount = connections.filter((c) => c.provider === "gmail" && c.status !== "revoked").length;
 
   return (
     <>
@@ -172,14 +163,14 @@ export function TodayScreen({
               value={String(today.broken)}
               tone={today.broken ? "red" : null}
               label="Broken now"
-              source={`Failed deploys, missed runs, sites down${mailCount ? ", bounced cards" : ""}`}
+              source="Failed deploys, missed runs, sites down"
             />
             <Figure
               href="#needs-title"
-              value={mailSynced ? String(today.needsWeek) : null}
+              value={String(today.needsWeek)}
               tone={today.needsWeek ? "amber" : null}
               label="Need you this week"
-              source={mailSynced ? "Renewals, trials and fixes due in 7 days" : mailCount ? "Waits for your inbox to finish syncing" : "Needs an inbox"}
+              source="Open check findings and connections to fix"
             />
           </section>
 

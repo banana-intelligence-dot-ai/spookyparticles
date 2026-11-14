@@ -7,6 +7,7 @@ export default {
     "app.html",        // the signed-in app, not a search page
     "app/**",
     "dev/**",          // design previews, not public
+    "link.html",       // agent sign-in approve page, signed in only
     "how/?slug?.html", // the route template; the real how pages are checked
   ],
   rules: {

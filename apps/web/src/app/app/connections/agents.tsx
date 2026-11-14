@@ -112,8 +112,8 @@ export function ConnectedAgents({
       </SectionTitle>
       <p className="-mt-2 mb-5 max-w-[62ch] text-[14px] leading-[1.5] text-pretty text-fg-2">
         Coding agents that read your projects and costs through the API, with a
-        key you make here. Read only unless you choose otherwise. Revoke one and
-        its key stops working at once.
+        key you make here or one they got when you approved their sign-in. Read only
+        unless you choose otherwise. Revoke one and its key stops working at once.
       </p>
 
       {open ? (

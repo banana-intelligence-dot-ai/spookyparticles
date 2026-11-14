@@ -57,6 +57,16 @@ describe("RateLimiter", () => {
     const rl = new RateLimiter({ ratePerSecond: 10 });
     expect(() => rl.take(11)).toThrow(/exceeds capacity/);
   });
+
+  it("tryTake spends at once and refuses, without waiting, when empty", () => {
+    const c = fakeClock();
+    const rl = new RateLimiter({ ratePerSecond: 1, capacity: 2, now: c.now, sleep: c.sleep });
+    expect([rl.tryTake(1), rl.tryTake(1), rl.tryTake(1)]).toEqual([true, true, false]);
+    c.advance(1000);
+    expect(rl.tryTake(1)).toBe(true);
+    expect(rl.tryTake(1)).toBe(false);
+    expect(c.sleeps).toEqual([]);
+  });
 });
 
 describe("gmailLimiter", () => {

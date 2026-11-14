@@ -274,28 +274,18 @@ export function CheckScreen({
   report,
   error,
   now,
-  services = null,
-  servicesError = null,
-  expirationReport = null,
-  expirationError = null,
   actionError = null,
   busy = null,
   onDismiss = null,
   onRestore = null,
-  onExpirationReload,
 }: {
   report: CheckReport | null;
   error: string | null;
   now: number;
-  services?: ServicesReport | null;
-  servicesError?: string | null;
-  expirationReport?: ExpirationReport | null;
-  expirationError?: string | null;
   actionError?: string | null;
   busy?: string | null;
   onDismiss?: ((c: Check) => void) | null;
   onRestore?: ((c: Check) => void) | null;
-  onExpirationReload?: () => Promise<void>;
 }) {
   const projects = report?.ready ? report.projects : [];
   const needsLook = projects.filter((p) => p.checks.some(isOpen));
@@ -398,7 +388,60 @@ export function CheckScreen({
           </div>
         </section>
       ) : null}
-      <section className="mt-12" aria-labelledby="check-services">
+    </>
+  );
+}
+
+export function CheckView() {
+  const report = useApi<CheckReport>("/api/v1/checks");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Fixed at mount so server and client render the same words.
+  const [now] = useState(() => Date.now());
+
+  async function change(c: Check, restore: boolean) {
+    if (!c.id) return;
+    setBusy(c.id);
+    const result = await apiSend(restore ? "DELETE" : "POST", `/api/v1/checks/${c.id}/dismiss`);
+    setBusy(null);
+    if (result.ok) {
+      setActionError(null);
+      await report.reload();
+    } else setActionError(result.error ?? "Could not update this finding.");
+  }
+
+  return (
+    <div className="max-w-4xl">
+      <CheckScreen report={report.data} error={report.error} now={now} actionError={actionError} busy={busy} onDismiss={(c) => void change(c, false)} onRestore={(c) => void change(c, true)} />
+    </div>
+  );
+}
+
+/** Parked side feature: reachable at /app/services, not in the nav. */
+export function ServicesView() {
+  const services = useApi<ServicesReport>("/api/v1/services");
+  return (
+    <div className="max-w-4xl">
+      <PageHeader title="Services" lede="Outside services your projects use, and what they cost." />
+      <ServicesSection services={services.data} servicesError={services.error} />
+    </div>
+  );
+}
+
+/** Parked side feature: reachable at /app/expirations, not in the nav. */
+export function ExpirationsView() {
+  const expirationReport = useApi<ExpirationReport>("/api/v1/expirations");
+  return (
+    <div className="max-w-4xl">
+      <ExpirationsPanel report={expirationReport.data} error={expirationReport.error} reload={expirationReport.reload} />
+    </div>
+  );
+}
+
+export function ServicesSection({ services, servicesError }: { services: ServicesReport | null; servicesError: string | null }) {
+  return (
+    <>
+      <section aria-labelledby="check-services">
         <SectionTitle id="check-services" count={services?.services.length}>Services</SectionTitle>
         <p className="mb-3 text-[13px] text-fg-3">Outside services seen in Vercel settings, on your Vercel bill, or recorded by your agent. In use means a project using it had a production deploy or requests in the last 30 days.</p>
         {servicesError ? <p role="alert" className="text-[13px] text-red">{servicesError}</p> : null}
@@ -445,35 +488,6 @@ export function CheckScreen({
           </div>
         </div>)}
       </section>
-
-      <ExpirationsPanel report={expirationReport} error={expirationError} reload={onExpirationReload} />
     </>
-  );
-}
-
-export function CheckView() {
-  const report = useApi<CheckReport>("/api/v1/checks");
-  const services = useApi<ServicesReport>("/api/v1/services");
-  const expirationReport = useApi<ExpirationReport>("/api/v1/expirations");
-  const [busy, setBusy] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  // Fixed at mount so server and client render the same words.
-  const [now] = useState(() => Date.now());
-
-  async function change(c: Check, restore: boolean) {
-    if (!c.id) return;
-    setBusy(c.id);
-    const result = await apiSend(restore ? "DELETE" : "POST", `/api/v1/checks/${c.id}/dismiss`);
-    setBusy(null);
-    if (result.ok) {
-      setActionError(null);
-      await report.reload();
-    } else setActionError(result.error ?? "Could not update this finding.");
-  }
-
-  return (
-    <div className="max-w-4xl">
-      <CheckScreen report={report.data} error={report.error} now={now} services={services.data} servicesError={services.error} expirationReport={expirationReport.data} expirationError={expirationReport.error} actionError={actionError} busy={busy} onDismiss={(c) => void change(c, false)} onRestore={(c) => void change(c, true)} onExpirationReload={expirationReport.reload} />
-    </div>
   );
 }

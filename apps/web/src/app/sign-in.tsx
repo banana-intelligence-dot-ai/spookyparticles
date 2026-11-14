@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { buttonStyles } from "@/components/ui";
 import { touch } from "@/lib/analytics/client";
 import { authClient } from "@/lib/auth-client";
+import { safeReturnTo } from "@/lib/sign-in-notice";
 
 type Provider = "github" | "google" | "vercel";
 
@@ -42,8 +43,8 @@ export function SignIn({ large = false, ink = false, inline = false, vercelEnabl
   useEffect(() => {
     setLast(readLast());
     const params = new URLSearchParams(window.location.search);
-    const value = params.get("returnTo");
-    if (value === "/api/connect/vercel/callback") setReturnTo(value);
+    const value = safeReturnTo(params.get("returnTo"));
+    if (value) setReturnTo(value);
     // The one way back to an account made with GitHub or Google before Vercel sign-in existed:
     // Vercel sign-in refuses to link it implicitly, and the notice then says to sign in the old way.
     if (params.get("error") === "account_not_linked") setShowOlder(true);

@@ -7,7 +7,8 @@ if [ -z "${HOME:-}" ]; then
 fi
 
 # Read the key fresh on every run, so a session started before a key rotation still works:
-# the key file first, then the export line in a shell profile, then the inherited environment.
+# the key file first, then the export line in a shell profile, then the inherited environment,
+# then the key saved when this computer signed in.
 profile_key() {
   for profile in "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
     [ -r "$profile" ] || continue
@@ -37,6 +38,13 @@ if [ -z "$api_key" ]; then
 fi
 if [ -z "$api_key" ]; then
   api_key=${SPOOKY_API_KEY:-}
+fi
+# Last: the key this computer got when it signed in (spooky-fixer.sh --setup).
+if [ -z "$api_key" ] && command -v security >/dev/null 2>&1; then
+  api_key=$(security find-generic-password -s spookyparticles.com -a spooky-agent -w 2>/dev/null) || api_key=
+fi
+if [ -z "$api_key" ] && [ -r "${XDG_CONFIG_HOME:-"$HOME/.config"}/spooky/agent-key" ]; then
+  IFS= read -r api_key < "${XDG_CONFIG_HOME:-"$HOME/.config"}/spooky/agent-key" || [ -n "$api_key" ] || api_key=
 fi
 carriage_return=$(printf '\r')
 api_key=${api_key%"$carriage_return"}

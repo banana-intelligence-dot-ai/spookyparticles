@@ -91,3 +91,12 @@ describe("the host's later success closes a failure", () => {
     expect(today.rows.some((r) => r.what.startsWith("ledger-api: production deploy failed"))).toBe(true);
   });
 });
+
+describe("buildToday with money parked", () => {
+  it("drops payment, renewal, duplicate and idle-bill rows and keeps the breaks", () => {
+    const parked = buildToday({ projects: PROJECTS_FULL.projects, findings: FINDINGS, spend: SPEND, notices: ACTIVITY_FULL.items, connections: conns, money: false, now: NOW });
+    expect(parked.rows.some((r) => /^(pay|due|dup|idle)-/.test(r.id))).toBe(false);
+    expect(parked.rows.some((r) => r.what.startsWith("ledger-api: production deploy failed"))).toBe(true);
+    expect(parked.rows.some((r) => r.amount)).toBe(false);
+  });
+});

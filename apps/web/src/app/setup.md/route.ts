@@ -29,7 +29,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
 ## Rules you follow during setup
 
-- You never ask for, receive, type, or store a password, an OAuth token, a card number, or an API key in chat. The one key this setup uses goes into an environment variable by the human's hand.
+- You never ask for, receive, type, or store a password, an OAuth token, a card number, or an API key in chat. The key this setup uses is made when your human approves a sign-in code in their browser. It goes straight into this computer's Keychain and never through chat.
 - You never visit sign-in pages, consent screens or billing pages on the human's behalf. You post the link, they click.
 - You never change DNS, billing, subscriptions or email settings. Code fixes go through a new branch and pull request. Spooky Particles never changes connected provider settings or merges a pull request.
 - Ask before each connection: name the provider and what will be read.
@@ -37,23 +37,27 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
 ## Steps
 
-1. Tell your human what will happen: one sign-in with Vercel, a GitHub connection they click through, one key they create, read-only by default. Nothing is written to their connected accounts.
+1. Tell your human what will happen: one sign-in with Vercel, a GitHub connection they click through, one sign-in code they approve for you, read-only by default. Nothing is written to their connected accounts.
 2. Send this link and ask them to open it and click **Continue with Vercel**: ${base}/
 3. When they confirm they are signed in, send this link and ask them to click **Install on GitHub**, choose the repositories (all repositories is fine, access is read-only: metadata, deployments and Actions runs), and come back: ${base}/app
 4. Vercel. Send this link and ask them to click **Connect Vercel** and follow the steps on the page: ${base}/app
    **Install on Vercel** gives Vercel-set read scopes and chosen projects. A pasted token additionally lets schedules be watched with no code change, because Vercel's integration scopes do not include request history yet. They can use either or both.
    Never ask for a token in chat and never accept one if offered; the human pastes it on that page and nobody else sees it. A pasted Vercel token cannot be made read-only by Vercel, so read-only is enforced in Spooky Particles' code: it sends GET requests, plus one read-only query of request history that shows whether each schedule ran. Say that if they ask.
 5. Tell them what they now have: every project, deploy and schedule on that Vercel account is on the map. Schedules are watched with no code change when a pasted token can read request history; otherwise they can add one check-in line. A missed or failed run reaches them once they add a channel (phone, Slack, Teams or email) on ${base}/app/jobs.
-6. Ask them to make a key for you: ${base}/app/connections → **Connected agents** → **Connect an agent** → **Make key**, scope **write** if they want you to handle check findings or record service sign-ups, or **read** for viewing only, named after you (for example "Claude Code on my laptop"). The key is shown once.
-7. Ask them to put it in your environment themselves, not in chat. Give them these two lines and say which one fits their shell:
+6. Sign yourself in. From a clone of https://github.com/banana-intelligence-dot-ai/spookyparticles, run this. It prints a link and a code, opens the link in their browser, and waits up to 10 minutes (run it in the background if your shell stops commands sooner):
 
    \`\`\`bash
-   echo 'export SPOOKY_API_KEY=sp_...' >> ~/.zshrc && source ~/.zshrc
+   sh scripts/agent-inbox/spooky-fixer.sh --sign-in
    \`\`\`
 
+   Tell your human the code and ask them to check it matches the page, then click **Approve**. The page names you and this computer. The key it makes is read-only, belongs to this computer, and is saved in the macOS Keychain (elsewhere, a file only they can read). You never see it. They can revoke it any time under Connections. If the script says this Spooky has no agent sign-in, ask them to make a key under ${base}/app/connections → **Connect an agent** → **Make key** and export it as \`SPOOKY_API_KEY\` themselves.
+7. Load the key into your shell. This line holds no secret; it reads the Keychain. Ask your human before adding it to \`~/.zshrc\` so new terminals have it too:
+
    \`\`\`bash
-   echo 'SPOOKY_API_KEY=sp_...' >> .env.local
+   export SPOOKY_API_KEY="$(security find-generic-password -s spookyparticles.com -a spooky-agent -w 2>/dev/null || cat ~/.config/spooky/agent-key)"
    \`\`\`
+
+   For check findings or recording service sign-ups you need a **write** key: ask them to make one under Connections and put it in \`SPOOKY_API_KEY\` themselves.
 
 8. Verify. Run exactly this and read the result. The key goes in through a pipe, so it never shows on a command line where other programs could read it:
 
@@ -126,10 +130,9 @@ Never tell your human a break is fixed on your own word. After the fix is deploy
 
 ## Your coding agent hears about it
 
-Claude Code, Cursor and Codex can each hear about open problems when a session starts. Claude Code also checks before later prompts and speaks only when the list changed. Cursor and Codex get the Spooky MCP server too, read with \`SPOOKY_API_KEY\` from their environment, never copied into their config. With a read-only key already in \`SPOOKY_API_KEY\`, run these two commands from a clone of https://github.com/banana-intelligence-dot-ai/spookyparticles. The installer finds which of the three you use (or pass \`--agent claude\`, \`cursor\`, \`codex\` or \`all\`), backs up each file it changes, and is safe to run twice:
+Claude Code, Cursor and Codex can each hear about open problems when a session starts. Claude Code also checks before later prompts and speaks only when the list changed. Cursor and Codex get the Spooky MCP server too, read with \`SPOOKY_API_KEY\` from their environment, never copied into their config. Once you are signed in (step 6), run this from the same clone; the check uses the saved key. The installer finds which of the three you use (or pass \`--agent claude\`, \`cursor\`, \`codex\` or \`all\`), backs up each file it changes, and is safe to run twice:
 
 \`\`\`sh
-mkdir -p ~/.config/spooky && printf '%s\\n' "$SPOOKY_API_KEY" > ~/.config/spooky/key && chmod 600 ~/.config/spooky/key
 sh scripts/agent-inbox/install.sh
 \`\`\`
 
@@ -143,7 +146,7 @@ Offer it once setup is done. If your human wants it, set it up from the same clo
 sh scripts/agent-inbox/spooky-fixer.sh --setup
 \`\`\`
 
-Then hand your human the start line it prints, to run in their own terminal. It runs in the foreground for 12 hours and uses their Claude login, not an API key in the shell. Do not start it yourself, and never put the key in a file or in chat.
+Then hand your human the start line it prints, to run in their own terminal. It runs in the foreground for 12 hours, uses their Claude or Codex login for the fix, and this computer's sign-in for Spooky. Do not start it yourself, and never put a key in a file or in chat.
 
 ## Check-ins for scheduled jobs
 
@@ -191,7 +194,7 @@ Rules: \`eq\`, \`gte\`, \`lte\`, \`gt\`, \`lt\`, and \`exists\` (has a value: no
 ## Things only your human may do
 
 - Click any sign-in, consent, install or reconnect link.
-- Connect, rotate or revoke agents and their keys.
+- Approve a sign-in code, and connect, rotate or revoke agents and their keys.
 - Act on a finding: cancel a plan, update a card, renew a domain, change DNS, delete anything, send any email.
 - Approve anything that costs money.
 

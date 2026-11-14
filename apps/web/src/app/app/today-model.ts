@@ -96,6 +96,8 @@ export function buildToday(
     connections: Connection[];
     jobs?: JobRow[];
     checkOpen?: number;
+    /** False parks the money rows (failed payments, renewals, duplicate plans, idle bills). Default true. */
+    money?: boolean;
     now: number;
   },
   cap = 10,
@@ -331,6 +333,8 @@ export function buildToday(
       amount: `${money(p.monthlyCents, p.currency)}/mo`,
     });
   }
+
+  if (input.money === false) rows.splice(0, rows.length, ...rows.filter((r) => !/^(pay|due|dup|idle)-/.test(r.id)));
 
   for (const r of rows) if (r.action?.external) r.action.site = siteOf(r.action.href);
 

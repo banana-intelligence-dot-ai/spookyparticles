@@ -52,6 +52,16 @@ export class RateLimiter {
   }
 
   /**
+   * Consume `units` now if they are available, and say whether it did. Never waits: for
+   * request limits that answer 429 instead of queueing. Do not mix with take() on one bucket.
+   */
+  tryTake(units: number): boolean {
+    if (this.waitTimeMs(units) > 0) return false;
+    this.tokens -= units;
+    return true;
+  }
+
+  /**
    * Consume `units`, waiting if needed. Calls are served in order, so concurrent
    * callers cannot starve each other or overdraw the bucket.
    */

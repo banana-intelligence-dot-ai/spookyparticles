@@ -5,12 +5,16 @@
 # that nobody has claimed, it claims it, runs your own agent headless in that repo, then asks
 # Spooky to check production. Opt-in, runs on your machine, uses your agent subscription.
 #
-# One-time setup, then start (macOS, with a Spooky Read key copied to the clipboard):
-#   sh spooky-fixer.sh --setup --start --key-from-clipboard
+# One-time setup, then start. It signs this computer in first: you approve a code in your
+# browser, and the key it gets is saved in the macOS Keychain.
+#   sh spooky-fixer.sh --setup --start
 # Setup lists your GitHub repos from Spooky, clones the ones you keep into ~/spooky-fixer
 # (or --dir), writes ~/spooky-fixer/fixer.conf, finds claude or codex, and prints the start line.
 #
-# Usage: spooky-fixer.sh [--setup [--yes] [--dir DIR] [--start]] [--key-from-clipboard]
+# Sign in only (an agent can run this for its human; the key is saved, never printed):
+#   sh spooky-fixer.sh --sign-in
+#
+# Usage: spooky-fixer.sh [--setup [--yes] [--dir DIR] [--start]] [--key-from-clipboard] [--sign-in] [--sign-out]
 #                        [--agent claude|codex] [--model NAME] [--use-api-key]
 #                        [--config FILE] [--interval SECONDS]
 #                        [--hours N | --until 2026-11-13T06:00:00Z] [--budget N] [--timeout SECONDS] [--max-turns N] [--once]
@@ -18,15 +22,16 @@
 # Config (default ~/spooky-fixer/fixer.conf, else ~/.config/spooky/fixer.conf), one line per project:
 #   owner/repo=/absolute/path/to/your/clone
 #
-# The key comes from SPOOKY_API_KEY in the environment, or from the clipboard with
-# --key-from-clipboard. It goes to curl on stdin and is never printed, logged or written.
+# The key comes from SPOOKY_API_KEY, the clipboard (--key-from-clipboard), or this computer's
+# sign-in (saved in the macOS Keychain; --sign-out removes it). It goes to curl on stdin and
+# is never printed or logged.
 # Optional phone push: set SPOOKY_NTFY_TOPIC (off by default).
 
 set -u
 
 usage() {
   cat >&2 <<'EOF2'
-Usage: spooky-fixer.sh [--setup [--yes] [--dir DIR] [--start]] [--key-from-clipboard]
+Usage: spooky-fixer.sh [--setup [--yes] [--dir DIR] [--start]] [--key-from-clipboard] [--sign-in] [--sign-out]
                        [--agent claude|codex] [--model NAME] [--use-api-key]
                        [--config FILE] [--interval SECONDS]
                        [--hours N | --until 2026-11-13T06:00:00Z] [--budget N] [--timeout SECONDS] [--max-turns N] [--once]
@@ -50,6 +55,8 @@ setup=false
 start=false
 assume_yes=false
 key_from_clipboard=false
+sign_out=false
+sign_in_only=false
 
 need() { [ $# -ge 2 ] || usage; }
 while [ $# -gt 0 ]; do
@@ -70,6 +77,8 @@ while [ $# -gt 0 ]; do
     --start) start=true ;;
     --yes) assume_yes=true ;;
     --key-from-clipboard) key_from_clipboard=true ;;
+    --sign-out) sign_out=true ;;
+    --sign-in) sign_in_only=true ;;
     -h|--help) usage ;;
     *) printf 'Unknown option %s\n' "$1" >&2; usage ;;
   esac
@@ -97,23 +106,159 @@ if [ "$key_from_clipboard" = true ]; then
   esac
   export SPOOKY_API_KEY
 fi
-# No key (or not a Spooky key) in a terminal: ask for it, hidden. Easier than the clipboard,
-# which the start command itself overwrites when it is copied.
-case "${SPOOKY_API_KEY:-}" in sp_?*) ;; *) SPOOKY_API_KEY= ;; esac
-if [ -z "$SPOOKY_API_KEY" ] && [ -t 0 ]; then
-  printf 'Paste your Spooky key (from Connections, Make key, Read). It stays hidden: '
-  stty -echo 2>/dev/null; IFS= read -r SPOOKY_API_KEY || SPOOKY_API_KEY=; stty echo 2>/dev/null; printf '\n'
-  SPOOKY_API_KEY=$(printf '%s' "$SPOOKY_API_KEY" | tr -d ' \t\r\n')
-  case "$SPOOKY_API_KEY" in sp_?*) ;; *) SPOOKY_API_KEY=; printf 'That is not a Spooky key (they start with sp_).\n' >&2; exit 1 ;; esac
-  export SPOOKY_API_KEY
-fi
-if [ -z "$SPOOKY_API_KEY" ]; then
-  printf 'No key. Copy a Read key from Connections in Spooky and add --key-from-clipboard, or set SPOOKY_API_KEY in this shell.\n' >&2
-  exit 1
-fi
-
 base_url=${SPOOKY_URL:-https://spookyparticles.com}
 while [ "${base_url%/}" != "$base_url" ]; do base_url=${base_url%/}; done
+
+# --- The agent's key ------------------------------------------------------------------------
+# Order: SPOOKY_API_KEY, the clipboard flag, the key this computer saved at sign-in, then (in a
+# terminal) sign-in: Spooky shows a code, you approve it in your browser, and this computer gets
+# its own named read key. It is saved in the macOS Keychain (elsewhere: a file only you can
+# read, ~/.config/spooky/agent-key). It goes to curl on stdin and is never printed or logged.
+key_service=spookyparticles.com
+key_account=spooky-agent
+key_file=${XDG_CONFIG_HOME:-"$HOME/.config"}/spooky/agent-key
+
+load_key() {
+  if command -v security >/dev/null 2>&1; then
+    security find-generic-password -s "$key_service" -a "$key_account" -w 2>/dev/null
+  elif [ -r "$key_file" ]; then
+    cat "$key_file"
+  fi
+}
+
+store_key() {
+  if command -v security >/dev/null 2>&1; then
+    # security -i reads its command on stdin, so the key never appears in a process list.
+    printf 'add-generic-password -U -s %s -a %s -l "Spooky Particles agent key" -w %s\n' \
+      "$key_service" "$key_account" "$1" | security -i >/dev/null 2>&1
+  else
+    (umask 077; mkdir -p "$(dirname "$key_file")" && printf '%s\n' "$1" > "$key_file")
+  fi
+}
+
+forget_key() {
+  if command -v security >/dev/null 2>&1; then
+    security delete-generic-password -s "$key_service" -a "$key_account" >/dev/null 2>&1
+  fi
+  rm -f "$key_file"
+}
+
+# json_get <field>: one top-level string or number from JSON on stdin.
+json_get() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r --arg k "$1" '.[$k] // empty' 2>/dev/null
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json, sys
+try:
+    v = json.load(sys.stdin).get(sys.argv[1])
+except Exception:
+    v = None
+print("" if v is None else v)' "$1" 2>/dev/null
+  else
+    sed -n "s/.*\"$1\" *: *\"\{0,1\}\([^\",}]*\).*/\1/p" | head -n 1
+  fi
+}
+
+key_ok() {
+  printf 'Authorization: Bearer %s\n' "$1" | curl -fsS -m 30 -o /dev/null -H @- -H "User-Agent: spooky-fixer" "$base_url/api/v1/me" 2>/dev/null
+}
+
+# Prints the new key on stdout. Returns 2 when this Spooky has no sign-in, 1 on any other failure.
+sign_in() {
+  if [ "$agent" = codex ] || { [ -z "$agent" ] && ! command -v claude >/dev/null 2>&1 && command -v codex >/dev/null 2>&1; }; then
+    si_client=codex
+  else
+    si_client=claude-code
+  fi
+  si_machine=$( (scutil --get ComputerName || hostname) 2>/dev/null | head -n 1 | tr -cd 'A-Za-z0-9 ._-' | cut -c1-60)
+  [ -n "$si_machine" ] || si_machine=computer
+  si_start=$(printf '{"client":"%s","machine":"%s"}' "$si_client" "$si_machine" \
+    | curl -fsS -m 30 -X POST -H 'Content-Type: application/json' -d @- "$base_url/api/v1/device/start" 2>/dev/null) || return 2
+  si_code=$(printf '%s' "$si_start" | json_get deviceCode)
+  si_user=$(printf '%s' "$si_start" | json_get userCode)
+  si_url=$(printf '%s' "$si_start" | json_get verificationUriComplete)
+  si_wait=$(printf '%s' "$si_start" | json_get interval)
+  si_life=$(printf '%s' "$si_start" | json_get expiresIn)
+  [ -n "$si_code" ] && [ -n "$si_user" ] && [ -n "$si_url" ] || return 2
+  case "$si_wait" in ''|*[!0-9]*) si_wait=5 ;; esac
+  case "$si_life" in ''|*[!0-9]*) si_life=600 ;; esac
+  {
+    printf '\nSign in this computer to Spooky Particles.\n'
+    printf '  1. Open %s\n' "$si_url"
+    printf '  2. Check the code matches: %s\n' "$si_user"
+    printf '  3. Click Approve.\n'
+    printf 'Waiting for you (the code works for %s minutes)...\n' "$((si_life / 60))"
+  } >&2
+  command -v open >/dev/null 2>&1 && open "$si_url" >/dev/null 2>&1
+  si_end=$(( $(date -u +%s) + si_life ))
+  while [ "$(date -u +%s)" -lt "$si_end" ]; do
+    sleep "$si_wait"
+    si_resp=$(printf '{"deviceCode":"%s"}' "$si_code" \
+      | curl -sS -m 30 -X POST -H 'Content-Type: application/json' -d @- "$base_url/api/v1/device/token" 2>/dev/null) || continue
+    si_key=$(printf '%s' "$si_resp" | json_get key)
+    case "$si_key" in sp_?*) printf '%s' "$si_key"; return 0 ;; esac
+    case "$(printf '%s' "$si_resp" | json_get error)" in
+      authorization_pending|'') ;;
+      slow_down) si_wait=$((si_wait + 5)) ;;
+      access_denied) printf 'Sign-in was denied in the browser. Nothing was shared.\n' >&2; return 1 ;;
+      *) printf 'The sign-in code expired. Run this again for a new one.\n' >&2; return 1 ;;
+    esac
+  done
+  printf 'The sign-in code expired. Run this again for a new one.\n' >&2
+  return 1
+}
+
+if [ "$sign_out" = true ]; then
+  forget_key
+  printf 'Signed out: the key this computer saved is removed. Revoke it in Spooky under Connections, Agent keys.\n'
+  exit 0
+fi
+
+case "${SPOOKY_API_KEY:-}" in sp_?*) ;; *) SPOOKY_API_KEY= ;; esac
+# --sign-in is about this computer's saved key, not one in the environment.
+[ "$sign_in_only" = false ] || SPOOKY_API_KEY=
+key_saved=false
+if [ -z "$SPOOKY_API_KEY" ]; then
+  SPOOKY_API_KEY=$(load_key | tr -d ' \t\r\n')
+  case "$SPOOKY_API_KEY" in sp_?*) key_saved=true ;; *) SPOOKY_API_KEY= ;; esac
+fi
+# A saved key that Spooky no longer accepts (revoked or expired) is dropped, so sign-in runs again.
+if [ "$key_saved" = true ] && ! key_ok "$SPOOKY_API_KEY"; then
+  forget_key
+  SPOOKY_API_KEY=
+  key_saved=false
+  printf 'The key this computer saved was revoked or expired.\n' >&2
+fi
+if [ "$sign_in_only" = true ] && [ "$key_saved" = true ]; then
+  printf 'Already signed in on this computer.\n'
+  exit 0
+fi
+if [ -z "$SPOOKY_API_KEY" ] && { [ -t 0 ] || [ "$sign_in_only" = true ]; }; then
+  si_rc=0
+  SPOOKY_API_KEY=$(sign_in) || si_rc=$?
+  if [ "$si_rc" = 2 ] && [ "$sign_in_only" = true ]; then
+    printf 'This Spooky has no agent sign-in yet. Make a key under Connections instead.\n' >&2
+    exit 1
+  elif [ "$si_rc" = 2 ]; then
+    # This Spooky has no sign-in yet: ask for a key, hidden.
+    printf 'Paste your Spooky key (from Connections, Make key, Read). It stays hidden: '
+    stty -echo 2>/dev/null; IFS= read -r SPOOKY_API_KEY || SPOOKY_API_KEY=; stty echo 2>/dev/null; printf '\n'
+    SPOOKY_API_KEY=$(printf '%s' "$SPOOKY_API_KEY" | tr -d ' \t\r\n')
+    case "$SPOOKY_API_KEY" in sp_?*) ;; *) SPOOKY_API_KEY=; printf 'That is not a Spooky key (they start with sp_).\n' >&2; exit 1 ;; esac
+  elif [ "$si_rc" != 0 ]; then
+    exit 1
+  else
+    store_key "$SPOOKY_API_KEY" || printf 'Signed in, but the key could not be saved, so you will sign in again next time.\n' >&2
+    key_saved=true
+    printf 'Signed in. This computer has its own key now; you can revoke it in Spooky under Connections.\n' >&2
+  fi
+fi
+if [ -z "$SPOOKY_API_KEY" ]; then
+  printf 'Not signed in. Run this in a terminal to sign in, or set SPOOKY_API_KEY.\n' >&2
+  exit 1
+fi
+[ "$sign_in_only" = false ] || exit 0
+export SPOOKY_API_KEY
 
 # Claude Code first, then Codex. Stops with one line when neither is installed.
 detect_agent() {
@@ -324,7 +469,9 @@ EOF
   [ "$use_api_key" = true ] && start_line="$start_line --use-api-key"
   start_line="$start_line --config $(shell_quote "$conf")"
   printf 'Wrote %s. The fixer uses %s.\n' "$conf" "$agent"
-  if [ "$key_from_clipboard" = true ]; then
+  if [ "$key_saved" = true ]; then
+    printf 'To start it later, run:\n'
+  elif [ "$key_from_clipboard" = true ]; then
     printf 'To start it later, copy your key again and run:\n'
   else
     printf 'To start it later, in a shell that has SPOOKY_API_KEY, run:\n'
@@ -657,7 +804,7 @@ if [ "$once" = true ]; then
 fi
 # A wrong or revoked key would fail every pass in silence; say so once and stop.
 if ! printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -fsS -m 30 -o /dev/null -H @- -H "User-Agent: spooky-fixer" "$base_url/api/v1/me" 2>/dev/null; then
-  printf 'Spooky did not accept that key (wrong, revoked or expired). Make a new Read key on Connections and start again.\n' >&2
+  printf 'Spooky did not accept that key (wrong, revoked or expired). Start again without SPOOKY_API_KEY set to sign in this computer.\n' >&2
   exit 1
 fi
 log "fixer start: $agent, every ${interval}s, budget $budget a day"
