@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dueProbeOccurrence, judge, todayInTimeZone, validateOutcomeInput } from "./probes";
+import { dueProbeOccurrence, judge, judgePage, pageLinks, todayInTimeZone, validateOutcomeInput } from "./probes";
 
 const schedule = "35 7 * * 1-5";
 const zone = "America/New_York";
@@ -56,7 +56,7 @@ describe("probe scheduling and input", () => {
     expect(dueProbeOccurrence(schedule, zone, due - 86_400_000, null, date("2026-11-14T12:35:00Z"))).toBeNull();
   });
   it("validates schedules, zones, URLs and rules", () => {
-    expect(validateOutcomeInput(schedule, zone, probe).probe?.expect).toHaveLength(1);
+    expect((validateOutcomeInput(schedule, zone, probe).probe as { expect: unknown[] }).expect).toHaveLength(1);
     expect(() => validateOutcomeInput("bad", zone, null)).toThrow("schedule");
     expect(() => validateOutcomeInput(schedule, "Bad/Zone", null)).toThrow("timeZone");
     expect(() => validateOutcomeInput(null, zone, probe)).toThrow("schedule required");
@@ -82,5 +82,48 @@ describe("outcome check safety and a daily email that sent to nobody", () => {
     expect(dueProbeOccurrence("35 7 * * 1-5", "America/New_York", Date.parse("2026-11-12T15:00:00Z"), null, at)).toBe(Date.parse("2026-11-13T12:35:00Z"));
     expect(dueProbeOccurrence("35 7 * * 1-5", "America/New_York", Date.parse("2026-11-12T15:00:00Z"), at, Date.parse("2026-11-13T12:42:00Z"))).toBeNull();
     expect(dueProbeOccurrence("35 7 * * 1-5", "America/New_York", Date.parse("2026-11-12T15:00:00Z"), null, Date.parse("2026-11-14T12:37:00Z"))).toBeNull();
+  });
+});
+
+describe("page checks", () => {
+  const html = `<nav><a href="#top">Top</a><a class="btn" href="https://news.substack.com/subscribe">Subscribe</a></nav>
+    <a href='https://app.example.com/?ref=home'><span>App</span> one</a>
+    <a href=https://app.example.com/?ref=foot>App again</a>
+    <a href="https://www.other.dev">Other &amp; more</a>
+    <a href="/about">About</a>`;
+  const base = "https://www.site.test/";
+  const page = { links: [{ text: "Subscribe", hrefStartsWith: "https://news.substack.com" }], answer: ["example.com", "other.dev"] };
+
+  it("reads every link with its visible text, resolved against the page", () => {
+    const links = pageLinks(html, base);
+    expect(links.map((l) => l.text)).toEqual(["Top", "Subscribe", "App one", "App again", "Other & more", "About"]);
+    expect(links.at(-1)!.href).toBe("https://www.site.test/about");
+  });
+
+  it("passes when the link rules hold, and lists each site to ask once", () => {
+    const { failures, toCheck } = judgePage(pageLinks(html, base), page, base);
+    expect(failures).toEqual([]);
+    expect(toCheck).toEqual(["https://app.example.com/", "https://www.other.dev/"]);
+  });
+
+  it("names a Subscribe link that goes somewhere else, and a site that left the page", () => {
+    const broken = html.replace("https://news.substack.com/subscribe", "https://evil.test/subscribe").replace("https://www.other.dev", "/other");
+    const { failures } = judgePage(pageLinks(broken, base), page, base);
+    expect(failures).toEqual(['"Subscribe" goes to https://evil.test/subscribe, expected https://news.substack.com', "no link to other.dev"]);
+  });
+
+  it("fails when the named link is gone", () => {
+    expect(judgePage(pageLinks("<a href='/'>Home</a>", base), { links: page.links }, base).failures).toEqual(['no link named "Subscribe"']);
+  });
+
+  it("accepts a page check and refuses a bad one", () => {
+    const ok = validateOutcomeInput("*/5 * * * *", "UTC", { url: "https://www.site.test/", page });
+    expect(ok.probe).toEqual({ url: "https://www.site.test/", page });
+    const bad = (p: unknown) => () => validateOutcomeInput("*/5 * * * *", "UTC", { url: "https://www.site.test/", page: p });
+    expect(bad({})).toThrow("links or answer required");
+    expect(bad({ answer: ["not a host"] })).toThrow("host names required");
+    expect(bad({ links: [{ text: "x", hrefStartsWith: "javascript:alert(1)" }] })).toThrow("hrefStartsWith");
+    expect(bad({ answer: Array.from({ length: 11 }, (_, i) => `a${i}.com`) })).toThrow("1 to 10 hosts");
+    expect(() => validateOutcomeInput("*/5 * * * *", "UTC", { url: "https://www.site.test/", page, expect: [{ path: "ok", op: "exists" }] })).toThrow("not both");
   });
 });

@@ -10,7 +10,7 @@ import { apiPost, apiSend, useApi } from "@/components/use-api";
 import type { RunHistory } from "@/lib/run-history";
 import { JobSettingsFields, INPUT } from "./job-settings";
 import { RunHistoryChart } from "./run-history";
-import { buildSettingsInput, buildSettingsPatch, describeProbeRule, emptyJobSettings, settingsFromJob, type JobSettingsValue, type Probe } from "./job-settings-lib";
+import { buildSettingsInput, buildSettingsPatch, describePageCheck, describeProbeRule, emptyJobSettings, settingsFromJob, type JobSettingsValue, type Probe } from "./job-settings-lib";
 
 type Job = {
   id: string;
@@ -290,7 +290,7 @@ function JobRow({ j, now, onChanged, onNotice }: { j: Job; now: number; onChange
 function JobSettingsSummary({ job }: { job: Job }) {
   const lines = [
     job.schedule ? `Runs ${job.schedule}${job.timeZone ? ` (${job.timeZone})` : ""}` : null,
-    job.probe ? `Checks ${job.probe.url}: ${job.probe.expect.map(describeProbeRule).join(", ")}` : null,
+    job.probe ? `Checks ${job.probe.url}: ${"page" in job.probe ? describePageCheck(job.probe.page) : job.probe.expect.map(describeProbeRule).join(", ")}` : null,
     job.owner ? `Owner: ${job.owner}` : null,
     job.maxRunMinutes !== null ? `Longest run: ${job.maxRunMinutes} minutes` : null,
     job.minCount !== null ? `Fewest items per run: ${job.minCount}` : null,

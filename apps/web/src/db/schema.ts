@@ -652,7 +652,7 @@ export const checkinJobs = pgTable(
     path: text("path"),
     schedule: text("schedule"),
     timeZone: text("time_zone"),
-    probe: jsonb("probe").$type<{ url: string; expect: { path: string; op: "eq" | "gte" | "lte" | "gt" | "lt" | "exists"; value?: string | number | boolean }[] }>(),
+    probe: jsonb("probe").$type<{ url: string; expect: { path: string; op: "eq" | "gte" | "lte" | "gt" | "lt" | "exists"; value?: string | number | boolean }[] } | { url: string; page: { links?: { text: string; hrefStartsWith: string }[]; answer?: string[] } }>(),
     requestMethod: text("request_method"),
     vercelConnectionId: uuid("vercel_connection_id"),
     vercelProjectId: text("vercel_project_id"),

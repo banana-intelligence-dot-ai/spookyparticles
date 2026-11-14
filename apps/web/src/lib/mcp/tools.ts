@@ -199,7 +199,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
         name: job.name, project: job.project, owner: job.owner, status: job.status, lastCheckIn: job.lastPingAt,
         nextDue: job.nextDueAt, lastResult: job.lastPingKind, cause: job.lastPingKind === "fail" ? job.lastNote : null,
         schedule: job.schedule, timeZone: job.timeZone,
-        probe: job.probe ? { url: job.probe.url, rules: job.probe.expect.length } : null,
+        probe: job.probe ? { url: job.probe.url, rules: "page" in job.probe ? (job.probe.page.links?.length ?? 0) + (job.probe.page.answer?.length ?? 0) : job.probe.expect.length } : null,
       })) }),
     }),
     list_findings: tool({

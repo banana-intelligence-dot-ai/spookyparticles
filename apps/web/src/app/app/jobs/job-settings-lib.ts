@@ -1,6 +1,6 @@
 export type RuleOp = "eq" | "gte" | "lte" | "gt" | "lt" | "exists";
 export type ProbeRule = { path: string; op: RuleOp; value?: string | number | boolean };
-export type Probe = { url: string; expect: ProbeRule[] };
+export type Probe = { url: string; expect: ProbeRule[] } | { url: string; page: { links?: { text: string; hrefStartsWith: string }[]; answer?: string[] } };
 export type JobSettingsRule = { path: string; op: RuleOp; value: string };
 
 export type JobSettingsValue = {
@@ -51,7 +51,7 @@ export function settingsFromJob(job: StoredJobSettings): JobSettingsValue {
     schedule: job.schedule ?? "",
     timeZone: job.timeZone ?? "",
     probeUrl: job.probe?.url ?? "",
-    rules: job.probe?.expect.map((rule) => ({ path: rule.path, op: rule.op, value: rule.value === undefined ? "" : String(rule.value) })) ?? [{ path: "", op: "eq", value: "" }],
+    rules: (job.probe && "expect" in job.probe ? job.probe.expect : undefined)?.map((rule) => ({ path: rule.path, op: rule.op, value: rule.value === undefined ? "" : String(rule.value) })) ?? [{ path: "", op: "eq", value: "" }],
   };
 }
 
@@ -105,7 +105,9 @@ export function buildSettingsPatch(original: StoredJobSettings, value: JobSettin
   const probe = probeFrom(value);
   if (schedule !== original.schedule) patch.schedule = schedule;
   if (timeZone !== original.timeZone) patch.timeZone = timeZone;
-  if (JSON.stringify(probe) !== JSON.stringify(original.probe)) patch.probe = probe;
+  // A page check is set through the API; this form edits JSON rules only, so it leaves a page check as it is.
+  const pageCheck = original.probe !== null && original.probe !== undefined && "page" in original.probe;
+  if (!pageCheck && JSON.stringify(probe) !== JSON.stringify(original.probe)) patch.probe = probe;
   return patch;
 }
 
@@ -118,4 +120,11 @@ export function describeProbeRule(rule: ProbeRule): string {
   if (rule.op === "eq" && rule.value === "$today") return `${rule.path} is today`;
   const words: Record<Exclude<RuleOp, "exists">, string> = { eq: "is", gte: "at least", lte: "at most", gt: "more than", lt: "less than" };
   return `${rule.path} ${words[rule.op]} ${shown(rule.value)}`;
+}
+
+/** "Subscribe goes to https://x.substack.com, 8 sites answer" */
+export function describePageCheck(page: { links?: { text: string; hrefStartsWith: string }[]; answer?: string[] }): string {
+  const parts = (page.links ?? []).map((rule) => `"${rule.text}" goes to ${rule.hrefStartsWith}`);
+  if (page.answer?.length) parts.push(page.answer.length === 1 ? `${page.answer[0]} answers` : `${page.answer.length} sites answer`);
+  return parts.join(", ");
 }

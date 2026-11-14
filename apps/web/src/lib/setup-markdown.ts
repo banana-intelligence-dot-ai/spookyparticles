@@ -189,6 +189,14 @@ printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -
 
 Rules: \`eq\`, \`gte\`, \`lte\`, \`gt\`, \`lt\`, and \`exists\` (has a value: not missing, null, empty text or an empty list). Paths use dots, and \`items.length\` reads a list's length.
 
+For a public web page, send \`page\` instead of \`expect\`. Spooky reads the page every time the schedule fires. It fails when the page does not answer 200, when any link whose text contains \`text\` does not start with \`hrefStartsWith\`, or when a link to a host in \`answer\` is missing or does not reply. Up to 5 link rules and 10 hosts.
+
+\`\`\`bash
+printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -H "content-type: application/json" \\
+  -d '{"name":"Homepage promises","project":"owner/repo","schedule":"*/5 * * * *","probe":{"url":"https://www.example.com/","page":{"links":[{"text":"Subscribe","hrefStartsWith":"https://example.substack.com"}],"answer":["app.example.com"]}}}' \\
+  ${base}/api/v1/checkins
+\`\`\`
+
 ## Existing setup
 
 1. Run the verify step (step 6). On PASS, do not create another key and do not reconnect anything.
