@@ -17,7 +17,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
 1. Check whether \`SPOOKY_API_KEY\` is set in your environment. Never print its value.
 2. If you find \`SPOOKY_API_KEY\` (starts with \`sp_\`) already set, skip to **Existing setup**.
-3. Do not wait on questions. Connect every GitHub account and organization they deploy from, and run the verify step. Ask only when something on the way is unclear.
+3. Do not wait on questions (the one exception is the ask in step 5). Connect every GitHub account and organization they deploy from, and run the verify step. Ask only when something on the way is unclear.
 
 ## Rules you follow during setup
 
@@ -29,7 +29,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
 ## Steps
 
-1. Tell your human what will happen, in about 3 minutes of their time: one link where they sign in and connect GitHub and Vercel, and one sign-in code they approve for you. Read-only by default. Nothing is written to their connected accounts.
+1. Tell your human what will happen, in about 5 to 10 minutes of their time: one page where they sign in and connect GitHub and Vercel, and one sign-in code they approve for you. Spooky only reads their connected accounts. The optional fixer later proposes code fixes in their repos, as commits or pull requests their own rules allow.
 2. Get the setup scripts (public, MIT licensed). Run every later command from this folder:
 
    \`\`\`bash
@@ -68,14 +68,14 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
    sh scripts/agent-inbox/install.sh
    \`\`\`
 
-8. Turn on the fixer, so a break gets fixed when no session is open. It needs Claude Code or Codex signed in on this computer, and \`gh\` signed in for private repos. This clones every repo they deploy into \`~/spooky-fixer\` and writes its config (to leave repos out, your human runs it without \`--yes\` in their own terminal):
+8. Turn on the fixer, so an agent tries a fix when no session is open. It needs Claude Code or Codex signed in on this computer, and \`gh\` signed in for private repos. This clones every repo they deploy into \`~/spooky-fixer\` and writes its config (to leave repos out, your human runs it without \`--yes\` in their own terminal):
 
    \`\`\`bash
    sh scripts/agent-inbox/spooky-fixer.sh --setup --yes
    \`\`\`
 
    Then hand your human the start line it prints, to run in their own terminal. Do not start it yourself. Never put a key in a file or in chat.
-9. Read the first facts and show them, with their source:
+9. Read the first facts and show them, with their source (no \`jq\`? drop the \`| jq ...\` part and read the JSON):
 
    \`\`\`bash
    printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -H @- ${base}/api/v1/incidents | jq '{checkedAt, broken: (.incidents | length)}'
