@@ -167,7 +167,7 @@ export function Onboarding({ connections, params, now }: { connections: Connecti
       <>
         {done} of {list.length} {list.length === 1 ? "account" : "accounts"} synced{errored ? `, ${errored} ${errored === 1 ? "needs" : "need"} attention` : ""}.{" "}
         <Link href="/app/connections" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
-          Connections
+          Accounts
         </Link>
       </>
     );

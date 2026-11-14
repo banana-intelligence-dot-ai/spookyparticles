@@ -28,7 +28,7 @@ const TODO: Record<BreakKind, string> = {
   job_never: "Add the check-in line to the job, or retire it if the job is gone.",
   site_down: "Open the site. If it is down, roll back to the last good deploy on your host.",
   server_errors: "Open the host's logs for the failing route and fix the error.",
-  check: "Open the finding and apply the fix it names, or dismiss it if it does not matter.",
+  check: "Open the suggestion and apply the fix it names, or dismiss it if it does not matter.",
 };
 
 /** The one thing to do, by kind. */
@@ -71,7 +71,8 @@ export function whatHappened(
 /** Who holds a break right now, from the live claims. */
 export type ClaimLike = { project: string; agent: string | null; apiKeyId: string | null; at: string };
 
-const sameProject = (a: string, b: string) => {
+/** One project named two ways ("owner/repo" and "repo") is the same project. */
+export const sameProject = (a: string, b: string) => {
   const x = a.trim().toLowerCase();
   const y = b.trim().toLowerCase();
   return x === y || x.endsWith(`/${y}`) || y.endsWith(`/${x}`) || x.split("/").pop() === y.split("/").pop();

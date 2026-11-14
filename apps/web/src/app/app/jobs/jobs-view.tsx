@@ -37,7 +37,7 @@ type Job = {
   missCount: number;
   pingUrl: string | null;
 };
-type Channel = { id: string; kind: "ntfy" | "slack" | "teams" | "email"; label: string; project: string | null; enabled: boolean; lastOkAt: string | null; lastError: string | null };
+export type Channel = { id: string; kind: "ntfy" | "slack" | "teams" | "email"; label: string; project: string | null; enabled: boolean; lastOkAt: string | null; lastError: string | null };
 
 const PERIODS: [string, number][] = [["every 5 minutes", 5], ["every 15 minutes", 15], ["hourly", 60], ["every 6 hours", 360], ["daily", 1440], ["weekly", 10080]];
 const KIND_LABEL: Record<Channel["kind"], string> = { ntfy: "Phone (ntfy)", slack: "Slack", teams: "Microsoft Teams", email: "Email" };
@@ -334,7 +334,7 @@ function EditSettings({ job, onClose, onChanged }: { job: Job; onClose: () => vo
   );
 }
 
-function Channels({ list, loading, onChanged, onNotice }: { list: Channel[]; loading: boolean; onChanged: () => void; onNotice: (m: string) => void }) {
+export function Channels({ list, loading, onChanged, onNotice }: { list: Channel[]; loading: boolean; onChanged: () => void; onNotice: (m: string) => void }) {
   const [kind, setKind] = useState<Channel["kind"]>("ntfy");
   const [target, setTarget] = useState("");
   const [project, setProject] = useState("");
@@ -395,7 +395,7 @@ function Channels({ list, loading, onChanged, onNotice }: { list: Channel[]; loa
                 {c.project ? <span className="min-w-0 truncate font-mono text-[12px] text-fg-2">Project: {c.project}</span> : null}
               </div>
               <div className="mt-2 flex items-center gap-2 pl-[19px] sm:mt-0 sm:pl-0">
-                {c.lastError ? <span className="mr-auto text-[12px] text-amber">{c.lastError}</span> : sent === c.id ? <span className="mr-auto text-[12px] text-fg-2">sent</span> : null}
+                {c.lastError ? <span className="mr-auto text-[12px] text-amber">{c.lastError}</span> : sent === c.id ? <span className="mr-auto text-[12px] text-fg-2">sent</span> : <span className="mr-auto text-[12px] text-fg-3">{c.lastOkAt ? "Working" : "Not tested yet"}</span>}
                 <button type="button" className={buttonStyles.ghost} disabled={busy === c.id} onClick={() => test(c.id)}>Send a test</button>
                 <button type="button" className={buttonStyles.quietDanger} disabled={busy === c.id} onClick={() => remove(c.id)}>Remove</button>
               </div>

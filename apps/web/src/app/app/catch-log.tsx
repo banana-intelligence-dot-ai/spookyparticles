@@ -321,7 +321,7 @@ function Story({ c, now, claims = [], jobs = [], projects = [], onChanged }: { c
 const sameRepo = (a: string, b: string) => a.toLowerCase() === b.toLowerCase() || a.toLowerCase().split("/").pop() === b.toLowerCase().split("/").pop();
 
 /** For an open break: what happened, who has it, the one thing to do, and the links that do it. */
-function OpenHelp({ c, now, claims = [], jobs = [], projects = [], onChanged }: { c: Catch; now: number } & Extra) {
+export function OpenHelp({ c, now, claims = [], jobs = [], projects = [], onChanged }: { c: Catch; now: number } & Extra) {
   const job = c.jobId ? (jobs.find((j) => j.id === c.jobId) ?? null) : null;
   const kind = breakKind(c, job?.status);
   const project = c.project ? (projects.find((p) => sameRepo(p.name, c.project as string)) ?? null) : null;
@@ -341,7 +341,7 @@ function OpenHelp({ c, now, claims = [], jobs = [], projects = [], onChanged }: 
       : kind === "site_down" && project?.productionUrl
         ? { label: "Open site", href: project.productionUrl, external: true }
         : kind === "check"
-          ? { label: "Open the finding", href: "/app/check", external: false }
+          ? { label: "Open the suggestion", href: "/app/check", external: false }
           : kind.startsWith("job_")
             ? { label: "Open the job", href: c.jobId ? `/app/jobs#job-${c.jobId}` : "/app/jobs", external: false }
             : c.project

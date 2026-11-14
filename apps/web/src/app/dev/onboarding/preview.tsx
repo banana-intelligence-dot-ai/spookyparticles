@@ -3,7 +3,10 @@ import Link from "next/link";
 import { useState } from "react";
 import { ConnectionsList } from "@/app/app/connections/connections-view";
 import { ConnectedAgents, SignInWays, type AgentKey } from "@/app/app/connections/agents";
-import { WiringMap } from "@/app/app/connections/wiring-map";
+import { MAIN } from "@/app/app/connections/connections-view";
+import { HomeScreen } from "@/app/app/home-view";
+import { ProjectScreen } from "@/app/app/project-view";
+import { HOME_CATCHES, HOME_JOBS, HOME_NONE, HOME_RUNS } from "./home-fixture";
 import type { Finding, Spend } from "@/app/app/data-model";
 import { SpendScreen } from "@/app/app/findings/spend-view";
 import { ActivityScreen } from "@/app/app/activity-view";
@@ -93,7 +96,9 @@ function withScopes(spend: Spend | null, scopes: Record<string, "work" | "person
 }
 
 const PATH: Record<View, string> = {
-  today: "/app",
+  home: "/app",
+  today: "/app/today",
+  details: "/app/projects/x/y/details",
   projects: "/app/projects",
   activity: "/app/activity",
   schedules: "/app/jobs",
@@ -119,7 +124,7 @@ export function Preview({ only, view }: { only: string | null; view: View }) {
     <div data-theme="system" className="flex min-h-dvh flex-1 flex-col md:flex-row">
       <RailView pathname={PATH[view]} email="you@example.com" onSignOut={noop} />
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-10">
-        <div className={`mx-auto w-full max-w-6xl ${view === "projects" || view === "project" ? "" : view === "today" ? "[&>*:not(nav)]:max-w-5xl" : "[&>*:not(nav)]:max-w-4xl"}`}>
+        <div className={`mx-auto w-full max-w-6xl ${view === "projects" || view === "details" ? "" : view === "today" || view === "home" || view === "project" ? "[&>*:not(nav)]:max-w-5xl" : "[&>*:not(nav)]:max-w-4xl"}`}>
           <nav aria-label="Preview" className="mb-8 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[12px] text-fg-3">
             <span>preview:</span>
             {FIXTURES.map((x) => (
@@ -143,7 +148,15 @@ export function Preview({ only, view }: { only: string | null; view: View }) {
             <ProjectsScreen ready connections={f.list} report={d.projects} error={null} now={NOW} />
           ) : null}
 
-          {view === "project" ? <ProjectPageScreen ready name={PROJECT_PAGE.project.name} page={PROJECT_PAGE} error={null} now={NOW} /> : null}
+          {view === "home" ? (
+            <HomeScreen ready connections={f.list} projects={d.projects} catches={f.key === "done" ? HOME_NONE : HOME_CATCHES} jobs={HOME_JOBS} params={NO_PARAMS} error={null} now={NOW} />
+          ) : null}
+
+          {view === "project" ? (
+            <ProjectScreen ready name="octocat/ledger-api" projects={d.projects} catches={HOME_CATCHES} jobs={HOME_JOBS} runs={HOME_RUNS} error={null} now={NOW} />
+          ) : null}
+
+          {view === "details" ? <ProjectPageScreen ready name={PROJECT_PAGE.project.name} page={PROJECT_PAGE} error={null} now={NOW} /> : null}
 
           {view === "activity" ? (
             <ActivityScreen ready connections={f.list} report={d.activity} error={null} now={NOW} limit={100} onMore={null} />
@@ -185,12 +198,12 @@ export function Preview({ only, view }: { only: string | null; view: View }) {
           {view === "connections" ? (
             <>
               <PageHeader
-                title="Connections"
-                lede="Read-only access you grant, one provider at a time. Revoke any of it here; nothing is ever deleted on your accounts."
+                title="Accounts"
+                lede="What Spooky reads, who it tells, and where alerts go. Read only. Revoke any of it here; nothing is ever deleted on your accounts."
               />
-              <WiringMap connections={f.list} keys={f.key === "many" || f.key === "done" ? AGENTS : []} now={NOW} />
               <ConnectionsList
                 list={f.list}
+                providers={MAIN}
                 now={NOW}
                 busy={null}
                 confirming={confirming}

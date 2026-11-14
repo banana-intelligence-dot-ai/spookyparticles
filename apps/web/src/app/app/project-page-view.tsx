@@ -1,6 +1,6 @@
 "use client";
 /**
- * One project: where it runs, what it costs a month, what could be saved, then the rows
+ * One project in full, at /app/projects/{owner}/{repo}/details: where it runs, what it costs a month, what could be saved, then the rows
  * behind it (deployments, domains, services and bills), each with its owner and one way out.
  * Every number comes from GET /api/v1/projects/{owner}/{repo}; an agent with a read key sees
  * the same page as JSON. Read-only: recommendations link to the vendor, nothing is executed.
@@ -14,6 +14,7 @@ import { touch } from "@/lib/analytics/client";
 import type { DomainRow, EvidenceRow, HostSide, ProjectPage, Recommendation, ServiceRow } from "@/lib/project-page";
 import { absoluteTime, plural } from "./data-model";
 import { HEALTH, ago, deployWord, dueWords, host, inboxNamer, isFailedState } from "./project-model";
+import { projectHref } from "./projects-view";
 
 export function ProjectPageView({ owner, repo }: { owner: string; repo: string }) {
   const path = `/api/v1/projects/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
@@ -84,11 +85,11 @@ export function ProjectPageScreen({ name, page, error, now, ready }: { name: str
   );
 
   const back = (
-    <Link href="/app/projects" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] text-fg-3 transition-colors hover:text-fg sm:min-h-0">
+    <Link href={projectHref(name)} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] text-fg-3 transition-colors hover:text-fg sm:min-h-0">
       <svg viewBox="0 0 16 16" aria-hidden className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M10 3.5 5.5 8 10 12.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      Projects
+      <span className="font-mono">{name}</span>
     </Link>
   );
 

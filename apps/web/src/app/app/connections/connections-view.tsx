@@ -1,5 +1,4 @@
 "use client";
-import { WiringMap } from "./wiring-map";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { CopyButton } from "@/components/copy-button";
@@ -24,6 +23,7 @@ import {
   type NewKey,
 } from "./agents";
 import { VercelConnect } from "./vercel-connect";
+import { Channels, type Channel } from "../jobs/jobs-view";
 import { authClient } from "@/lib/auth-client";
 import {
   PROVIDER,
@@ -49,6 +49,7 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
   });
   const keys = useApi<{ apiKeys: AgentKey[] }>("/api/v1/api-keys");
   const me = useApi<{ signInIdentities?: Identity[] }>("/api/v1/me");
+  const channels = useApi<{ channels: Channel[] }>("/api/v1/alert-channels");
   const [otherAccountDismissed, setOtherAccountDismissed] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -139,8 +140,8 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
   return (
     <>
       <PageHeader
-        title="Connections"
-        lede="Read-only access you grant, one provider at a time. Revoke any of it here; nothing is ever deleted on your accounts."
+        title="Accounts"
+        lede="What Spooky reads, who it tells, and where alerts go. Read only. Revoke any of it here; nothing is ever deleted on your accounts."
       />
 
       {error ? (
@@ -180,11 +181,10 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
       {conns.error ? <ErrorLine message={conns.error} /> : null}
       {conns.loading ? <p className="text-[16px] text-fg-2">Loading…</p> : null}
 
-      {conns.data && now !== null ? <WiringMap connections={list} keys={keys.data?.apiKeys ?? []} now={now} /> : null}
-
       {conns.data ? (
         <ConnectionsList
           list={list}
+          providers={MAIN}
           now={now ?? 0}
           busy={busy}
           confirming={confirming}
@@ -211,14 +211,6 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
                   Install on GitHub
                 </a>
               </>
-            ),
-            gmail: (
-              <a
-                href="/api/connect/gmail/start"
-                className={buttonStyles.secondary}
-              >
-                {hasInbox ? "Add another inbox" : "Add Gmail inbox"}
-              </a>
             ),
             vercel: (
               integrationEnabled ? <><a href="/api/connect/vercel/start" className={buttonStyles.primary}>Install on Vercel</a><button type="button" className={buttonStyles.secondary} onClick={() => document.getElementById("vercel-token")?.focus()}>Add a read token</button></> : <button
@@ -256,8 +248,35 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
           onRevoke={revokeKey}
         />
       ) : null}
+      {conns.data ? (
+        <div className="mt-14">
+          <Channels list={channels.data?.channels ?? []} loading={channels.loading} onChanged={() => channels.reload()} onNotice={setNotice} />
+        </div>
+      ) : null}
       {me.data?.signInIdentities && (vercelSignInEnabled || me.data.signInIdentities.length > 0) ? (
         <SignInWays identities={me.data.signInIdentities.filter((identity) => identity.provider !== "vercel" || vercelSignInEnabled)} now={now ?? 0} vercelEnabled={vercelSignInEnabled} />
+      ) : null}
+      {conns.data ? (
+        <div className="mt-14">
+          <ConnectionsList
+            list={list}
+            providers={["gmail"]}
+            summary={false}
+            now={now ?? 0}
+            busy={busy}
+            confirming={confirming}
+            onConfirm={setConfirming}
+            onRevoke={revoke}
+            onSync={sync}
+            actions={{
+              gmail: (
+                <a href="/api/connect/gmail/start" className={buttonStyles.secondary}>
+                  {hasInbox ? "Add another inbox" : "Add Gmail inbox"}
+                </a>
+              ),
+            }}
+          />
+        </div>
       ) : null}
     </>
   );
@@ -277,11 +296,13 @@ export function ConnectionsEmpty() {
 
 const ORDER: Connection["provider"][] = [
   "github",
-  "gmail",
   "vercel",
   "supabase",
   "cloudflare",
+  "gmail",
 ];
+/** The accounts Spooky watches projects through. Gmail is an optional extra, listed last on its own. */
+export const MAIN: Connection["provider"][] = ["github", "vercel", "supabase", "cloudflare"];
 /** Providers that get a section even before anything is connected: the way in lives beside the rows. */
 const ALWAYS: Connection["provider"][] = ["github", "gmail", "vercel"];
 
@@ -290,7 +311,7 @@ const EMPTY_LINE: Partial<Record<Connection["provider"], string>> = {
   github:
     "Every repo and deployment from the accounts you install it on. Metadata and deployments, read.",
   gmail:
-    "Bills, renewals and failed charges from the inbox they land in. One scope, gmail.readonly.",
+    "Optional. Notices from your hosts that land in this inbox. One scope, gmail.readonly.",
   vercel:
     "Every project on the account or team, including ones that never touched GitHub. Read-only in code: GET plus one schedule-history query.",
 };
@@ -298,6 +319,8 @@ const EMPTY_LINE: Partial<Record<Connection["provider"], string>> = {
 /** The connection rows, grouped by provider, each section with its own way in. Presentational: the view owns data and actions. */
 export function ConnectionsList({
   list,
+  providers = ORDER,
+  summary = true,
   now,
   busy,
   confirming,
@@ -308,6 +331,10 @@ export function ConnectionsList({
   panels = {},
 }: {
   list: Connection[];
+  /** Which provider sections to draw, in this order. Default: all of them. */
+  providers?: Connection["provider"][];
+  /** The "needs you" line on top. Off for a second list on the same page. */
+  summary?: boolean;
   now: number;
   busy: string | null;
   confirming: string | null;
@@ -319,11 +346,11 @@ export function ConnectionsList({
   /** A panel a section opens under its title (the Vercel token steps). */
   panels?: Partial<Record<Connection["provider"], ReactNode>>;
 }) {
-  const groups = ORDER.map((p) => ({
+  const groups = ORDER.filter((p) => providers.includes(p)).map((p) => ({
     provider: p,
     rows: list.filter((c) => c.provider === p),
   })).filter((g) => g.rows.length || ALWAYS.includes(g.provider));
-  const hurt = list.filter((c) => c.status === "errored");
+  const hurt = summary ? list.filter((c) => c.status === "errored") : [];
   return (
     <div className="flex flex-col gap-10">
       {hurt.length ? (

@@ -8,8 +8,8 @@ export const metadata = { title: "App preview" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 /**
- * Development-only: the real Today, Projects, Spend, Activity and Connections screens against fixtures.
- * `?state=<key>&view=today|projects|spend|activity|connections`. 404 in every other environment.
+ * Development-only: the real app screens against fixtures.
+ * `?state=<key>&view=home|project|connections|today|projects|details|...`. 404 in every other environment.
  */
 export default function AppPreviewPage({ searchParams }: { searchParams: SearchParams }) {
   if (process.env.NODE_ENV !== "development") notFound();
@@ -22,6 +22,6 @@ export default function AppPreviewPage({ searchParams }: { searchParams: SearchP
 
 async function Filtered({ searchParams }: { searchParams: SearchParams }) {
   const { state, view } = await searchParams;
-  const v: View = VIEWS.includes(view as View) ? (view as View) : "today";
+  const v: View = VIEWS.includes(view as View) ? (view as View) : "home";
   return <Preview only={typeof state === "string" ? state : null} view={v} />;
 }

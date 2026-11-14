@@ -172,7 +172,7 @@ export function TodayScreen({
               value={String(today.needsWeek)}
               tone={today.needsWeek ? "amber" : null}
               label="Need you this week"
-              source="Open check findings and connections to fix"
+              source="Open check suggestions and accounts to fix"
             />
           </section>
 

@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { ConnectionsView } from "./connections-view";
 import { vercelIntegrationConfig, vercelSignInConfig } from "@/lib/env";
 
-export const metadata = { title: "Connections" };
+export const metadata = { title: "Accounts" };
 
 export default function ConnectionsPage() {
   return (

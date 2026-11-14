@@ -162,7 +162,7 @@ function Reason({ reason }: { reason: string | null }) {
         <>
           {" "}
           <Link href="/app/connections" className="underline underline-offset-2 hover:text-fg">
-            Open Connections
+            Open Accounts
           </Link>
         </>
       ) : null}

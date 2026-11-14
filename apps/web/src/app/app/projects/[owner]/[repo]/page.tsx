@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { ProjectPageView } from "../../../project-page-view";
+import { ProjectView } from "../../../project-view";
 
 type Params = Promise<{ owner: string; repo: string }>;
 
@@ -20,5 +20,5 @@ export default function ProjectPage({ params }: { params: Params }) {
 
 async function Resolved({ params }: { params: Params }) {
   const { owner, repo } = await params;
-  return <ProjectPageView owner={decodeURIComponent(owner)} repo={decodeURIComponent(repo)} />;
+  return <ProjectView owner={decodeURIComponent(owner)} repo={decodeURIComponent(repo)} />;
 }
