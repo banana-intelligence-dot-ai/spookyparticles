@@ -94,7 +94,7 @@ cat > "$HOME/bin/claude" <<'EOF'
 echo "agent claude $PWD" >> "$FAKE/calls"
 printf '%s\n' "$@" > "$FAKE/claude-args"
 echo "leak $SPOOKY_API_KEY sp_abcdefgh123 https://x.example/api/ping/tok123"
-echo "what broke"; echo "no change"; echo "fixed"
+echo "what broke"; echo "no change"; echo "fixed"; echo "Lesson: nightly fails when the feed is empty"
 EOF
 cat > "$HOME/bin/codex" <<'EOF'
 #!/bin/sh
@@ -291,6 +291,14 @@ fixer --budget 99
 job_block owner/app2 2026-11-13T07:33:00Z > "$FAKE/incidents-owner_app2.txt"
 fixer --budget 99
 [ "$(count "agent claude $HOME/code/app2")" = $((runs_before + 2)) ] || fail "a job that recovered and failed again got no run"
+
+# Lessons: a run's "Lesson:" line is kept on this computer, and the next run's brief carries it
+# plus the repo's own .spooky/lessons.md.
+lessons="${XDG_STATE_HOME:-$HOME/.local/state}/spooky/lessons/owner_app2.md"
+grep -q 'nightly fails when the feed is empty' "$lessons" 2>/dev/null || fail "lesson not saved"
+grep -q 'Lessons from earlier fixes' "$FAKE/claude-args" || fail "brief has no lessons block"
+grep -q 'nightly fails when the feed is empty' "$FAKE/claude-args" || fail "saved lesson not in the next brief"
+grep -q '.spooky/lessons.md' "$FAKE/claude-args" || fail "brief does not ask for a lesson"
 
 # Sign-in (needs a terminal; script(1) gives one): no key anywhere, so the fixer shows a code,
 # opens the link, waits for approval, saves its own key in the Keychain and runs.

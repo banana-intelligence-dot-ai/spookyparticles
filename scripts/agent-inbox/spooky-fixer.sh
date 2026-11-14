@@ -594,6 +594,28 @@ prune_done() {
   } > "$tmp" && mv "$tmp" "$state_file"
 }
 
+# lessons_for <repo> <project>: the latest lessons from earlier fixes, from the repo's own
+# .spooky/lessons.md and from this computer's copy (kept even when a fix was never merged).
+lessons_for() {
+  lf_local="$state_dir/lessons/$(printf '%s' "$2" | tr -c 'A-Za-z0-9._-' '_').md"
+  lf_text=
+  [ -r "$1/.spooky/lessons.md" ] && lf_text=$(tail -n 40 "$1/.spooky/lessons.md")
+  [ -r "$lf_local" ] && lf_text="$lf_text
+$(tail -n 20 "$lf_local")"
+  lf_text=$(printf '%s\n' "$lf_text" | awk 'NF && !seen[$0]++')
+  [ -n "$lf_text" ] || return 0
+  printf '\nLessons from earlier fixes in this repo:\n%s\n' "$lf_text"
+}
+
+# save_lesson <project> <run log>: keep the run's "Lesson:" line on this computer, last 60.
+save_lesson() {
+  sl_line=$(sed -n 's/^Lesson: *//p' "$2" | tail -n 1)
+  [ -n "$sl_line" ] || return 0
+  mkdir -p "$state_dir/lessons"
+  sl_file="$state_dir/lessons/$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_').md"
+  { [ -r "$sl_file" ] && cat "$sl_file"; printf '%s %s\n' "$(date -u +%Y-%m-%d)" "$sl_line"; } | tail -n 60 > "$sl_file.tmp.$$" && mv "$sl_file.tmp.$$" "$sl_file"
+}
+
 hash_text() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -c1-16
   else sha256sum | cut -c1-16
@@ -620,14 +642,15 @@ brief() {
 You are fixing a production problem in this repository. Spooky Particles found it. You are running headless and nobody is watching, so be careful and small.
 
 1. Read this repo's CLAUDE.md or AGENTS.md first and follow its rules, above all about committing, pushing and deploying. If they say a person must approve a deploy, commit the fix and stop there.
-2. Find the cause. Start from the incident below, then the code, the logs and recent commits.
+2. Read .spooky/lessons.md if it exists: what earlier fixes in this repo learned. The latest ones are also under the incident. Then find the cause, starting from the incident, then the code, the logs and recent commits.
 3. If the cause is clear, make the smallest fix, add or update a test, and run the repo's own tests. If the cause is not clear, or the fix needs secrets, environment variables, DNS, billing, a database schema change or deleting data, change nothing and say why.
 4. Deploy only the way the repo's rules allow.
 5. Do not run the claim or confirm commands in the incident, and do not try to reach Spooky. The fixer that started you has claimed this problem and asks Spooky to check production as soon as you finish.
+6. Add one dated line to .spooky/lessons.md (create it if needed): what broke, the real cause, and what fixed it or why you stopped. Write it for the next agent that fixes this repo. Keep the file under 60 lines by merging repeats. Commit it with your fix; if you changed nothing else, commit it alone only if the repo's rules allow.
 
 Never read or print .env files, keys or tokens. One fix per run.
 
-End with three short lines: what broke, what you did (commit hash or "no change"), and whether it is deployed, committed only, or not changed.
+End with four short lines: what broke, what you did (commit hash or "no change"), whether it is deployed, committed only, or not changed, and "Lesson: " followed by the line you added.
 
 Incident:
 EOF
@@ -756,7 +779,7 @@ EOF
   push "$project is broken. Your $agent is fixing it (run $runs_today of $budget today)."
 
   code=$(run_agent "$repo" "$(brief)
-$body" "$run_log")
+$body$(lessons_for "$repo" "$project")" "$run_log")
   [ "$code" = 0 ] || log "$project: $agent run ended with code $code (142 means it hit the ${run_timeout}s limit)"
   if [ "$code" != 0 ] && grep -q -i -E 'invalid api key|not logged in|please run /login|authentication_error|401 unauthorized' "$run_log"; then
     runs_today=$((runs_today - 1))
@@ -767,6 +790,7 @@ $body" "$run_log")
     exit 3
   fi
 
+  save_lesson "$project" "$run_log"
   if check=$(spooky POST /api/v1/incidents/confirm "$project" 2>&1); then
     verdict=$(printf '%s\n' "$check" | head -n 1 | sed 's/^.*: //')
   else

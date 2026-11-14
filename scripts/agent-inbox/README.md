@@ -43,6 +43,8 @@ Every few minutes it asks Spooky what is broken in the projects you list. For a 
 
 It never runs the same open problem twice. It stops after 10 runs a day, so it cannot burn through your plan.
 
+Each fix leaves one line in the repo's `.spooky/lessons.md`: what broke, the cause, what fixed it. The next fix reads those lessons first, so each repo gets better at fixing itself. The fixer keeps its own copy in `~/.local/state/spooky/lessons/` too, so a lesson counts even before its pull request is merged.
+
 Set it up with one command:
 
 From this repository, run:
