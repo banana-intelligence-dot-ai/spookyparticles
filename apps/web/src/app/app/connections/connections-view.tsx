@@ -213,7 +213,7 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
               </>
             ),
             vercel: (
-              integrationEnabled ? <><a href="/api/connect/vercel/start" className={buttonStyles.primary}>Install on Vercel</a><button type="button" className={buttonStyles.secondary} onClick={() => document.getElementById("vercel-token")?.focus()}>Add a read token</button></> : <button
+              integrationEnabled ? <><a href="/api/connect/vercel/start" className={hasVercel ? buttonStyles.secondary : buttonStyles.primary}>Install on Vercel</a><button type="button" className={buttonStyles.secondary} aria-expanded={vercelOpen || !hasVercel} onClick={() => { setVercelOpen(true); requestAnimationFrame(() => document.getElementById("vercel-token")?.focus()); }}>Add a read token</button></> : <button
                 type="button"
                 className={
                   hasGithub && !hasVercel
@@ -228,7 +228,8 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
             ),
           }}
           panels={{
-            vercel: (vercelOpen || integrationEnabled) ? (
+            // Once Vercel is connected, the setup guide waits behind its button instead of sitting open above the accounts.
+            vercel: (vercelOpen || (integrationEnabled && !hasVercel)) ? (
               <VercelConnect
                 integrationEnabled={integrationEnabled}
                 onConnected={() => conns.reload()}

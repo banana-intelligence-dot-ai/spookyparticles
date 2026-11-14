@@ -297,27 +297,30 @@ export function healthReason(p: Project, now: number): string | null {
 /** A date with no time (receipts often carry only a day) arrives as midnight UTC. */
 const isDateOnly = (iso: string) => /T00:00:00(\.000)?Z$/.test(iso);
 
-/** Calendar parts of a timestamp: local for real times, UTC for date-only values, so a receipt dated Nov 2 stays on Nov 2. */
-function parts(iso: string): { y: number; m: number; d: number } {
+/**
+ * Calendar parts of a timestamp: local for real times, UTC for date-only values, so a receipt dated Nov 2 stays on Nov 2.
+ * `instant` says the value is always a real moment (a run hour, a deploy), so midnight UTC is not mistaken for a date.
+ */
+function parts(iso: string, instant = false): { y: number; m: number; d: number } {
   const t = new Date(iso);
-  return isDateOnly(iso) ? { y: t.getUTCFullYear(), m: t.getUTCMonth(), d: t.getUTCDate() } : { y: t.getFullYear(), m: t.getMonth(), d: t.getDate() };
+  return !instant && isDateOnly(iso) ? { y: t.getUTCFullYear(), m: t.getUTCMonth(), d: t.getUTCDate() } : { y: t.getFullYear(), m: t.getMonth(), d: t.getDate() };
 }
 
 /** Day key and heading for the activity feed: "Today", "Yesterday", "Thu, Oct 29". */
-export function dayKey(iso: string): string {
-  const p = parts(iso);
+export function dayKey(iso: string, instant = false): string {
+  const p = parts(iso, instant);
   return `${p.y}-${p.m}-${p.d}`;
 }
 
-export function dayHeading(iso: string, now: number): string {
-  const key = dayKey(iso);
+export function dayHeading(iso: string, now: number, instant = false): string {
+  const key = dayKey(iso, instant);
   const local = (ms: number) => {
     const t = new Date(ms);
     return `${t.getFullYear()}-${t.getMonth()}-${t.getDate()}`;
   };
   if (key === local(now)) return "Today";
   if (key === local(now - 86_400_000)) return "Yesterday";
-  const p = parts(iso);
+  const p = parts(iso, instant);
   const d = new Date(p.y, p.m, p.d);
   const sameYear = p.y === new Date(now).getFullYear();
   return new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", year: sameYear ? undefined : "numeric" }).format(d);

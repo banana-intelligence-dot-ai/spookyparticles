@@ -300,7 +300,7 @@ export function projectHistory(input: { catches: Catch[]; deployments: Pick<Depl
   const since = input.now - WINDOW_DAYS * DAY;
   const days = new Map<string, { at: string; items: HistoryItem[]; deploys: number; ok: number; fail: number }>();
   const dayOf = (iso: string) => {
-    const k = dayKey(iso);
+    const k = dayKey(iso, true);
     const d = days.get(k) ?? { at: iso, items: [], deploys: 0, ok: 0, fail: 0 };
     if (iso > d.at) d.at = iso;
     days.set(k, d);
@@ -342,14 +342,14 @@ export function projectHistory(input: { catches: Catch[]; deployments: Pick<Depl
   for (let i = 0; i < sorted.length; ) {
     const quiet = (d: (typeof sorted)[number]) => !d.items.length && !d.fail;
     let j = i;
-    if (quiet(sorted[i])) while (j + 1 < sorted.length && quiet(sorted[j + 1]) && dayKey(sorted[j + 1].at) === dayKey(new Date(Date.parse(sorted[j].at) - DAY).toISOString())) j += 1;
+    if (quiet(sorted[i])) while (j + 1 < sorted.length && quiet(sorted[j + 1]) && dayKey(sorted[j + 1].at, true) === dayKey(new Date(Date.parse(sorted[j].at) - DAY).toISOString(), true)) j += 1;
     if (j > i) {
       const run = sorted.slice(i, j + 1);
       const sum = (f: (d: (typeof run)[number]) => number) => run.reduce((n, d) => n + f(d), 0);
-      out.push({ key: run[0].key, heading: `${dayHeading(run.at(-1)!.at, input.now)} to ${dayHeading(run[0].at, input.now)}`, items: [], summary: summaryOf(sum((d) => d.deploys), sum((d) => d.ok), 0, []) });
+      out.push({ key: run[0].key, heading: `${dayHeading(run.at(-1)!.at, input.now, true)} to ${dayHeading(run[0].at, input.now, true)}`, items: [], summary: summaryOf(sum((d) => d.deploys), sum((d) => d.ok), 0, []) });
     } else {
       const d = sorted[i];
-      out.push({ key: d.key, heading: dayHeading(d.at, input.now), items: d.items, summary: summaryOf(d.deploys, d.ok + d.fail, d.fail, d.items) });
+      out.push({ key: d.key, heading: dayHeading(d.at, input.now, true), items: d.items, summary: summaryOf(d.deploys, d.ok + d.fail, d.fail, d.items) });
     }
     i = j + 1;
   }

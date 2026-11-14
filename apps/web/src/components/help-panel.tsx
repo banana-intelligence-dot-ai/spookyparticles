@@ -2,10 +2,12 @@
 /**
  * The help panel: a quiet Help button that opens a sheet (right side on
  * desktop, bottom on phones) with a short transcript and one input. It asks
- * POST /api/v1/help, the same endpoint agents can call. Not mounted here:
- * the caller places <HelpPanel /> where it belongs.
+ * POST /api/v1/help, the same endpoint agents can call. The caller places the
+ * button; the sheet renders into <body>, so a sticky or transformed parent
+ * (the app rail is sticky) cannot trap it under the page.
  */
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { SERVER_FAULT, errorMessage } from "./use-api";
 
 type Turn = { role: "user" | "assistant"; content: string; links?: { label: string; href: string }[] };
@@ -120,7 +122,7 @@ export function HelpPanel({ label = "Help" }: { label?: string }) {
         {label}
       </button>
 
-      {open ? (
+      {open ? createPortal(
         <div className="fixed inset-0 z-50" onKeyDown={onKeyDown}>
           <div
             aria-hidden="true"
@@ -251,7 +253,8 @@ export function HelpPanel({ label = "Help" }: { label?: string }) {
               </button>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );

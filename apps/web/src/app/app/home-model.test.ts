@@ -177,6 +177,29 @@ describe("projectHistory", () => {
     expect(days[2].heading).not.toContain(" to ");
   });
 
+  it("keeps a run hour that starts at midnight UTC on its local day, not a day of its own", () => {
+    const tz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      // 2026-11-14 06:37Z is Fri Nov 13, 22:37 in Los Angeles. The 00:00Z hour is Fri 4pm there.
+      const now = Date.parse("2026-11-14T06:37:00.000Z");
+      const runsSince = "2026-10-31T07:00:00.000Z";
+      const hourOf = (iso: string) => Math.floor((Date.parse(iso) - Date.parse(runsSince)) / 3_600_000);
+      const days = projectHistory({
+        catches: [],
+        deployments: [],
+        runs: [{ bins: [[hourOf("2026-11-14T00:00:00.000Z"), 40, 0], [hourOf("2026-11-14T05:00:00.000Z"), 30, 1]] }],
+        runsSince,
+        now,
+      });
+      expect(days).toHaveLength(1);
+      expect(days[0].heading).toBe("Today");
+      expect(sp(days[0].summary)).toBe("71 job runs, 1 run failed");
+    } finally {
+      process.env.TZ = tz;
+    }
+  });
+
   it("names who fixed it", () => {
     expect(fixedByWords({ fixedBy: { kind: "pr", url: "u" }, agent: null, heardAt: null })).toBe("your agent's pull request");
     expect(fixedByWords({ fixedBy: null, agent: "Cursor", heardAt: ago(1) })).toBe("Cursor, after it asked about it");
