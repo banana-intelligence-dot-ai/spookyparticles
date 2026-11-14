@@ -4,10 +4,10 @@
 
 Spooky tells your coding agent what is broken. It works with Claude Code, Cursor and OpenAI Codex CLI.
 
-Create a read-only agent key in Spooky Particles and set `SPOOKY_API_KEY` in this shell. From this repository, run:
+From this repository, sign this computer in, then install. Sign-in prints a code; your human checks it and clicks Approve in the browser. The key goes to the macOS Keychain (on Linux, a file only you can read), never through chat:
 
 ```sh
-mkdir -p ~/.config/spooky && printf '%s\n' "$SPOOKY_API_KEY" > ~/.config/spooky/key && chmod 600 ~/.config/spooky/key
+sh scripts/agent-inbox/spooky-fixer.sh --sign-in
 sh scripts/agent-inbox/install.sh
 ```
 
@@ -45,14 +45,13 @@ It never runs the same open problem twice. It stops after 10 runs a day, so it c
 
 Set it up with one command:
 
-1. In Spooky, open Connections and make a Read key for the fixer, so its claims show as its own. Copy it.
-2. From this repository, run:
+From this repository, run:
 
 ```sh
-sh scripts/agent-inbox/spooky-fixer.sh --setup --start --key-from-clipboard
+sh scripts/agent-inbox/spooky-fixer.sh --setup --start
 ```
 
-The key is read from the clipboard and stays in memory. It is never shown or saved. Not on a Mac? Put the key in `SPOOKY_API_KEY` instead and leave out `--key-from-clipboard`.
+If this computer is not signed in yet, it prints a code; check it matches the page and click Approve. The key goes to the macOS Keychain (on Linux, a file only you can read). A key made by hand under Connections still works: put it in `SPOOKY_API_KEY`, or pass `--key-from-clipboard`.
 
 Setup does the rest:
 

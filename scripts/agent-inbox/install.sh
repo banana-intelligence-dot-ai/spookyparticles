@@ -347,5 +347,5 @@ if [ "$want_codex" = true ]; then
   fi
 fi
 
-printf 'Put a read-only key in ~/.config/spooky/key, then run: chmod 600 ~/.config/spooky/key\n'
+printf 'Not signed in yet? Run: sh scripts/agent-inbox/spooky-fixer.sh --sign-in\n'
 exit $status

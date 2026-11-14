@@ -2,8 +2,8 @@
  * GET /setup.md: the file a coding agent fetches when its human says
  * "set up Spooky Particles for me". Plain Markdown, numbered steps, one action
  * each. The agent never holds an OAuth token: every connection is a link the
- * human clicks. The only credential is an API key the human creates
- * in the app and puts in the agent's environment, never in chat.
+ * human clicks. The only credential is a read key the agent gets when its
+ * human approves a sign-in code; it goes to the Keychain, never through chat.
  *
  * Served from the app so the URL on the landing page is always the current
  * version. Cached for an hour by the cache-control header.
@@ -23,43 +23,43 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
 1. Check whether \`SPOOKY_API_KEY\` is set in your environment. Never print its value.
 2. If you find \`SPOOKY_API_KEY\` (starts with \`sp_\`) already set, skip to **Existing setup**.
-3. Ask your human every question you need in one message, then wait:
-   - Which GitHub accounts and organizations they deploy from (all of them is the right answer).
-   - Whether they want you to run the verify step at the end (yes is the default).
+3. Do not wait on questions. Connect every GitHub account and organization they deploy from, and run the verify step. Ask only when something on the way is unclear.
 
 ## Rules you follow during setup
 
 - You never ask for, receive, type, or store a password, an OAuth token, a card number, or an API key in chat. The key this setup uses is made when your human approves a sign-in code in their browser. It goes straight into this computer's Keychain and never through chat.
 - You never visit sign-in pages, consent screens or billing pages on the human's behalf. You post the link, they click.
 - You never change DNS, billing, subscriptions or email settings. Code fixes go through a new branch and pull request. Spooky Particles never changes connected provider settings or merges a pull request.
-- Ask before each connection: name the provider and what will be read.
+- Name each provider and what will be read when you send its link.
 - If any step shows something unexpected, stop and show your human the exact text.
 
 ## Steps
 
-1. Tell your human what will happen: one sign-in with Vercel, a GitHub connection they click through, one sign-in code they approve for you, read-only by default. Nothing is written to their connected accounts.
-2. Send this link and ask them to open it and click **Continue with Vercel**: ${base}/
-3. When they confirm they are signed in, send this link and ask them to click **Install on GitHub**, choose the repositories (all repositories is fine, access is read-only: metadata, deployments and Actions runs), and come back: ${base}/app
-4. Vercel. Send this link and ask them to click **Connect Vercel** and follow the steps on the page: ${base}/app
+1. Tell your human what will happen, in about 3 minutes of their time: one link where they sign in and connect GitHub and Vercel, and one sign-in code they approve for you. Read-only by default. Nothing is written to their connected accounts.
+2. Get the setup scripts (public, MIT licensed). Run every later command from this folder:
+
+   \`\`\`bash
+   git clone --depth 1 https://github.com/banana-intelligence-dot-ai/spookyparticles ~/spookyparticles 2>/dev/null || git -C ~/spookyparticles pull -q --ff-only
+   cd ~/spookyparticles
+   \`\`\`
+
+3. Send this link: ${base}/app. Ask them to click **Continue with Vercel** if it asks them to sign in, then on that page click **Install on GitHub** and choose the repositories (all is fine; access is read-only: metadata, deployments and Actions runs), then click **Connect Vercel** and follow the steps. Ask them to say when they are done.
    **Install on Vercel** gives Vercel-set read scopes and chosen projects. A pasted token additionally lets schedules be watched with no code change, because Vercel's integration scopes do not include request history yet. They can use either or both.
    Never ask for a token in chat and never accept one if offered; the human pastes it on that page and nobody else sees it. A pasted Vercel token cannot be made read-only by Vercel, so read-only is enforced in Spooky Particles' code: it sends GET requests, plus one read-only query of request history that shows whether each schedule ran. Say that if they ask.
-5. Tell them what they now have: every project, deploy and schedule on that Vercel account is on the map. Schedules are watched with no code change when a pasted token can read request history; otherwise they can add one check-in line. A missed or failed run reaches them once they add a channel (phone, Slack, Teams or email) on ${base}/app/jobs.
-6. Sign yourself in. From a clone of https://github.com/banana-intelligence-dot-ai/spookyparticles, run this. It prints a link and a code, opens the link in their browser, and waits up to 10 minutes (run it in the background if your shell stops commands sooner):
+4. Sign yourself in. Run this. It prints a link and a code, opens the link in their browser, and waits up to 10 minutes (run it in the background if your shell stops commands sooner):
 
    \`\`\`bash
    sh scripts/agent-inbox/spooky-fixer.sh --sign-in
    \`\`\`
 
    Tell your human the code and ask them to check it matches the page, then click **Approve**. The page names you and this computer. The key it makes is read-only, belongs to this computer, and is saved in the macOS Keychain (elsewhere, a file only they can read). You never see it. They can revoke it any time under Connections. If the script says this Spooky has no agent sign-in, ask them to make a key under ${base}/app/connections → **Connect an agent** → **Make key** and export it as \`SPOOKY_API_KEY\` themselves.
-7. Load the key into your shell. This line holds no secret; it reads the Keychain. Ask your human before adding it to \`~/.zshrc\` so new terminals have it too:
+5. Load the key into your shell. This line holds no secret: it reads the macOS Keychain, or on Linux a file only your human can read. Your shell may not keep variables between commands, so put this line before any command that uses the key. Ask once before adding it to \`~/.zshrc\` so new terminals have it too:
 
    \`\`\`bash
    export SPOOKY_API_KEY="$(security find-generic-password -s spookyparticles.com -a spooky-agent -w 2>/dev/null || cat ~/.config/spooky/agent-key)"
    \`\`\`
 
-   For check findings or recording service sign-ups you need a **write** key: ask them to make one under Connections and put it in \`SPOOKY_API_KEY\` themselves.
-
-8. Verify. Run exactly this and read the result. The key goes in through a pipe, so it never shows on a command line where other programs could read it:
+6. Verify. Run exactly this and read the result. The key goes in through a pipe, so it never shows on a command line where other programs could read it:
 
    \`\`\`bash
    printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -H @- ${base}/api/v1/me
@@ -68,6 +68,19 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
    - PASS: a JSON object with \`user.email\` and \`auth.via: "api_key"\`.
    - FAIL: \`401\` means the key is not in this shell yet (new terminal, or the export did not run). \`403\` means the key lacks the scope. Anything else: show it to your human.
 
+7. Turn on agent alerts, so Claude Code, Cursor and Codex hear about a break when a session starts:
+
+   \`\`\`bash
+   sh scripts/agent-inbox/install.sh
+   \`\`\`
+
+8. Turn on the fixer, so a break gets fixed when no session is open. It needs Claude Code or Codex signed in on this computer, and \`gh\` signed in for private repos. This clones every repo they deploy into \`~/spooky-fixer\` and writes its config (to leave repos out, your human runs it without \`--yes\` in their own terminal):
+
+   \`\`\`bash
+   sh scripts/agent-inbox/spooky-fixer.sh --setup --yes
+   \`\`\`
+
+   Then hand your human the start line it prints, to run in their own terminal. Do not start it yourself. Never put a key in a file or in chat.
 9. Read the first facts and show them, with their source:
 
    \`\`\`bash
@@ -77,6 +90,12 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
    \`\`\`
 
    The last call lists anything that still runs on another host, each with the link that imports it into Vercel and the matching Vercel migration guide. Offer to walk them through moving one.
+
+10. Tell them alerts already reach their account email, and that they can add a phone, Slack or Teams channel on ${base}/app/jobs.
+
+## Optional, later
+
+Check-ins, check findings, recorded services and expiration dates need a **write** key. Ask your human to make one under ${base}/app/connections and put it in \`SPOOKY_API_KEY\` themselves.
 
 ## Connect over MCP
 
@@ -130,23 +149,13 @@ Never tell your human a break is fixed on your own word. After the fix is deploy
 
 ## Your coding agent hears about it
 
-Claude Code, Cursor and Codex can each hear about open problems when a session starts. Claude Code also checks before later prompts and speaks only when the list changed. Cursor and Codex get the Spooky MCP server too, read with \`SPOOKY_API_KEY\` from their environment, never copied into their config. Once you are signed in (step 6), run this from the same clone; the check uses the saved key. The installer finds which of the three you use (or pass \`--agent claude\`, \`cursor\`, \`codex\` or \`all\`), backs up each file it changes, and is safe to run twice:
-
-\`\`\`sh
-sh scripts/agent-inbox/install.sh
-\`\`\`
+Claude Code, Cursor and Codex can each hear about open problems when a session starts. Claude Code also checks before later prompts and speaks only when the list changed. Cursor and Codex get the Spooky MCP server too, read with \`SPOOKY_API_KEY\` from their environment, never copied into their config. Step 7 sets it up.
 
 ## When no session is open
 
 The fixer starts a fix when nobody is at the keyboard. It runs on your human's machine with their own Claude Code or Codex, never on Spooky's servers. Every few minutes it asks Spooky what is broken. For a new problem no other session has claimed, it claims it, runs the agent headless in a clean copy of that repo, then asks Spooky to check production. At most 10 runs a day, never the same open problem twice.
 
-Offer it once setup is done. If your human wants it, set it up from the same clone. It lists their repos, clones the ones they keep into \`~/spooky-fixer\`, and writes its config. Show them the numbered list it prints and drop the repos they say to drop:
-
-\`\`\`sh
-sh scripts/agent-inbox/spooky-fixer.sh --setup
-\`\`\`
-
-Then hand your human the start line it prints, to run in their own terminal. It runs in the foreground for 12 hours, uses their Claude or Codex login for the fix, and this computer's sign-in for Spooky. Do not start it yourself, and never put a key in a file or in chat.
+Step 8 sets it up. It runs in the foreground for 12 hours, uses their Claude or Codex login for the fix, and this computer's sign-in for Spooky.
 
 ## Check-ins for scheduled jobs
 
@@ -188,8 +197,9 @@ Rules: \`eq\`, \`gte\`, \`lte\`, \`gt\`, \`lt\`, and \`exists\` (has a value: no
 
 ## Existing setup
 
-1. Run the verify step (step 8). On PASS, do not create another key and do not reconnect anything.
+1. Run the verify step (step 6). On PASS, do not create another key and do not reconnect anything.
 2. List what is connected: \`GET ${base}/api/v1/connections\`. If a connection needs attention, send ${base}/app/connections and ask the human to follow its instructions.
+3. If agent alerts or the fixer are not on yet, do steps 2, 7 and 8.
 
 ## Things only your human may do
 
@@ -202,7 +212,7 @@ Rules: \`eq\`, \`gte\`, \`lte\`, \`gt\`, \`lt\`, and \`exists\` (has a value: no
 
 Finish with a short message in this shape:
 
-- What was done: which Vercel and GitHub accounts are connected, that an agent key exists, its scope, and the verify result.
+- What was done: which Vercel and GitHub accounts are connected, that this computer is signed in, the verify result, and whether agent alerts and the fixer are on.
 - What the human must do: anything left from the list above, with the exact link.
 - Next steps (at most two): for example "check back in 10 minutes for the first findings" or "connect a GitHub organization".
 
