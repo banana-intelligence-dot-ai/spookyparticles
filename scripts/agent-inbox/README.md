@@ -2,7 +2,7 @@
 
 ## Always on: a fix job in GitHub
 
-When the GitHub pager is enabled in Spooky, a matching project responder starts a fix workflow in your repository. Copy `scripts/agent-inbox/spooky-fix.yml` to `.github/workflows/spooky-fix.yml` in that repository, add its `ANTHROPIC_API_KEY` repository secret, and ask your human to approve Actions write permission for the Spooky GitHub app. Add a GitHub responder with target `owner/repo` and project `owner/repo`. If the fix has not restored the check after 15 minutes, Spooky alerts your phone, Slack, or email. The agent machine fixer can claim the break after the GitHub claim expires.
+When the GitHub pager is enabled in Spooky, a matching project responder starts a fix workflow in your repository. Copy `scripts/agent-inbox/spooky-fix.yml` to `.github/workflows/spooky-fix.yml` in that repository, save the output of `claude setup-token` as its `CLAUDE_CODE_OAUTH_TOKEN` repository secret (the job then runs on your Claude plan; an `ANTHROPIC_API_KEY` secret works too), and ask your human to approve Actions write permission for the Spooky GitHub app. Add a GitHub responder with target `owner/repo` and project `owner/repo`. If the fix has not restored the check after 15 minutes, Spooky alerts your phone, Slack, or email. The agent machine fixer can claim the break after the GitHub claim expires.
 
 ## Your coding agent hears about it
 

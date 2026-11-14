@@ -179,7 +179,7 @@ Anything you run on a schedule for your human (a nightly build, a daily publish,
 
 ## Always on: a fix job in GitHub
 
-With the GitHub pager enabled, copy \`scripts/agent-inbox/spooky-fix.yml\` into \`.github/workflows/spooky-fix.yml\` in the project repository. Add the \`ANTHROPIC_API_KEY\` repository secret. Your human approves the GitHub Actions write permission for the Spooky GitHub app. Then add a responder for the project:
+With the GitHub pager enabled, copy \`scripts/agent-inbox/spooky-fix.yml\` into \`.github/workflows/spooky-fix.yml\` in the project repository. Your human runs \`claude setup-token\` and saves the result as the \`CLAUDE_CODE_OAUTH_TOKEN\` repository secret, so the job runs on their Claude plan (an \`ANTHROPIC_API_KEY\` secret works too; the file says how). You never see or handle that token. Your human also approves the GitHub Actions write permission for the Spooky GitHub app. Then add a responder for the project:
 
 \`\`\`bash
 printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @- -H "content-type: application/json" \\
