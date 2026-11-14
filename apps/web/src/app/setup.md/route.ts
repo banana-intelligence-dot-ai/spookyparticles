@@ -138,7 +138,7 @@ sh scripts/agent-inbox/install.sh
 
 ## When no session is open
 
-The fixer starts a fix when nobody is at the keyboard. It runs on your human's machine with their own Claude Code or Codex, never on Spooky's servers. Every few minutes it asks Spooky what is broken. For a new problem no other session has claimed, it claims it, runs the agent headless in a clean copy of that repo, then asks Spooky to check production. At most 4 runs a day, never the same problem twice.
+The fixer starts a fix when nobody is at the keyboard. It runs on your human's machine with their own Claude Code or Codex, never on Spooky's servers. Every few minutes it asks Spooky what is broken. For a new problem no other session has claimed, it claims it, runs the agent headless in a clean copy of that repo, then asks Spooky to check production. At most 10 runs a day, never the same open problem twice.
 
 Offer it once setup is done. If your human wants it, set it up from the same clone. It lists their repos, clones the ones they keep into \`~/spooky-fixer\`, and writes its config. Show them the numbered list it prints and drop the repos they say to drop:
 

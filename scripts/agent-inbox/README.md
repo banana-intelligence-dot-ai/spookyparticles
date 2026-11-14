@@ -41,7 +41,7 @@ Every few minutes it asks Spooky what is broken in the projects you list. For a 
 2. Runs your agent headless in that project's folder. The agent finds the cause, makes a small fix, runs the project's own tests, and commits or deploys only the way the project's CLAUDE.md or AGENTS.md allows.
 3. Asks Spooky to check production, and writes down the answer: fixed, still broken, or checking.
 
-It never runs the same problem twice. It stops after 4 runs a day, so it cannot burn through your plan.
+It never runs the same open problem twice. It stops after 10 runs a day, so it cannot burn through your plan.
 
 Set it up with one command:
 
@@ -70,7 +70,7 @@ It runs for 12 hours and then stops. Options:
 - Claude runs on your Claude login. If `ANTHROPIC_API_KEY` is set in the shell, the fixer ignores it. Add `--use-api-key` to use the key instead.
 - If Claude cannot sign in, the fixer stops with code 3 and the run does not count. Sign in to Claude once by hand, then start it again.
 - `--interval 300` sets the seconds between checks. `--hours 12` or `--until 2026-11-13T06:00:00Z` sets when it stops.
-- `--budget 4` sets the most runs in a day. `--timeout 1800` sets the most seconds one run may take.
+- `--budget 10` sets the most runs in a day. `--timeout 1800` sets the most seconds one run may take.
 - `--once` checks one time and exits, which suits a scheduler you already use.
 
 To get a phone notice for each run, set `SPOOKY_NTFY_TOPIC` to your ntfy topic. It is off by default.
