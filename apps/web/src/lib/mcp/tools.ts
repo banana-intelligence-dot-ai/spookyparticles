@@ -9,6 +9,8 @@ import { resyncHostsQuietlyFor } from "@/lib/sync";
 import type { Actor } from "@/lib/actor";
 import { findingsReport, reportAttempt, takeNext } from "@/lib/checks/handoff-store";
 import { expirationsFor } from "@/lib/expirations/store";
+import { helpFor } from "@/lib/help/ask";
+import { HELP_MAX_CHARS } from "@/lib/help/input";
 import { ApiError } from "@/lib/http";
 import { listServices, recordService } from "@/lib/services/store";
 import { ToolError, type Tool, type ToolRegistry } from "./protocol";
@@ -176,6 +178,19 @@ export function toolsFor(actor: Actor): ToolRegistry {
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => listServices(userId),
+    }),
+    help: tool({
+      description: "Ask the Spooky Particles help assistant a question about Spooky itself: what a status means, how to connect GitHub or Vercel, how agent sign-in and the fixer work, why something is red. It can read this person's projects, jobs and connections. Answers only about Spooky. Limited to 5 questions a minute and 30 a day.",
+      inputSchema: {
+        type: "object", additionalProperties: false,
+        properties: { question: { type: "string", minLength: 1, maxLength: HELP_MAX_CHARS, description: "One plain question" } },
+        required: ["question"],
+      },
+      validate: (input) => validate(input, ["question"], ["question"]),
+      run: async (input) => {
+        try { return await helpFor(userId, { messages: [{ role: "user", content: input.question as string }] }); }
+        catch (err) { if (err instanceof ApiError) throw new ToolError(err.message); throw err; }
+      },
     }),
   };
   if (!actor.scopes.includes("write")) return read;

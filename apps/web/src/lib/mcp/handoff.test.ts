@@ -13,6 +13,8 @@ it("lists write tools only for write-scoped keys", async () => {
   expect(Object.keys(read)).toContain("list_services");
   expect(Object.keys(read)).toContain("confirm_fix");
   expect(Object.keys(read)).toContain("claim_break");
+  expect(Object.keys(read)).toContain("help");
+  expect(read.help.annotations.readOnlyHint).toBe(true);
   expect(Object.keys(read)).not.toContain("record_service");
   expect(Object.keys(read)).not.toContain("next_finding");
   expect(Object.keys(write)).toContain("report_finding");
