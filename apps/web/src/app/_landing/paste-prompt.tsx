@@ -20,7 +20,7 @@ export function PastePrompt({ prompt }: { prompt: string }) {
   return (
     <div className="paste">
       <button type="button" onClick={copy} title={prompt} aria-label={`Copy this prompt for your coding agent: ${prompt}`} className="paste-pill">
-        <span>Paste into your agent</span>
+        <span>Copy for your agent</span>
         <code aria-hidden>{prompt}</code>
         <kbd aria-live="polite">{status === "copied" ? "Copied" : status === "failed" ? "Blocked" : "Copy"}</kbd>
       </button>
