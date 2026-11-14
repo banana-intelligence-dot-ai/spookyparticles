@@ -14,7 +14,7 @@ const MIN_GAP_MS = 60_000;
 const lastRefresh = new Map<string, number>();
 
 /** The repo node, the account that owns it and the connection behind that account. Null when the map has none. */
-async function locate(userId: string, fullName: string) {
+export async function locateRepo(userId: string, fullName: string) {
   const db = getDb();
   const [repo] = await db
     .select({ id: schema.nodes.id, name: schema.nodes.name })
@@ -46,7 +46,7 @@ export async function refreshRepoQuietly(userId: string, name: string): Promise<
   try {
     const fullName = name.includes("/") ? name : await fullNameFor(userId, name);
     if (!fullName) return "unknown";
-    const found = await locate(userId, fullName);
+    const found = await locateRepo(userId, fullName);
     if (!found) return "unknown";
     const token = await getInstallationToken(found.connectionId);
     const [owner, repoName] = fullName.split("/");

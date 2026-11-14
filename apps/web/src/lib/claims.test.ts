@@ -8,6 +8,11 @@ const at = (minAgo: number) => new Date(now - minAgo * 60_000);
 const names = new Map([["k1", "macbook-claude"], ["k2", "cursor"]]);
 
 describe("liveClaims", () => {
+  it("uses the GitHub claim's fifteen-minute lifetime and agent name", () => {
+    const row = { name: CLAIMED, properties: { project: "acme/web", apiKeyId: null, via: "github", ms: 15 * 60_000 }, createdAt: at(14) };
+    expect(liveClaims([row], names, now)[0]).toMatchObject({ agent: "a GitHub job", until: at(-1).toISOString() });
+    expect(liveClaims([{ ...row, createdAt: at(16) }], names, now)).toEqual([]);
+  });
   it("keeps the newest live claim per project and names the agent", () => {
     const claims = liveClaims([
       { name: CLAIMED, properties: { project: "acme/web", apiKeyId: "k1" }, createdAt: at(20) },

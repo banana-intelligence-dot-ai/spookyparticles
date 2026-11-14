@@ -10,8 +10,9 @@ import { getDb, schema } from "@/db";
 import { appendAudit } from "@/lib/audit";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { sendEmail } from "./email";
+import { pagerEnabled } from "@/lib/pager";
 
-export type ChannelKind = "ntfy" | "slack" | "teams" | "email";
+export type ChannelKind = "ntfy" | "slack" | "teams" | "email" | "github";
 export type Notice = { subject: string; text: string; html?: string; link?: string | null; priority?: "high" | "default" | "low" };
 export type DeliveryResult = { kind: ChannelKind; label: string; ok: boolean; reason?: string };
 
@@ -47,7 +48,7 @@ export function isRestrictedAddress(address: string): boolean {
     (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
 }
 
-function allowedUrl(kind: Exclude<ChannelKind, "email">, value: string, legacyTopic = false): URL | null {
+function allowedUrl(kind: Exclude<ChannelKind, "email" | "github">, value: string, legacyTopic = false): URL | null {
   let u: URL;
   try { u = new URL(value); } catch { return null; }
   if (u.protocol !== "https:" || u.username || u.password || u.port || u.hash) return null;
@@ -64,6 +65,11 @@ function allowedUrl(kind: Exclude<ChannelKind, "email">, value: string, legacyTo
 export function validateTarget(kind: ChannelKind, raw: string): { ok: true; target: string; label: string } | { ok: false; reason: string } {
   const v = raw.trim();
   switch (kind) {
+    case "github":
+      if (!pagerEnabled()) return { ok: false, reason: "The GitHub pager is not switched on yet." };
+      return /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(v)
+        ? { ok: true, target: v, label: `GitHub job: ${v}` }
+        : { ok: false, reason: "GitHub needs owner/repo" };
     case "ntfy": {
       // A bare topic on ntfy.sh, or a full URL to a topic on any ntfy server.
       if (/^[A-Za-z0-9_-]{20,64}$/.test(v)) return { ok: true, target: `https://ntfy.sh/${v}`, label: `ntfy.sh/${v.slice(0, 3)}…` };
@@ -101,6 +107,7 @@ async function post(url: string, init: RequestInit): Promise<{ ok: boolean; reas
 
 /** One delivery. The target is already decrypted by the caller and never logged. */
 export async function deliverTo(kind: ChannelKind, target: string, n: Notice): Promise<{ ok: boolean; reason?: string }> {
+  if (kind === "github") return { ok: false, reason: "GitHub jobs are not human alert channels" };
   if (kind !== "email") {
     const url = allowedUrl(kind, target, true);
     if (!url) return { ok: false, reason: ADDRESS_REJECTED };
@@ -213,7 +220,7 @@ export async function removeChannel(userId: string, id: string): Promise<boolean
 export async function deliverToAll(userId: string, n: Notice, project?: string | null): Promise<DeliveryResult[]> {
   const db = getDb();
   const channels = (await db.select().from(schema.alertChannels).where(and(eq(schema.alertChannels.userId, userId), eq(schema.alertChannels.enabled, true))))
-    .filter((c) => c.project === null || matchesProject(c.project, project));
+    .filter((c) => c.kind !== "github" && (c.project === null || matchesProject(c.project, project)));
   const results: DeliveryResult[] = [];
   if (!channels.length) {
     const [u] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, userId)).limit(1);

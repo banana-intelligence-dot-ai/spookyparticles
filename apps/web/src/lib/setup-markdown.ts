@@ -177,6 +177,18 @@ Anything you run on a schedule for your human (a nightly build, a daily publish,
 
 4. Read the state any time: \`GET ${base}/api/v1/checkins\` lists every job with status (new, never_checked_in, up, late, down, paused, retired), last check-in and next due time. \`down\` means quiet past the grace or a reported failure. \`never_checked_in\` appears when a new job's first run is past due and does not send an alert. For period jobs, that takes at least 24 hours. For scheduled jobs, it follows the first cron occurrence and grace. Filter with \`?status=down,late\` or \`?status=issues\` (late, down and never checked in). A job can read its own state with no account key: \`GET\` its ping link plus \`/status\`. That never records a check-in. Retire a gone job with \`PATCH ${base}/api/v1/checkins/JOB_ID\` and \`{"retired":true}\`; its next check-in revives it.
 
+## Always on: a fix job in GitHub
+
+With the GitHub pager enabled, copy \`scripts/agent-inbox/spooky-fix.yml\` into \`.github/workflows/spooky-fix.yml\` in the project repository. Add the \`ANTHROPIC_API_KEY\` repository secret. Your human approves the GitHub Actions write permission for the Spooky GitHub app. Then add a responder for the project:
+
+\`\`\`bash
+printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @- -H "content-type: application/json" \\
+  -d '{"kind":"github","target":"owner/repo","project":"owner/repo"}' \\
+  ${base}/api/v1/alert-channels
+\`\`\`
+
+Spooky starts the fix job first. If the check is still down after 15 minutes, it alerts the person's phone, Slack, or email. Agent machines can claim the break after the GitHub claim expires.
+
 ## Watch the result, not just the run
 
 For a public JSON health endpoint, Spooky can fetch and judge the answer at each scheduled time. This example checks weekdays at 7:35 in New York. \`$today\` means the date in that time zone. No check runs on weekends.

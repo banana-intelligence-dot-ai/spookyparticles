@@ -22,11 +22,12 @@ export function liveClaims(rows: Row[], keyNames: Map<string, string>, nowMs: nu
   for (const r of sorted) {
     if (r.name !== CLAIMED || typeof r.properties.project !== "string") continue;
     const project = r.properties.project;
-    if (out.has(project) || nowMs - r.createdAt.getTime() > CLAIM_MS) continue;
+    const ms = typeof r.properties.ms === "number" ? r.properties.ms : CLAIM_MS;
+    if (out.has(project) || nowMs - r.createdAt.getTime() > ms) continue;
     const ended = sorted.some((e) => e.name === FIX_CONFIRMED && e.properties.verdict === "fixed" && e.createdAt > r.createdAt && matchesIncidentProject(project, String(e.properties.project ?? "")));
     if (ended) continue;
     const apiKeyId = typeof r.properties.apiKeyId === "string" ? r.properties.apiKeyId : null;
-    out.set(project, { project, apiKeyId, agent: apiKeyId ? (keyNames.get(apiKeyId) ?? null) : null, at: r.createdAt.toISOString(), until: new Date(r.createdAt.getTime() + CLAIM_MS).toISOString() });
+    out.set(project, { project, apiKeyId, agent: r.properties.via === "github" ? "a GitHub job" : apiKeyId ? (keyNames.get(apiKeyId) ?? null) : null, at: r.createdAt.toISOString(), until: new Date(r.createdAt.getTime() + ms).toISOString() });
   }
   return [...out.values()];
 }

@@ -10,7 +10,8 @@ import { track } from "@/lib/analytics/server";
 import { appendAudit } from "@/lib/audit";
 import { randomToken } from "@/lib/crypto";
 import { appUrl } from "@/lib/env";
-import { deliverToAll, type DeliveryResult } from "./alerts/channels";
+import { deliverToAll, matchesProject, type DeliveryResult } from "./alerts/channels";
+import { pageGithub, pagerEnabled } from "./pager";
 import { nextRun } from "./vercel-schedules";
 import type { Probe } from "./probes";
 
@@ -306,6 +307,7 @@ async function recordPingForJob(cur: typeof schema.checkinJobs.$inferSelect, kin
       text: `${j.name} reported a failed run at ${now.toUTCString()}.${cleanNote ? ` Note: ${cleanNote}` : ""}${j.project ? ` Project: ${j.project}.` : ""}${j.owner ? ` Owner: ${j.owner}.` : ""}`,
       priority: "high",
       key: `job_failed:${j.id}:${now.toISOString().slice(0, 16)}`,
+      firstEpisode: cur.status !== "down",
     });
   } else if (wasDown && cur.status === "down") {
     await notifyJob(j, "job_recovered", {
@@ -386,7 +388,7 @@ export function ago(ms: number): string {
 
 // ---------- Notify ----------
 
-async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind: "job_quiet" | "job_failed" | "job_recovered", n: { subject: string; text: string; priority: "high" | "default" | "low"; key: string }) {
+export async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind: "job_quiet" | "job_failed" | "job_recovered", n: { subject: string; text: string; priority: "high" | "default" | "low"; key: string; firstEpisode?: boolean }) {
   const db = getDb();
   try {
     const link = new URL("/app/jobs", appUrl()).toString();
@@ -398,7 +400,19 @@ async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind: "job_q
       .onConflictDoNothing({ target: [schema.alerts.userId, schema.alerts.key] })
       .returning({ id: schema.alerts.id });
     if (!row) return;
-    const results: DeliveryResult[] = await deliverToAll(j.userId, { subject: n.subject, text: n.text, link, priority: n.priority }, j.project);
+    let text = n.text;
+    if (pagerEnabled() && kind !== "job_recovered" && (kind === "job_quiet" ? j.missCount === 1 : n.firstEpisode === true)) {
+      const channels = await db.select().from(schema.alertChannels).where(and(eq(schema.alertChannels.userId, j.userId), eq(schema.alertChannels.kind, "github"), eq(schema.alertChannels.enabled, true)));
+      if (channels.some((c) => c.project && matchesProject(c.project, j.project))) {
+        const page = await pageGithub(j.userId, { ...j, alertKey: n.key }, n.text);
+        if (page.ok) {
+          await db.update(schema.alerts).set({ payload: sql`${schema.alerts.payload} || ${JSON.stringify({ deferred: "pager" })}::jsonb` }).where(eq(schema.alerts.id, row.id));
+          return;
+        }
+        text += `\nSpooky couldn't start the GitHub fix job: ${page.reason ?? "request failed"}`;
+      }
+    }
+    const results: DeliveryResult[] = await deliverToAll(j.userId, { subject: n.subject, text, link, priority: n.priority }, j.project);
     const anyOk = results.some((r) => r.ok);
     await db
       .update(schema.alerts)

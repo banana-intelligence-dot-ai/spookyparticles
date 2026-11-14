@@ -16,6 +16,7 @@ import { sweepServerErrors, sweepUptime } from "@/lib/vercel-monitor";
 import { sweepVercelSchedules } from "@/lib/vercel-watch";
 import { sweepChecks } from "@/lib/checks/sweep";
 import { sendDigests } from "@/lib/alerts/digest";
+import { escalatePages, pagerEnabled } from "@/lib/pager";
 
 export async function GET(req: Request) {
   await connection();
@@ -40,6 +41,7 @@ export async function GET(req: Request) {
     schedules = await sweepVercelSchedules();
     probes = await runDueProbes();
     jobs = await sweepQuietJobs();
+    if (pagerEnabled()) await escalatePages();
   } catch (err) {
     ok = false;
     detail = (err as Error).message.slice(0, 200);
