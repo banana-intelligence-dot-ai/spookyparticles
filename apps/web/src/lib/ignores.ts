@@ -9,6 +9,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Actor } from "./actor";
 import { appendAudit } from "./audit";
+import { ApiError } from "./http";
 
 export const IGNORED = "incident.ignored";
 export const UNIGNORED = "incident.unignored";
@@ -52,4 +53,12 @@ export async function setIgnored(actor: Actor, key: string, project: string, ign
     await appendAudit({ actor: actor.label, userId: actor.userId, action: ignored ? "incident.ignore" : "incident.unignore", target: `break:${key}`, before: { ignored: before }, after: { ignored, project } });
   }
   return { key, ignored };
+}
+
+/** The break key and project from a request body or tool input. Throws 400 when the key is missing. */
+export function ignoreInput(body: { key?: unknown; project?: unknown } | null): { key: string; project: string } {
+  const key = typeof body?.key === "string" ? body.key.trim() : "";
+  const project = typeof body?.project === "string" ? body.project.trim().slice(0, 120) : "";
+  if (!key || key.length > 200) throw new ApiError(400, "key_required", "Send the break's key from the project's deployments.");
+  return { key, project };
 }

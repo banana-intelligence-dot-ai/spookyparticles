@@ -1,4 +1,14 @@
-import { jobIssue, listJobs } from "@/lib/checkins";
+import { listChannels } from "@/lib/alerts/channels";
+import { createJobFromBody } from "@/lib/checkin-create";
+import { jobIssue, listJobs, updateJob, type JobView } from "@/lib/checkins";
+import { activityReport } from "@/lib/activity-report";
+import { getConnection } from "@/lib/connections";
+import { listConnectionsFor } from "@/lib/connections-read";
+import { addTrackedExpiration } from "@/lib/expirations/add";
+import { setFindingStatus } from "@/lib/findings-status";
+import { ignoreInput, setIgnored } from "@/lib/ignores";
+import { runHistoryFor } from "@/lib/run-history";
+import { startSync } from "@/lib/sync";
 import { recordInboxRead } from "@/lib/agent-listening";
 import { recordDeploys } from "@/lib/catches";
 import { claimBreak, claimsFor } from "@/lib/claims";
@@ -27,6 +37,34 @@ function validate(input: Record<string, unknown>, required: string[], allowed: s
   if (Object.keys(input).some((key) => !allowed.includes(key))) return "Unexpected tool argument";
   if (required.some((key) => typeof input[key] !== "string" || !(input[key] as string).trim())) return "Missing required tool argument";
   return null;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const idSchema = (key: string, description: string) => ({
+  type: "object" as const,
+  properties: { [key]: { type: "string", minLength: 36, maxLength: 36, description } },
+  required: [key],
+  additionalProperties: false as const,
+});
+const idInput = (key: string, label: string) => (input: Record<string, unknown>) =>
+  validate(input, [key], [key]) ?? (UUID.test(input[key] as string) ? null : `${key} must be a ${label} ID`);
+
+/** A job as the web app shows it, without the check-in link: that link is a credential the owner fetches in the web app. */
+function jobWithoutLink(job: JobView) {
+  const { pingUrl: _link, ...rest } = job;
+  void _link;
+  return rest;
+}
+
+/** Delivery errors are short reasons, but a URL must never leave the server. */
+function scrubUrls(text: string | null): string | null {
+  return text === null ? null : text.replace(/https?:\/\/\S+/gi, "[link hidden]");
+}
+
+/** REST validation errors reach the agent as plain tool errors. */
+async function viaApi<T extends object>(run: () => Promise<T>): Promise<T> {
+  try { return await run(); }
+  catch (err) { if (err instanceof ApiError) throw new ToolError(err.message); throw err; }
 }
 
 function tool(def: Omit<Tool, "annotations">): Tool {
@@ -179,6 +217,39 @@ export function toolsFor(actor: Actor): ToolRegistry {
       validate: (input) => validate(input, [], []),
       run: async () => listServices(userId),
     }),
+    list_connections: tool({
+      description: "List the accounts connected to Spooky (GitHub, Vercel, mail inboxes): provider, status, last sync and reading progress. No tokens. Connecting or revoking an account is done in the web app.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => ({ connections: await listConnectionsFor(userId) }),
+    }),
+    list_alert_channels: tool({
+      description: "List where alerts go (ntfy, Slack, Teams, email): kind, a masked label, project filter, whether it is on and its last delivery result. Addresses and webhook URLs are never returned.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => ({ channels: (await listChannels(userId)).map((c) => ({ ...c, lastError: scrubUrls(c.lastError) })) }),
+    }),
+    job_history: tool({
+      description: "Each scheduled job's last 14 days of check-ins (hourly counts) and every miss Spooky caught, with when it came back. No check-in links.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => runHistoryFor(userId),
+    }),
+    recent_activity: tool({
+      description: "Notices and charges across every inbox and vendor, newest first, plus deployments whose latest state failed.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        limit: { type: "integer", minimum: 1, maximum: 200, description: "How many items, default 100" },
+        since: { type: "string", maxLength: 40, description: "Optional ISO date: only items after it" },
+      } },
+      validate: (input) => {
+        const basic = validate(input, [], ["limit", "since"]);
+        if (basic) return basic;
+        if (input.limit !== undefined && (typeof input.limit !== "number" || !Number.isInteger(input.limit) || input.limit < 1 || input.limit > 200)) return "limit must be a whole number from 1 to 200";
+        if (input.since !== undefined && (typeof input.since !== "string" || input.since.length > 40 || Number.isNaN(Date.parse(input.since)))) return "since must be an ISO date";
+        return null;
+      },
+      run: async (input) => activityReport(userId, input.limit ?? 100, typeof input.since === "string" ? input.since : null),
+    }),
     help: tool({
       description: "Ask the Spooky Particles help assistant a question about Spooky itself: what a status means, how to connect GitHub or Vercel, how agent sign-in and the fixer work, why something is red. It can read this person's projects, jobs and connections. Answers only about Spooky. Limited to 5 questions a minute and 30 a day.",
       inputSchema: {
@@ -253,6 +324,101 @@ export function toolsFor(actor: Actor): ToolRegistry {
         try { return await recordService(actor, input); }
         catch (err) { if (err instanceof ApiError) throw new ToolError(err.message); throw err; }
       },
+    }),
+    create_job: write({
+      description: "Add a scheduled job to watch. Give a name and either periodMinutes or a cron schedule with timeZone. Writes to Spooky only. The check-in line (the link the job calls) is not returned here: tell your person to copy it from the Jobs page in the web app.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        name: { type: "string", minLength: 2, maxLength: 80, description: "Job name" },
+        periodMinutes: { type: "integer", minimum: 1, maximum: 44640, description: "How often it should check in, in minutes" },
+        graceMinutes: { type: "integer", minimum: 0, maximum: 10080, description: "Optional extra minutes before it counts as late" },
+        project: { type: "string", maxLength: 120, description: "Optional project name" },
+        owner: { type: "string", maxLength: 80, description: "Optional owner" },
+        schedule: { type: "string", maxLength: 120, description: "Optional cron schedule" },
+        timeZone: { type: "string", maxLength: 60, description: "Optional IANA time zone for the schedule" },
+        maxRunMinutes: { type: "integer", minimum: 1, maximum: 10080, description: "Optional longest a run may take" },
+        minCount: { type: "integer", minimum: 0, maximum: 1000000000, description: "Optional smallest item count a good run reports" },
+      }, required: ["name"] },
+      validate: (input) => validate(input, ["name"], ["name", "periodMinutes", "graceMinutes", "project", "owner", "schedule", "timeZone", "maxRunMinutes", "minCount"]),
+      run: async (input) => viaApi(async () => ({
+        job: jobWithoutLink(await createJobFromBody(actor, input)),
+        checkInLine: "Not shown over MCP. Ask your person to copy it from the Jobs page in the web app.",
+      })),
+    }),
+    retire_job: write({
+      description: "Retire a scheduled job so Spooky stops watching it. Nothing is deleted; restore_job brings it back.",
+      inputSchema: idSchema("job_id", "Job ID from list_jobs"),
+      validate: idInput("job_id", "job"),
+      run: async (input) => viaApi(async () => {
+        const job = await updateJob(userId, input.job_id as string, { retired: true }, actor.label);
+        if (!job) throw new ApiError(404, "not_found", "No such job");
+        return { job: jobWithoutLink(job) };
+      }),
+    }),
+    restore_job: write({
+      description: "Bring a retired scheduled job back under watch.",
+      inputSchema: idSchema("job_id", "Job ID from list_jobs"),
+      validate: idInput("job_id", "job"),
+      run: async (input) => viaApi(async () => {
+        const job = await updateJob(userId, input.job_id as string, { retired: false }, actor.label);
+        if (!job) throw new ApiError(404, "not_found", "No such job");
+        return { job: jobWithoutLink(job) };
+      }),
+    }),
+    ignore_break: write({
+      description: "Stop counting one failed deploy, for example a retired project. The ignore names that exact failure, so the next failure shows again. Writes to Spooky only; unignore_break undoes it.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        key: { type: "string", minLength: 1, maxLength: 200, description: "The break's key from the project's deployments" },
+        project: { type: "string", maxLength: 120, description: "Project name" },
+      }, required: ["key"] },
+      validate: (input) => validate(input, ["key"], ["key", "project"]) ?? (input.project !== undefined && typeof input.project !== "string" ? "project must be text" : null),
+      run: async (input) => viaApi(async () => { const { key, project } = ignoreInput(input); return setIgnored(actor, key, project, true); }),
+    }),
+    unignore_break: write({
+      description: "Count an ignored failed deploy again.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        key: { type: "string", minLength: 1, maxLength: 200, description: "The break's key" },
+        project: { type: "string", maxLength: 120, description: "Project name" },
+      }, required: ["key"] },
+      validate: (input) => validate(input, ["key"], ["key", "project"]) ?? (input.project !== undefined && typeof input.project !== "string" ? "project must be text" : null),
+      run: async (input) => viaApi(async () => { const { key, project } = ignoreInput(input); return setIgnored(actor, key, project, false); }),
+    }),
+    set_suggestion_status: write({
+      description: "Record your person's verdict on a suggestion: confirmed, dismissed (the wrong-answer button) or open again. Writes to Spooky only.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        finding_id: { type: "string", minLength: 36, maxLength: 36, description: "Suggestion ID" },
+        status: { type: "string", enum: ["open", "confirmed", "dismissed"] },
+      }, required: ["finding_id", "status"] },
+      validate: (input) => {
+        const basic = validate(input, ["finding_id", "status"], ["finding_id", "status"]);
+        if (basic) return basic;
+        if (!UUID.test(input.finding_id as string)) return "finding_id must be a suggestion ID";
+        if (!["open", "confirmed", "dismissed"].includes(input.status as string)) return "status must be open, confirmed or dismissed";
+        return null;
+      },
+      run: async (input) => viaApi(() => setFindingStatus(actor, input.finding_id as string, input.status)),
+    }),
+    add_expiration: write({
+      description: "Track a date something expires (an API key, token or certificate). Send only its name and date, never the secret itself; values that look like secrets are refused. Writes to Spooky only.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        kind: { type: "string", enum: ["api_key", "token", "certificate", "other"] },
+        name: { type: "string", minLength: 1, maxLength: 80, description: "A plain name, for example STRIPE_KEY_PROD" },
+        expiresOn: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "YYYY-MM-DD" },
+        provider: { type: "string", maxLength: 40, description: "Optional provider name" },
+        project: { type: "string", maxLength: 120, description: "Optional project name" },
+      }, required: ["kind", "name", "expiresOn"] },
+      validate: (input) => validate(input, ["kind", "name", "expiresOn"], ["kind", "name", "expiresOn", "provider", "project"]),
+      run: async (input) => viaApi(async () => ({ expiration: await addTrackedExpiration(actor, input) })),
+    }),
+    sync_connection: write({
+      description: "Start a re-read of one connected account. Returns at once; check list_connections for progress. Fails if a sync is already running or the connection is not active.",
+      inputSchema: idSchema("connection_id", "Connection ID from list_connections"),
+      validate: idInput("connection_id", "connection"),
+      run: async (input) => viaApi(async () => {
+        const c = await getConnection(input.connection_id as string, userId).catch(() => null);
+        if (!c) throw new ApiError(404, "not_found", "Connection not found");
+        const run = await startSync(c, actor.label);
+        return { started: true, syncRunId: run.syncRunId };
+      }),
     }),
   };
 }
