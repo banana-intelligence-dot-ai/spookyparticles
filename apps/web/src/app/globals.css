@@ -402,27 +402,38 @@ body {
     right: 24px;
   }
 }
-/* Phones: the pair stays together in the band above the quote, one at each edge, as on desktop. */
+/*
+ * Phones: the pair splits vertically, so the distance is the page's height. Your app sits in the
+ * top corner, your agent at the bottom, and the hero rises into the space between them.
+ */
 @media (max-width: 820px) {
   .orb {
-    --s: 132px;
-    top: 64px;
+    --s: 150px;
   }
+  /* Left, not right: the build drops "left: auto", so the wider rule's left would win. */
   .orb-app {
-    left: -44px;
+    top: -34px;
+    left: calc(100% - 108px);
   }
   .orb-agent {
-    right: -44px;
+    top: auto;
+    bottom: 40px;
+    right: -42px;
   }
   .orb-label {
-    top: 208px;
     font-size: 12px;
+    text-align: right;
   }
   .orb-label-app {
+    top: 62px;
     left: 16px;
+    right: 122px;
   }
   .orb-label-agent {
-    right: 16px;
+    top: auto;
+    bottom: 112px;
+    left: 16px;
+    right: 122px;
   }
   /* Phones: the whole prompt, wrapped under its label, so nothing is copied unseen. */
   .paste-pill {

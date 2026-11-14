@@ -99,7 +99,7 @@ export default async function OpengraphImage() {
             <div>Fixed by the time</div>
             <div style={{ color: "#9b9da3" }}>you realize it’s broken.</div>
           </div>
-          <div style={{ marginTop: 24, fontFamily: "Geist", fontSize: 24, color: "#9b9da3" }}>Self-healing apps on Vercel.</div>
+          <div style={{ marginTop: 24, fontFamily: "Geist", fontSize: 24, color: "#9b9da3" }}>Entangle your coding agent with your app.</div>
         </div>
 
         <div style={{ position: "absolute", left: 48, bottom: 44, display: "flex", flexDirection: "column" }}>

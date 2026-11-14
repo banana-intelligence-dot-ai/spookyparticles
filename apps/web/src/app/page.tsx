@@ -13,13 +13,13 @@ import { vercelSignInConfig } from "@/lib/env";
  * Einstein's entangled pair, your app and your agent. Claim only what is live.
  */
 const COPY = {
-  title: "Spooky Particles: self-healing apps on Vercel",
+  title: "Spooky Particles: entangle your coding agent with your app",
   description:
-    "Self-healing apps on Vercel. Spooky checks your apps every 5 minutes. When one breaks, your coding agent fixes it and Spooky proves it's fixed. Read-only.",
+    "Entangle your coding agent with your app. If something breaks, your agent gets pinged and ships the fix. Spooky checks every 5 minutes. Read-only.",
   quote: "“spooky action at a distance”",
-  quoteSource: "Einstein to Max Born, 1947",
+  quoteSource: "Einstein, 1947",
   h1: ["Fixed by the time", "you realize it’s broken."],
-  sub: ["Self-healing apps on Vercel.", "Your coding agent fixes the break. Spooky proves it’s fixed."],
+  sub: ["Entangle your coding agent with your app.", "If something breaks, your agent gets pinged and ships the fix."],
   reassure: "Read-only. Never deletes anything. Revoke any time.",
 } as const;
 
@@ -68,7 +68,7 @@ export default function Landing() {
         <Wordmark />
       </header>
 
-      <main className="relative z-[1] mx-auto flex w-full max-w-[1216px] flex-1 flex-col px-4 pt-[240px] pb-12 text-left min-[821px]:items-center min-[821px]:justify-center min-[821px]:px-12 min-[821px]:py-8 min-[821px]:text-center">
+      <main className="relative z-[1] mx-auto flex w-full max-w-[1216px] flex-1 flex-col px-4 pt-[56px] pb-[84px] text-left min-[821px]:items-center min-[821px]:justify-center min-[821px]:px-12 min-[821px]:py-8 min-[821px]:text-center">
         <p className="font-mono text-[12.5px] leading-[1.5] text-fg-2">
           {COPY.quote}
           <span className="block text-fg-3 min-[821px]:ml-2.5 min-[821px]:inline">{COPY.quoteSource}</span>
