@@ -19,7 +19,7 @@ const COPY = {
   quote: "“spooky action at a distance”",
   quoteSource: "Einstein, 1947",
   h1: ["Fixed by the time", "you realize it’s broken."],
-  sub: ["Spooky Particles connects your deploys to your coding agent for 24/7 resolution.", "It can ping you too."],
+  sub: "Spooky Particles connects your deploys to your coding agent for 24/7 resolution.",
   how: [
     { h: "Your deploys, wired to your agent.", p: "A deploy fails, a page stops answering, or a scheduled job goes quiet. Spooky checks every 5 minutes, day and night, and sends your coding agent the cause. It fixes, tests and ships." },
     { h: "It can ping you too.", p: "Fixed means the check passes again. If it doesn’t, Spooky pings you on your phone, Slack, Teams or email." },
@@ -128,7 +128,7 @@ export default function Landing() {
             {COPY.h1[0]} <span className="block text-fg-2">{COPY.h1[1]}</span>
           </h1>
           <p className="relative mt-6 max-w-[34ch] text-[16px] leading-[1.55] text-pretty text-fg-2 min-[821px]:mt-5 min-[821px]:max-w-[44ch] min-[821px]:text-[17px]">
-            {COPY.sub[0]} <span className="text-fg">{COPY.sub[1]}</span>
+            {COPY.sub}
           </p>
           <div className="relative mt-10 w-full min-[821px]:mt-9 min-[821px]:w-auto">
             <Suspense fallback={null}>
