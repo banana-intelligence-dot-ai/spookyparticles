@@ -19,8 +19,7 @@ const COPY = {
   quote: "“spooky action at a distance”",
   quoteSource: "Einstein, 1947",
   h1: ["Fixed by the time", "you realize it’s broken."],
-  sub: "Your coding agent gets paged first. You hear about it only if it can’t fix it.",
-  fixKicker: "A real fix, from our own site",
+  sub: "Spooky Particles pings your agent when there’s an issue.",
   how: [
     { h: "Your agent is paged first.", p: "A deploy fails, a page stops answering, or a scheduled job goes quiet. Spooky checks every 5 minutes and sends your coding agent the cause. It fixes, tests and ships." },
     { h: "You’re paged only if it’s still broken.", p: "Fixed means the check passes again. If it doesn’t, Spooky pages you on your phone, Slack, Teams or email." },
@@ -114,15 +113,15 @@ export default function Landing() {
         </section>
 
         {/* Just below: the pair, playing a real fix. */}
-        <section aria-labelledby="fix-h" className="fix-stage">
-          <Particles title={COPY.fixKicker} titleId="fix-h" />
+        <section aria-label="A fix, played back" className="fix-stage">
+          <Particles />
         </section>
 
         <div className="mx-auto w-full max-w-[672px] px-4 pb-28 sm:px-4">
           <section aria-label="How it works" className="flex flex-col gap-10">
             {COPY.how.map((s) => (
               <div key={s.h}>
-                <h3 className="text-[20px] leading-[1.3] font-medium tracking-[-0.01em] text-fg">{s.h}</h3>
+                <h2 className="text-[20px] leading-[1.3] font-medium tracking-[-0.01em] text-fg">{s.h}</h2>
                 <p className="mt-2 text-[16px] leading-[1.65] text-pretty text-fg-2">{s.p}</p>
               </div>
             ))}

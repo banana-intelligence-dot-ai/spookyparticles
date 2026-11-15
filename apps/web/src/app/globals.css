@@ -373,11 +373,6 @@ body {
 .fix-log {
   width: min(480px, 100%);
 }
-.fix-title {
-  margin-bottom: 14px;
-  font: 400 12.5px/1.5 var(--font-mono);
-  color: var(--fg-3);
-}
 .fix-log ol {
   border-top: 1px solid var(--line-1);
 }

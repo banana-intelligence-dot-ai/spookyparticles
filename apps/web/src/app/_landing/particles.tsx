@@ -35,7 +35,7 @@ const LOG: { at: State[]; time: string; text: string }[] = [
   { at: ["ok"], time: "", text: `Spooky checks: fixed in ${INCIDENT.minutesToFix}` },
 ];
 
-export function Particles({ title, titleId }: { title: string; titleId: string }) {
+export function Particles() {
   const [state, setState] = useState<State>("ok");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const still = useRef(true);
@@ -111,9 +111,6 @@ export function Particles({ title, titleId }: { title: string; titleId: string }
         </figure>
       </div>
       <div className="fix-log">
-        <h2 id={titleId} className="fix-title">
-          {title}
-        </h2>
         <ol>
           {LOG.map((l) => (
             <li key={l.text} data-on={l.at.includes(state) || undefined}>
