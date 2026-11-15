@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Footer, Wordmark } from "@/components/brand";
 import { Particles } from "./_landing/particles";
-import { PastePrompt } from "./_landing/paste-prompt";
+import { AgentPicker } from "./_landing/agent-picker";
 import { SignInNotice } from "./_landing/signin-notice";
 import { SignIn } from "./sign-in";
 import { vercelSignInConfig } from "@/lib/env";
@@ -69,9 +69,9 @@ const WEBSITE_LD = {
 
 function WaysIn({ vercelEnabled }: { vercelEnabled: boolean }) {
   return (
-    <div className="flex w-full flex-col items-stretch gap-2.5 min-[821px]:w-auto min-[821px]:flex-row min-[821px]:flex-wrap min-[821px]:items-center min-[821px]:justify-center">
+    <div className="flex w-full flex-col items-center gap-7 min-[821px]:w-auto">
       <SignIn large ink inline vercelEnabled={vercelEnabled} />
-      <PastePrompt prompt={AGENT_PROMPT} />
+      <AgentPicker prompt={AGENT_PROMPT} />
     </div>
   );
 }
@@ -92,7 +92,7 @@ export default function Landing() {
 
       <main className="relative z-[1] flex flex-1 flex-col">
         {/* First screen: Einstein, the line, two ways in. Nothing else. */}
-        <section className="hero relative mx-auto flex min-h-[78dvh] w-full max-w-[1216px] flex-col items-center justify-center px-4 pb-24 text-center sm:px-12">
+        <section className="hero relative mx-auto flex min-h-[72dvh] w-full max-w-[1216px] flex-col items-center justify-center px-4 pb-10 text-center sm:px-12">
           <div className="hero-portrait" aria-hidden />
           <div className="hero-scrim" aria-hidden />
           <p className="relative font-mono text-[12.5px] leading-[1.5] text-fg-2">
