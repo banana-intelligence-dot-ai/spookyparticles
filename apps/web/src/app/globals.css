@@ -524,3 +524,13 @@ body {
     display: none;
   }
 }
+
+/* Homepage FAQ: native details, no browser marker, a clear focus ring. */
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+.faq summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
