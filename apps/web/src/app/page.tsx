@@ -16,7 +16,7 @@ import { vercelSignInConfig } from "@/lib/env";
 const COPY = {
   title: "Spooky Particles: your app breaks, your agent fixes it",
   description:
-    "Spooky Particles connects your Vercel deploys to your coding agent for 24/7 fixes, and pings you if it can’t. Free with your own agent.",
+    "Spooky Particles connects your Vercel deploys to your coding agent for 24/7 fixes, and keeps you posted. Free with your own agent.",
   quote: "“spooky action at a distance”",
   quoteSource: "Einstein, 1947",
   h1: ["Fixed by the time", "you realize it’s broken."],
@@ -24,7 +24,7 @@ const COPY = {
   how: [
     { h: "Your deploys, wired to your agent.", p: "A deploy fails, a page stops answering, or a scheduled job goes quiet. Spooky checks every 5 minutes, day and night, and sends your coding agent the cause. It fixes, tests and ships." },
     { h: "It can ping you too.", p: "Fixed means the check passes again. If it doesn’t, Spooky pings you on ntfy, Slack, Teams or email." },
-    { h: "Every fix is tracked.", p: "Each break, page and fix is kept, so you see what healed itself and what needed you." },
+    { h: "Every fix is tracked.", p: "Each break, page and fix is kept, so you see what your agent fixed and what needed you." },
   ],
   setupH: "Three things to connect.",
   setup: ["Vercel", "GitHub", "Your agent"],

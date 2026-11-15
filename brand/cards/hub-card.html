@@ -1,0 +1,47 @@
+<!doctype html>
+<!--
+  Spooky Particles hub card, 1600 x 1000. Render: python3 brand/cards/render.py
+  The signed-in app's world: a break is a red particle, its fix a green one, and the line
+  between them is the time it took. Real values: this site's own failed production deploy on
+  Nov 9, 2026 (commit 149449c) and the fix that went live after it (apps/web/src/app/_landing/incident.ts).
+-->
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: "Geist"; src: url("../../node_modules/geist/dist/fonts/geist-sans/Geist-Medium.ttf"); font-weight: 500; }
+@font-face { font-family: "Geist Mono"; src: url("../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.ttf"); font-weight: 400; }
+html, body { margin: 0; background: #0a0a0b; }
+.card { position: relative; width: 1600px; height: 1000px; overflow: hidden; background: #0a0a0b; color: #f2f2ef; }
+svg { position: absolute; inset: 0; }
+/* The hero: how long the fix took. */
+.span { position: absolute; left: 0; right: 0; top: 242px; text-align: center; font-family: "Geist"; font-weight: 500; font-size: 216px; letter-spacing: -0.045em; line-height: 1; font-variant-numeric: tabular-nums; }
+.label { position: absolute; top: 652px; width: 600px; text-align: center; font-family: "Geist Mono"; font-size: 56px; line-height: 1; }
+.l { left: 80px; } .r { right: 80px; }
+.red { color: #ec8478; } .green { color: #62c98a; }
+</style></head>
+<body><div class="card">
+<svg width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <filter id="blur" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="36"/></filter>
+    <linearGradient id="link" gradientUnits="userSpaceOnUse" x1="380" y1="0" x2="1220" y2="0"><stop offset="0" stop-color="#e06c5f"/><stop offset="1" stop-color="#62c98a"/></linearGradient>
+  </defs>
+  <line x1="380" y1="560" x2="1220" y2="560" stroke="url(#link)" stroke-width="8"/>
+  <g id="dots"></g>
+</svg>
+<div class="span">9 min 48 s</div>
+<div class="label l red">deploy failed</div>
+<div class="label r green">working again</div>
+</div>
+<script>
+// Two particles of light, flat: the break and its fix. The line between them is the time it took.
+const R = 48, CY = 560, ns = "http://www.w3.org/2000/svg", C = { R: "#e06c5f", G: "#62c98a" };
+function dot(cx, k) {
+  const g = document.createElementNS(ns, "g");
+  g.innerHTML = `
+    <circle cx="${cx}" cy="${CY}" r="${R * 2.5}" fill="${C[k]}" opacity="0.2" filter="url(#blur)"/>
+    <circle cx="${cx}" cy="${CY}" r="${R}" fill="${C[k]}"/>`;
+  document.getElementById("dots").appendChild(g);
+}
+dot(380, "R");
+dot(1220, "G");
+</script>
+</body></html>
