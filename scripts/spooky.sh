@@ -87,6 +87,9 @@ status_field() {
 
 start() {
   sign_in_again=false
+  # SPOOKY_SIGN_IN_AGAIN=1 in the environment does the same as the flag, so a person can try
+  # setup from scratch on a machine that already has a saved key, without telling the agent.
+  if [ "${SPOOKY_SIGN_IN_AGAIN:-}" = 1 ]; then sign_in_again=true; fi
   if [ "${1:-}" = "--sign-in-again" ]; then sign_in_again=true; shift; fi
   if [ $# -gt 0 ]; then usage >&2; exit 2; fi
 
