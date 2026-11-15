@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Footer, Wordmark } from "@/components/brand";
 import { Particles } from "./_landing/particles";
-import { AgentPicker } from "./_landing/agent-picker";
+import { PastePrompt } from "./_landing/paste-prompt";
 import { SignInNotice } from "./_landing/signin-notice";
 import { SignIn } from "./sign-in";
 import { vercelSignInConfig } from "@/lib/env";
@@ -69,9 +69,9 @@ const WEBSITE_LD = {
 
 function WaysIn({ vercelEnabled }: { vercelEnabled: boolean }) {
   return (
-    <div className="flex w-full flex-col items-center gap-7 min-[821px]:w-auto">
+    <div className="flex w-full flex-col items-stretch gap-2.5 min-[821px]:w-auto min-[821px]:flex-row min-[821px]:flex-wrap min-[821px]:items-center min-[821px]:justify-center">
       <SignIn large ink inline vercelEnabled={vercelEnabled} />
-      <AgentPicker prompt={AGENT_PROMPT} />
+      <PastePrompt prompt={AGENT_PROMPT} />
     </div>
   );
 }

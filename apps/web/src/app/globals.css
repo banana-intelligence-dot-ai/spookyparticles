@@ -212,20 +212,20 @@ body {
 }
 
 /*
- * The first screen's only picture: Einstein in white ink, in profile on the right, bleeding off
- * the edge. Low contrast, and it fades out toward the centre and the bottom so the line and the
- * buttons sit on black, never on his face.
+ * The first screen's only picture: Einstein in white ink on the right, his whole face in view and
+ * his shoulder bleeding off the edge. Clear enough to read as a portrait at a glance (a faint one
+ * reads as a ghost); it fades only at the far left and the bottom so the line keeps its black.
  */
 .hero-portrait {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(92vh, 820px);
+  width: min(112vh, 1000px);
   aspect-ratio: 1000 / 1199;
-  translate: 9vw -50%;
+  translate: 9vw -48%;
   background: url("/einstein-ink.png") center / contain no-repeat;
-  opacity: 0.24;
-  mask-image: linear-gradient(to right, transparent 0%, #000 34%), linear-gradient(to bottom, #000 58%, transparent 94%);
+  opacity: 0.44;
+  mask-image: linear-gradient(to right, transparent 0%, #000 16%), linear-gradient(to bottom, #000 62%, transparent 96%);
   mask-composite: intersect;
   pointer-events: none;
 }
@@ -403,15 +403,70 @@ body {
 [data-s="ok"] .fix-log li:last-child span {
   color: var(--accent);
 }
+/* The second way in shows exactly what it copies: the prompt itself, in mono. */
+.paste {
+  position: relative;
+}
+.paste-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 460px;
+  height: 44px;
+  padding: 0 6px 0 20px;
+  border: 1px solid var(--line-3);
+  border-radius: 9999px;
+  background: var(--raised);
+  font-size: 15px;
+  color: var(--fg-2);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.paste-pill:hover {
+  color: var(--fg);
+  border-color: rgb(255 255 255 / 0.22);
+}
+.paste-pill code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 400 12.5px var(--font-mono);
+  color: var(--fg-3);
+  text-align: left;
+}
+.paste-pill kbd {
+  flex: none;
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid var(--line-3);
+  border-radius: 9999px;
+  font: 500 12px var(--font-mono);
+  color: var(--fg);
+}
+.paste-fail {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  font: 400 12px/1.5 var(--font-mono);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.paste-fail a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 /* Phones: smaller particles, the same line between them, the record below. */
 @media (max-width: 820px) {
   .hero-scrim {
     opacity: 0.75;
   }
   .hero-portrait {
-    width: min(120vw, 520px);
+    width: min(130vw, 560px);
     translate: -22% -62%;
-    opacity: 0.16;
+    opacity: 0.3;
   }
   .fix-stage {
     padding: 32px 16px 88px;
@@ -429,6 +484,34 @@ body {
     grid-template-columns: 64px 1fr;
     font-size: 12.5px;
   }
+  /* Phones: the whole prompt, wrapped under its label, so nothing is copied unseen. */
+  .paste-pill {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    row-gap: 6px;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    padding: 12px 8px 14px 18px;
+    border-radius: 20px;
+    white-space: normal;
+    text-align: left;
+  }
+  .paste-pill > span {
+    align-self: center;
+  }
+  .paste-pill code {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    overflow: visible;
+    padding-right: 10px;
+    line-height: 1.55;
+  }
+  .paste-fail {
+    position: static;
+    margin-top: 8px;
+    white-space: normal;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .orb,
@@ -440,78 +523,9 @@ body {
     animation: none !important;
   }
 }
-/* The second way in: pick your agent. Quiet chips under the primary button, marks in one ink. */
-.agents {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-.agents-label {
-  font: 400 12.5px/1.5 var(--font-mono);
-  color: var(--fg-3);
-}
-.agents-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-.agent {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  height: 44px;
-  padding: 0 16px 0 14px;
-  border: 1px solid var(--line-3);
-  border-radius: 9999px;
-  background: var(--raised);
-  font-size: 14.5px;
-  color: var(--fg-2);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
-}
-.agent svg {
-  width: 17px;
-  height: 17px;
-  fill: currentColor;
-  flex: none;
-}
-.agent svg[fill="none"] {
-  fill: none;
-}
-.agent:hover {
-  color: var(--fg);
-  border-color: rgb(255 255 255 / 0.22);
-}
-.agent:active {
-  background: rgb(255 255 255 / 0.06);
-}
-.agents-status {
-  min-height: 20px;
-  max-width: 100%;
-  font: 400 12px/1.6 var(--font-mono);
-  color: var(--fg-2);
-  text-align: center;
-  text-wrap: pretty;
-}
-.agents-status code {
-  color: var(--fg-3);
-  font: inherit;
-}
-.agents-status a {
-  color: var(--fg);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-@media (max-width: 820px) {
-  .agents-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    width: 100%;
-  }
-  .agent {
-    justify-content: center;
+/* Wide screens: the copy button is a plain second action; the prompt it copies is in its tooltip. */
+@media (min-width: 821px) {
+  .paste-pill code {
+    display: none;
   }
 }
