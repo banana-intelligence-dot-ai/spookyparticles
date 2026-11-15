@@ -143,6 +143,17 @@ export const FIXTURES: { key: string; title: string; note: string; list: Connect
     mail: FULL_MAIL,
   },
   {
+    key: "watching",
+    title: "Set up: GitHub and Vercel synced",
+    note: "The everyday state. Now, Agents and Settings read best here.",
+    list: [
+      ghDone("g1", "octocat", 23),
+      conn("g4", "github", "example-labs", { status: "errored", statusReason: "Installation suspended on GitHub", sync: sync({ phase: "done", scanned: 9 }) }),
+      conn("v1", "vercel", "octocat's projects", { sync: sync({ phase: "done", scanned: 14 }) }),
+    ],
+    mail: NO_MAIL,
+  },
+  {
     key: "done",
     title: "Done (what tenant zero sees today)",
     note: "One GitHub install, two inboxes, all synced.",

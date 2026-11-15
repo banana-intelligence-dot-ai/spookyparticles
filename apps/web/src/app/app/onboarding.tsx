@@ -1,10 +1,10 @@
 "use client";
 /**
- * First run on Today: GitHub and Vercel until each has finished a first sync. After the first one
+ * First run on Now: GitHub and Vercel until each has finished a first sync. After the first one
  * syncs, only the step that is left shows. Gmail is not a
- * setup step; an inbox is an optional extra on the Connections page. A connection
- * that stops later becomes a row in Today's list. Reads the same /api/v1/connections data
- * as the Connections page.
+ * setup step; an inbox is an optional extra in Settings. A connection
+ * that stops later becomes a row in the open list. Reads the same /api/v1/connections data
+ * as Settings.
  */
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
@@ -15,8 +15,8 @@ import { connectError, isSynced, progressLine, runningPercent, type Connection }
 
 const GITHUB_START = "/api/connect/github/start?next=/app";
 const GMAIL_START = "/api/connect/gmail/start?next=/app";
-/** The Vercel connect form lives on Connections; ?vercel=open opens it. */
-const VERCEL_START = "/app/connections?vercel=open#vercel";
+/** The Vercel connect form lives in Settings; ?vercel=open opens it. */
+const VERCEL_START = "/app/settings?vercel=open#vercel";
 
 const live = (list: Connection[], provider: Connection["provider"]) => list.filter((c) => c.provider === provider && c.status !== "revoked");
 
@@ -154,10 +154,10 @@ export function Onboarding({ connections, params, now }: { connections: Connecti
   const ghActive = gh.some((c) => c.status === "active");
   const vcActive = vc.some((c) => c.status === "active");
   const synced = [ghState === "done", vcState === "done"].filter(Boolean).length;
-  // Once one source has synced, the card shrinks to the step that is left; the synced one lives on Connections.
+  // Once one source has synced, the card shrinks to the step that is left; the synced one lives in Settings.
   const showGithub = !(synced === 1 && ghState === "done");
   const showVercel = !(synced === 1 && vcState === "done");
-  // After any first sync, steps drop their per-account rows to one line; the accounts live on Connections.
+  // After any first sync, steps drop their per-account rows to one line; the accounts live in Settings.
   const compact = [...gh, ...vc].some(isSynced);
   const brief = (list: Connection[], full: string): ReactNode => {
     if (!compact || !list.length) return full;
@@ -166,8 +166,8 @@ export function Onboarding({ connections, params, now }: { connections: Connecti
     return (
       <>
         {done} of {list.length} {list.length === 1 ? "account" : "accounts"} synced{errored ? `, ${errored} ${errored === 1 ? "needs" : "need"} attention` : ""}.{" "}
-        <Link href="/app/connections" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
-          Accounts
+        <Link href="/app/settings" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+          Settings
         </Link>
       </>
     );

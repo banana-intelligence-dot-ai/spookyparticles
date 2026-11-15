@@ -57,7 +57,7 @@ From this repository, run:
 sh scripts/agent-inbox/spooky-fixer.sh --setup --start
 ```
 
-If this computer is not signed in yet, it prints a code; check it matches the page and click Approve. The key goes to the macOS Keychain (on Linux, a file only you can read). A key made by hand under Connections still works: put it in `SPOOKY_API_KEY`, or pass `--key-from-clipboard`.
+If this computer is not signed in yet, it prints a code; check it matches the page and click Approve. The key goes to the macOS Keychain (on Linux, a file only you can read). A key made by hand on the Agents page still works: put it in `SPOOKY_API_KEY`, or pass `--key-from-clipboard`.
 
 Setup does the rest:
 

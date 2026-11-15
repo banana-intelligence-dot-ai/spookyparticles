@@ -3,8 +3,9 @@
  * finding, does what its instructions say (a pull request it never merges, or exact steps for the
  * person), and reports back. Spooky marks it fixed on its own next check, never on the agent's word.
  */
-import { SITE } from "../today-model";
 import type { Check } from "./check-view";
+
+const SITE = "https://spookyparticles.com";
 
 /** The id of a finding's row, so the matrix above can open and scroll to it. */
 export const findingAnchor = (id: string) => `check-f-${id}`;

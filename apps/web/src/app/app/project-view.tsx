@@ -6,19 +6,17 @@
  * Reads projects, catches with claims, check-ins and run history; writes nothing on any host.
  */
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Empty, ErrorLine } from "@/components/ui";
-import { useApi } from "@/components/use-api";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { buttonStyles, Empty, ErrorLine } from "@/components/ui";
+import { apiSend, useApi } from "@/components/use-api";
 import { sameProject, sinceWords } from "@/lib/break-guide";
 import type { RunHistory } from "@/lib/run-history";
 import { OpenHelp } from "./catch-log";
-import { CopyForAgent, RoutingLine, agentButton } from "./copy-for-agent";
+import { agentButton, CopyForAgent, RoutingLine } from "./copy-for-agent";
 import { absoluteTime } from "./data-model";
-import { extraNeeds, projectHistory, projectStatus, stillOpen, type HistoryDay, type HistoryItem, type NeedItem } from "./home-model";
-import { TONE_DOT, TONE_WORD, type CatchesWithClaims } from "./home-view";
-import { host, type Project, type ProjectsReport } from "./project-model";
-import { projectHref } from "./projects-view";
-import type { JobRow } from "./today-model";
+import { extraNeeds, type HistoryDay, type HistoryItem, type JobRow, type NeedItem, projectHistory, projectStatus, stillOpen } from "./home-model";
+import { type CatchesWithClaims, TONE_DOT, TONE_WORD } from "./projects-list";
+import { host, type Project, projectHref, type ProjectsReport } from "./project-model";
 
 export function ProjectView({ owner, repo }: { owner: string; repo: string }) {
   const projects = useApi<ProjectsReport>("/api/v1/projects");
@@ -27,6 +25,7 @@ export function ProjectView({ owner, repo }: { owner: string; repo: string }) {
   const runs = useApi<RunHistory>("/api/v1/checkins/history");
   const { reload: reloadCatches } = catches;
   const { reload: reloadJobs } = checkins;
+  const { reload: reloadProjects } = projects;
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => setNow(Date.now()), [projects.data, catches.data]);
   return (
@@ -42,6 +41,11 @@ export function ProjectView({ owner, repo }: { owner: string; repo: string }) {
       onChanged={() => {
         void reloadCatches();
         void reloadJobs();
+      }}
+      onWatch={async (stop) => {
+        const r = await apiSend(stop ? "POST" : "DELETE", "/api/v1/mutes", { project: `${owner}/${repo}`, kind: "all" });
+        if (r.ok) void reloadProjects();
+        return r.ok ? null : (r.error ?? "That did not save. Try again.");
       }}
     />
   );
@@ -60,6 +64,7 @@ export function ProjectScreen({
   error,
   now,
   onChanged,
+  onWatch,
 }: {
   name: string;
   ready: boolean;
@@ -70,11 +75,12 @@ export function ProjectScreen({
   error: string | null;
   now: number;
   onChanged?: () => void;
+  onWatch?: WatchFn;
 }) {
   const all = useMemo(() => projects?.projects ?? [], [projects]);
   const p = all.find((x) => x.name.toLowerCase() === name.toLowerCase()) ?? null;
   const back = (
-    <Link href="/app" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] text-fg-3 transition-colors hover:text-fg">
+    <Link href="/app/projects" className="inline-flex min-h-11 items-center gap-1.5 text-[14px] text-fg-3 transition-colors hover:text-fg">
       <svg viewBox="0 0 16 16" aria-hidden className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M10 3.5 5.5 8 10 12.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
@@ -106,10 +112,39 @@ export function ProjectScreen({
       </>
     );
   }
-  return <Loaded p={p} all={all} catches={catches} jobs={jobs} runs={runs} now={now} back={back} onChanged={onChanged} />;
+  return <Loaded p={p} all={all} catches={catches} jobs={jobs} runs={runs} now={now} back={back} onChanged={onChanged} onWatch={onWatch} />;
 }
 
-function Loaded({ p, all, catches, jobs, runs, now, back, onChanged }: { p: Project; all: Project[]; catches: CatchesWithClaims | null; jobs: JobRow[]; runs: RunHistory | null; now: number; back: ReactNode; onChanged?: () => void }) {
+/** Stop or resume watching. Resolves to an error line, or null when it saved. */
+type WatchFn = (stop: boolean) => Promise<string | null>;
+
+/** Stop watching this project, or watch it again. A mute event with an audit line; nothing is deleted. */
+function Watch({ stopped, onWatch }: { stopped: boolean; onWatch: WatchFn }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="mt-6 flex flex-col gap-2 text-[14px] sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <p className="max-w-[560px] leading-[1.5] text-fg-2">
+        {stopped ? "Not watched. This project sends no pings and puts nothing on Now or in your agent's inbox." : "Project ended? Stop watching and it sends no pings and puts nothing on Now. History stays, and you can turn it back on."}
+        {error ? <span className="block text-red"> {error}</span> : null}
+      </p>
+      <button
+        type="button"
+        disabled={busy}
+        className={`${buttonStyles.secondary} shrink-0 self-start sm:self-auto`}
+        onClick={async () => {
+          setBusy(true);
+          setError(await onWatch(!stopped));
+          setBusy(false);
+        }}
+      >
+        {stopped ? "Watch again" : "Stop watching"}
+      </button>
+    </div>
+  );
+}
+
+function Loaded({ p, all, catches, jobs, runs, now, back, onChanged, onWatch }: { p: Project; all: Project[]; catches: CatchesWithClaims | null; jobs: JobRow[]; runs: RunHistory | null; now: number; back: ReactNode; onChanged?: () => void; onWatch?: WatchFn }) {
   const claims = useMemo(() => catches?.claims ?? [], [catches]);
   const list = useMemo(() => catches?.catches ?? [], [catches]);
   const mine = useMemo(() => list.filter((c) => c.project && sameProject(c.project, p.name)), [list, p.name]);
@@ -147,7 +182,7 @@ function Loaded({ p, all, catches, jobs, runs, now, back, onChanged }: { p: Proj
       </header>
 
       {openBreaks.length || openChecks.length || extra.length ? (
-        <Section id="needs-title" title="Needs you" meta={`${openBreaks.length + openChecks.length + extra.length} open`}>
+        <Section id="needs-title" title="Open" meta={`${openBreaks.length + openChecks.length + extra.length} open`}>
           <ol>
             {[...openBreaks, ...openChecks].map((c) => (
               <li key={c.id} className="border-b border-line-1 py-5">
@@ -204,6 +239,7 @@ function Loaded({ p, all, catches, jobs, runs, now, back, onChanged }: { p: Proj
             </li>
           ) : null}
         </ul>
+        {onWatch ? <Watch stopped={Boolean(p.muted?.all)} onWatch={onWatch} /> : null}
       </nav>
     </>
   );

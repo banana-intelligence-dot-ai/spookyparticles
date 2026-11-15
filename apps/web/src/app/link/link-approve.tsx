@@ -175,8 +175,8 @@ function Denied() {
 const revokeNote = (
   <>
     You can see its key and revoke it any time under{" "}
-    <a href="/app/connections" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
-      Connected agents
+    <a href="/app/agents" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+      Agents
     </a>
     .
   </>

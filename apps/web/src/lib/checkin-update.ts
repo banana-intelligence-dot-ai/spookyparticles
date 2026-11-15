@@ -1,0 +1,57 @@
+import type { Actor } from "@/lib/actor";
+import { cleanCount, cleanMinutes, cleanName, cleanOwner, getJob, updateJob } from "@/lib/checkins";
+import { ApiError } from "@/lib/http";
+import { MAX_PROBES_PER_ACCOUNT, probeRoomLeft, validateOutcomeInput } from "@/lib/probes";
+
+/** Shared PATCH validation and audited update for REST and MCP. */
+export async function updateJobFromBody(actor: Actor, id: string, body: Record<string, unknown>) {
+  const patch: Parameters<typeof updateJob>[2] = {};
+  if (body.schedule !== undefined || body.timeZone !== undefined || body.probe !== undefined) {
+    const current = await getJob(actor.userId, id);
+    if (!current) throw new ApiError(404, "not_found", "No such job");
+    if (current.source !== "manual") throw new ApiError(400, "outcome", "Only manual jobs can set a schedule or probe");
+    try {
+      const outcome = validateOutcomeInput(body.schedule === undefined ? current.schedule : body.schedule, body.timeZone === undefined ? current.timeZone : body.timeZone, body.probe === undefined ? current.probe : body.probe);
+      if (body.schedule !== undefined) patch.schedule = outcome.schedule;
+      if (body.timeZone !== undefined) patch.timeZone = outcome.timeZone;
+      if (body.probe !== undefined) patch.probe = outcome.probe;
+    } catch (err) { throw new ApiError(400, "outcome", (err as Error).message); }
+    if (patch.probe && !current.probe && !(await probeRoomLeft(actor.userId, id))) throw new ApiError(400, "outcome", `probe: at most ${MAX_PROBES_PER_ACCOUNT} watched URLs per account`);
+  }
+  if (body.name !== undefined) {
+    const name = cleanName(body.name);
+    if (!name) throw new ApiError(400, "name", "name: 2 to 80 characters");
+    patch.name = name;
+  }
+  if (body.periodMinutes !== undefined) {
+    const p = cleanMinutes(body.periodMinutes, null);
+    if (!p) throw new ApiError(400, "period", "periodMinutes: whole minutes, 1 to 44640");
+    patch.periodMinutes = p;
+  }
+  if (body.graceMinutes !== undefined) {
+    const g = cleanMinutes(body.graceMinutes, null, 60 * 24 * 7);
+    if (g === null) throw new ApiError(400, "grace", "graceMinutes: whole minutes");
+    patch.graceMinutes = g;
+  }
+  if (body.project !== undefined) patch.project = typeof body.project === "string" && body.project.trim() ? body.project.trim().slice(0, 120) : null;
+  if (body.owner !== undefined) {
+    const owner = cleanOwner(body.owner);
+    if (owner && owner.length > 80 || body.owner !== null && typeof body.owner !== "string") throw new ApiError(400, "owner", "owner: up to 80 characters");
+    patch.owner = owner;
+  }
+  if (body.maxRunMinutes !== undefined) {
+    const minutes = cleanMinutes(body.maxRunMinutes, null, 10080);
+    if (body.maxRunMinutes !== null && minutes === null) throw new ApiError(400, "max_run_minutes", "maxRunMinutes: whole minutes, 1 to 10080");
+    patch.maxRunMinutes = minutes;
+  }
+  if (body.minCount !== undefined) {
+    const count = body.minCount === null ? null : cleanCount(body.minCount);
+    if (body.minCount !== null && count === null) throw new ApiError(400, "min_count", "minCount: whole count, 0 to 1000000000");
+    patch.minCount = count;
+  }
+  if (typeof body.paused === "boolean") patch.paused = body.paused;
+  if (typeof body.retired === "boolean") patch.retired = body.retired;
+  const job = await updateJob(actor.userId, id, patch, actor.label);
+  if (!job) throw new ApiError(404, "not_found", "No such job");
+  return job;
+}

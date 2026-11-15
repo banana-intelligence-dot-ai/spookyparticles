@@ -19,7 +19,7 @@ import { startSync } from "./sync";
 export type ConnectProvider = "gmail" | "github";
 
 /** In-app pages a connect flow may return to. Anything else falls back to the first. */
-const NEXT_PAGES = ["/app/connections", "/app"] as const;
+const NEXT_PAGES = ["/app/settings", "/app", "/app/connections"] as const;
 
 export function safeNext(value: string | null | undefined): string {
   return NEXT_PAGES.find((p) => p === value) ?? NEXT_PAGES[0];

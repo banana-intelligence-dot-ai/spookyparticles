@@ -13,6 +13,7 @@ import { appendAudit } from "@/lib/audit";
 import { parseMasterKey } from "@/lib/crypto";
 import { appUrl } from "@/lib/env";
 import { deliverToAll } from "./channels";
+import { alertMuted } from "../mutes";
 
 /** Failures older than this at first sight are history, not news. */
 export const FRESH_MS = 24 * 60 * 60 * 1000;
@@ -49,7 +50,7 @@ export function renderDeployFailed(f: DeployFailure, opts: { todayUrl: string; u
     tail.length ? `Last ${tail.length} lines of the log:\n${tail.map((l) => `  ${l}`).join("\n")}` : "No log lines were available.",
     "",
     f.inspectorUrl ? `Open the build on ${f.host}: ${f.inspectorUrl}` : null,
-    `Today on Spooky Particles: ${opts.todayUrl}`,
+    `Open on Spooky Particles: ${opts.todayUrl}`,
     "",
     "Spooky Particles only reads. Nothing was changed, redeployed or rolled back.",
     "Replies to this address are not read; write to hello@spookyparticles.com.",
@@ -60,7 +61,7 @@ export function renderDeployFailed(f: DeployFailure, opts: { todayUrl: string; u
 <p style="margin:0 0 16px"><strong style="font-weight:600">${escapeHtml(f.project)}</strong>: the ${f.environment} deploy on ${escapeHtml(f.host)} failed.<br><span style="color:#9a9ca1">${escapeHtml(when)}</span></p>
 ${f.cause ? `<p style="margin:0 0 6px;color:#9a9ca1">Why, from the build log</p><pre style="margin:0 0 16px;padding:12px;background:#15171a;border:1px solid #23262b;border-radius:8px;white-space:pre-wrap;word-break:break-word;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f2b8b5">${escapeHtml(f.cause)}</pre>` : `<p style="margin:0 0 16px;color:#9a9ca1">The build log did not name a cause. The last lines are below.</p>`}
 ${tail.length ? `<p style="margin:0 0 6px;color:#9a9ca1">Last ${tail.length} lines of the log</p><pre style="margin:0 0 16px;padding:12px;background:#15171a;border:1px solid #23262b;border-radius:8px;white-space:pre-wrap;word-break:break-word;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9cbd0">${escapeHtml(tail.join("\n"))}</pre>` : ""}
-<p style="margin:0 0 16px">${f.inspectorUrl ? `<a href="${escapeHtml(f.inspectorUrl)}" style="color:#e6e7e9">Open the build on ${escapeHtml(f.host)}</a> &nbsp;·&nbsp; ` : ""}<a href="${escapeHtml(opts.todayUrl)}" style="color:#e6e7e9">Today on Spooky Particles</a></p>
+<p style="margin:0 0 16px">${f.inspectorUrl ? `<a href="${escapeHtml(f.inspectorUrl)}" style="color:#e6e7e9">Open the build on ${escapeHtml(f.host)}</a> &nbsp;·&nbsp; ` : ""}<a href="${escapeHtml(opts.todayUrl)}" style="color:#e6e7e9">Open on Spooky Particles</a></p>
 <p style="margin:0;color:#6f7177;font-size:13px">Spooky Particles only reads. Nothing was changed, redeployed or rolled back. Replies to this address are not read; write to hello@spookyparticles.com.<br><a href="${escapeHtml(opts.unsubscribeUrl)}" style="color:#6f7177">Stop these emails</a></p>
 </body></html>`;
   return { subject, text, html };
@@ -116,6 +117,7 @@ export async function notifyDeployFailed(userId: string, f: DeployFailure, nowMs
   try {
     if (f.at && nowMs - Date.parse(f.at) > FRESH_MS) return "skipped";
     if (!(await deployFailedEnabled(userId))) return "skipped";
+    if (await alertMuted(userId, f.project, "deploy_failed")) return "skipped";
     const db = getDb();
     const key = alertKey(f);
     const [prior] = await db.select({ id: schema.alerts.id }).from(schema.alerts).where(and(eq(schema.alerts.userId, userId), eq(schema.alerts.key, key))).limit(1);

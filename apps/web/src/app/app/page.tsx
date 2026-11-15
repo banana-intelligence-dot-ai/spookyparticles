@@ -1,13 +1,13 @@
 import { Suspense } from "react";
-import { HomeView } from "./home-view";
+import { NowView } from "./now-view";
 
-export const metadata = { title: "Projects" };
+export const metadata = { title: "Now" };
 
-export default function HomePage() {
+export default function NowPage() {
   return (
     <div className="max-w-5xl">
       <Suspense fallback={<p className="text-[14px] text-fg-3">Loading…</p>}>
-        <HomeView />
+        <NowView />
       </Suspense>
     </div>
   );

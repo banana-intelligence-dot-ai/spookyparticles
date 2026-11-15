@@ -4,6 +4,7 @@ import { appendAudit } from "@/lib/audit";
 import { appUrl } from "@/lib/env";
 import { alertThreshold, type Expiration } from "@/lib/expirations/expirations";
 import { deliverToAll, type DeliveryResult } from "./channels";
+import { alertMuted } from "../mutes";
 
 /** The date is part of the key so a renewed domain can alert again next year. */
 export function expirationAlertKey(item: Expiration, threshold: 30 | 7 | 1, nodeId = item.project ?? item.name): string {
@@ -25,6 +26,7 @@ export async function notifyExpiration(userId: string, item: Expiration, nodeId:
   const threshold = alertThreshold(item);
   if (!threshold) return "skipped";
   try {
+    if (await alertMuted(userId, item.project, "expiration")) return "skipped";
     const db = getDb();
     const [person] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, userId)).limit(1);
     const key = expirationAlertKey(item, threshold, nodeId);

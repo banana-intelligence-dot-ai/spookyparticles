@@ -102,7 +102,7 @@ if [ "$key_from_clipboard" = true ]; then
   SPOOKY_API_KEY=$(pbpaste 2>/dev/null | tr -d ' \t\r\n')
   case "$SPOOKY_API_KEY" in
     sp_?*) ;;
-    *) SPOOKY_API_KEY=; printf 'The clipboard does not hold a Spooky key (they start with sp_). Copy the key from Connections and run this again.\n' >&2; exit 1 ;;
+    *) SPOOKY_API_KEY=; printf 'The clipboard does not hold a Spooky key (they start with sp_). Copy the key from the Agents page and run this again.\n' >&2; exit 1 ;;
   esac
   export SPOOKY_API_KEY
 fi
@@ -214,7 +214,7 @@ sign_in() {
 
 if [ "$sign_out" = true ]; then
   forget_key
-  printf 'Signed out: the key this computer saved is removed. Revoke it in Spooky under Connections, Agent keys.\n'
+  printf 'Signed out: the key this computer saved is removed. Revoke it in Spooky on the Agents page.\n'
   exit 0
 fi
 
@@ -247,11 +247,11 @@ if [ -z "$SPOOKY_API_KEY" ] && { [ -t 0 ] || [ "$sign_in_only" = true ]; }; then
   si_rc=0
   SPOOKY_API_KEY=$(sign_in) || si_rc=$?
   if [ "$si_rc" = 2 ] && [ "$sign_in_only" = true ]; then
-    printf 'This Spooky has no agent sign-in yet. Make a key under Connections instead.\n' >&2
+    printf 'This Spooky has no agent sign-in yet. Make a key on the Agents page instead.\n' >&2
     exit 1
   elif [ "$si_rc" = 2 ]; then
     # This Spooky has no sign-in yet: ask for a key, hidden.
-    printf 'Paste your Spooky key (from Connections, Make key, Read). It stays hidden: '
+    printf 'Paste your Spooky key (from Agents, Connect an agent, Read). It stays hidden: '
     stty -echo 2>/dev/null; IFS= read -r SPOOKY_API_KEY || SPOOKY_API_KEY=; stty echo 2>/dev/null; printf '\n'
     SPOOKY_API_KEY=$(printf '%s' "$SPOOKY_API_KEY" | tr -d ' \t\r\n')
     case "$SPOOKY_API_KEY" in sp_?*) ;; *) SPOOKY_API_KEY=; printf 'That is not a Spooky key (they start with sp_).\n' >&2; exit 1 ;; esac
@@ -260,7 +260,7 @@ if [ -z "$SPOOKY_API_KEY" ] && { [ -t 0 ] || [ "$sign_in_only" = true ]; }; then
   else
     store_key "$SPOOKY_API_KEY" || printf 'Signed in, but the key could not be saved, so you will sign in again next time.\n' >&2
     key_saved=true
-    printf 'Signed in. This computer has its own key now; you can revoke it in Spooky under Connections.\n' >&2
+    printf 'Signed in. This computer has its own key now; you can revoke it in Spooky on the Agents page.\n' >&2
   fi
 fi
 if [ -z "$SPOOKY_API_KEY" ]; then
@@ -349,7 +349,7 @@ run_setup() {
 
   if ! json=$(printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -fsS -m 60 -H @- \
       -H "User-Agent: spooky-fixer" "$base_url/api/v1/projects" 2>/dev/null); then
-    printf 'Spooky did not answer. Check that the key is a Read key from Connections and is not revoked.\n' >&2
+    printf 'Spooky did not answer. Check that the key is a Read key from the Agents page and is not revoked.\n' >&2
     exit 1
   fi
   if ! all=$(printf '%s' "$json" | parse_projects); then
@@ -373,7 +373,7 @@ run_setup() {
 $all
 EOF
   if [ "$n" = 0 ]; then
-    printf 'Spooky lists no GitHub repos for this key yet. Connect GitHub on Connections, then run this again.\n' >&2
+    printf 'Spooky lists no GitHub repos for this key yet. Connect GitHub in Settings, then run this again.\n' >&2
     exit 1
   fi
 

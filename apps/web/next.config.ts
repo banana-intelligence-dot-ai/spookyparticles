@@ -23,6 +23,13 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   // POSTHOG_HOST is shared by the server client and the browser client.
   env: { NEXT_PUBLIC_POSTHOG_HOST: process.env.POSTHOG_HOST ?? "" },
+  // Pages that moved. Query strings ride along, so sign-in callbacks that still name the old path land right.
+  async redirects() {
+    return [
+      { source: "/app/today", destination: "/app", permanent: false },
+      { source: "/app/connections", destination: "/app/settings", permanent: false },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

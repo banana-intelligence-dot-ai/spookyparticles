@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Catch } from "@/lib/catches";
-import { extraNeeds, fixedByWords, projectHistory, projectStatus, routingShort, sortByStatus, splitQuiet, stillOpen, valueLine } from "./home-model";
+import { extraNeeds, fixedByWords, type JobRow, projectHistory, projectStatus, routingShort, sortByStatus, splitQuiet, stillOpen, valueLine } from "./home-model";
 import type { Project } from "./project-model";
-import type { JobRow } from "./today-model";
 
 const NOW = Date.parse("2026-11-13T18:00:00.000Z");
 const ago = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
 const sp = (s: string | null) => (s ?? "").replace(/ /g, " ");
 
 const c = (id: string, over: Partial<Catch> = {}): Catch => ({
-  id,
+  id, clearKey: id,
   kind: "deploy",
   project: "me/web",
   what: "Deploy failed",

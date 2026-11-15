@@ -16,7 +16,7 @@ You never hold the person's Vercel or GitHub access. Your only credential is an 
 ## Setup
 
 1. Check that `SPOOKY_API_KEY` is set in your environment, or that this computer is already signed in (`sh ~/spookyparticles/scripts/spooky.sh status` answers). Never print the key. Never ask for it in chat.
-2. If neither, follow https://spookyparticles.com/setup.md. Its `sh scripts/spooky.sh start` shows the person a sign-in code; they approve it in their browser and a **read** key is saved on this computer, never in chat. A read key can look. Taking findings or recording service sign-ups needs a **write** key, which the person makes under Connections and exports as `SPOOKY_API_KEY` themselves.
+2. If neither, follow https://spookyparticles.com/setup.md. Its `sh scripts/spooky.sh start` shows the person a sign-in code; they approve it in their browser and a **read** key is saved on this computer, never in chat. A read key can look. Taking findings or recording service sign-ups needs a **write** key, which the person makes on the Agents page and exports as `SPOOKY_API_KEY` themselves.
 3. Connect the tools. In Claude Code:
 
 ```bash
@@ -43,6 +43,10 @@ Other agents: an HTTP MCP server at `https://spookyparticles.com/api/mcp` with t
 A report never marks a finding fixed. Spooky marks it fixed only when its own next check passes.
 
 Each finding belongs to one item of the Spooky Standard, and each item has its own skill with fuller check, fix and proof steps: https://github.com/banana-intelligence-dot-ai/spookyparticles/tree/main/skills. For example, `cron_unguarded` is `spooky-cron-guard`, `secret_in_public_code` is `spooky-public-secret`, `previews_open` is `spooky-previews`, `secret_not_sensitive` is `spooky-sensitive`, and `deps_not_updated` is `spooky-deps`.
+
+## Clearing notices
+
+`open_items` lists what is open now, who has it and the next step. When your person says a notice does not matter, call `clear_notice` with the item's `clearKeys`. When a project has ended, or one kind of notice on it is expected, call `mute` with the project (and a kind). Both need a write key, both are logged, and `restore_notice` and `unmute` undo them. Clear or mute only when your person asks.
 
 ## Rules
 

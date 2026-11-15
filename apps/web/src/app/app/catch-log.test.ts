@@ -11,7 +11,7 @@ describe("ledger", () => {
   });
 });
 
-const c = (id: string, over: Partial<Catch>): Catch => ({ id, kind: "deploy", project: "a/b", what: "Deploy failed", caughtAt: "2026-11-10T00:00:00Z", alertedAt: null, heardAt: null, agent: null, fixedAt: null, fixedBy: null, status: "open", note: null, ...over });
+const c = (id: string, over: Partial<Catch>): Catch => ({ id, kind: "deploy", project: "a/b", what: "Deploy failed", caughtAt: "2026-11-10T00:00:00Z", alertedAt: null, heardAt: null, agent: null, fixedAt: null, fixedBy: null, status: "open", note: null, clearKey: id, ...over });
 
 describe("defaultCatch", () => {
   it("opens on the oldest open break", () => {

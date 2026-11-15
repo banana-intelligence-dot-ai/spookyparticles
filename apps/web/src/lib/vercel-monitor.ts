@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { deliverToAll } from "@/lib/alerts/channels";
+import { alertMuted } from "@/lib/mutes";
 import { getAccessToken } from "@/lib/connections";
 import { appUrl } from "@/lib/env";
 import { pinnedGet, resolvePublic } from "@/lib/net-safety";
@@ -25,10 +26,13 @@ const priorUptime = (p: ProjectNode): UptimeState | null => {
 
 async function notify(userId: string, kind: "server_errors" | "server_errors_recovered" | "site_down" | "site_recovered", key: string, project: string, subject: string, text: string) {
   const db = getDb();
+  // Stopped watching: no ping. A recovery is still recorded, so the episode it closes does not stay open.
+  const muted = await alertMuted(userId, project, kind);
+  if (muted && kind !== "site_recovered" && kind !== "server_errors_recovered") return false;
   const [person] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, userId)).limit(1);
   const [row] = await db.insert(schema.alerts).values({ userId, kind, key, channel: "channels", to: person?.email ?? "", subject, payload: { project } })
     .onConflictDoNothing({ target: [schema.alerts.userId, schema.alerts.key] }).returning({ id: schema.alerts.id });
-  if (!row) return false;
+  if (!row || muted) return false;
   const results = await deliverToAll(userId, { subject, text, link: new URL("/app", appUrl()).toString(), priority: kind === "site_down" || kind === "server_errors" ? "high" : "default" }, project);
   const anyOk = results.some((r) => r.ok);
   await db.update(schema.alerts).set({ sentAt: anyOk ? new Date() : null, error: anyOk ? null : (results.map((r) => `${r.kind}: ${r.reason ?? "failed"}`).join("; ") || "no channel").slice(0, 200), payload: sql`${schema.alerts.payload} || ${JSON.stringify({ deliveries: results })}::jsonb` }).where(eq(schema.alerts.id, row.id));

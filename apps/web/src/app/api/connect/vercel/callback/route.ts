@@ -22,7 +22,7 @@ function clear(response: NextResponse) {
 }
 
 function failure(code: string) {
-  return clear(appRedirect("/app/connections", { error: code, provider: "vercel" }));
+  return clear(appRedirect("/app/settings", { error: code, provider: "vercel" }));
 }
 
 export async function GET(req: Request) {
@@ -91,7 +91,7 @@ export async function GET(req: Request) {
     try { await startSync(row, `user:${userId}`); }
     catch (err) { console.error("[vercel install] first sync failed", row.id, (err as Error).message); }
     const vercelNext = safeVercelNext(params.get("next"));
-    const destination = new URL(vercelNext ?? "/app/connections?connected=vercel", appUrl());
+    const destination = new URL(vercelNext ?? "/app/settings?connected=vercel", appUrl());
     // Our own page shows the notice; Vercel's page gets its URL untouched.
     if (replaced && !vercelNext) destination.searchParams.set("replaced", "1");
     return clear(NextResponse.redirect(destination));

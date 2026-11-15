@@ -2,6 +2,15 @@
 
 What changed in Spooky Particles, dated, newest first. One entry per shipped change that a user can see. Nothing here is a plan; if it is on this page it is live.
 
+## 2026-11-14
+
+- **The app is five pages.** **Now** shows what is open, with the one thing that needs you first and the step to take. **History** is every break in the last 30 days and how long each fix took. **Projects**, **Agents** and **Settings** are what they say. Today and Connections are gone; their links land on Now and Settings. Check, Schedules, Activity, Spend, Services and Expirations are listed at the bottom of Settings.
+- **Clear a notice that does not matter.** Clear takes it off Now and out of your agent's inbox. It stays in History, and Settings can restore it. After a clear, Spooky asks whether to stop watching that project or that kind of notice, so it does not come back.
+- **Stop watching a project that ended.** On the project's page, on Now after a clear, or in Settings. A stopped project sends no pings. Nothing is deleted, and **Watch again** turns it back on.
+- **Agents have their own page.** Each connected agent, what it is working on, what it asked about, its last fix and how long that took. Connect or revoke one there. Broken projects no agent has asked about are listed below.
+- **Your agent can do all of it.** `GET /api/v1/open`, `POST` and `DELETE /api/v1/notices/clear`, `GET`, `POST` and `DELETE /api/v1/mutes`, and `GET /api/v1/agents`. On the MCP endpoint: `open_items`, `clear_notice`, `restore_notice`, `mute`, `unmute`, `list_mutes` and `list_agents`. Clearing and muting need a write key, and every change lands in the audit log.
+- **Six more tools for agents.** `update_job`, `update_expiration`, `set_vendor_scope`, `recompute_spend_findings`, `read_billing_mail` and `export_data`. A test now fails when a write route has neither a tool nor a written reason to stay with the person. Keys, connections, alert destinations, dismissing a check and deleting stay with the person.
+
 ## 2026-11-10
 
 - **Hand a finding to your own agent.** A coding agent with a write key can ask for the next finding from the check, fix it as a pull request, and report back. It never merges, and its report never marks anything fixed: only our next check does. Three tries per finding, one finding at a time. Findings that only you can fix come with the exact setting to open. The Check page shows what your agent did. Tools: `next_finding` and `report_finding` on the MCP endpoint, or `POST /api/v1/checks/next` and `POST /api/v1/checks/{id}/report`. The skill file is at `/skill.md`.

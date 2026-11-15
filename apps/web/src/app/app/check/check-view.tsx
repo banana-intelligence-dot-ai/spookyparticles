@@ -152,7 +152,7 @@ function Evidence({ evidence }: { evidence: Record<string, unknown> }) {
   );
 }
 
-/** Why a check has no answer. Links to Connections only when that is where it gets fixed. */
+/** Why a check has no answer. Links to Settings only when that is where it gets fixed. */
 function Reason({ reason }: { reason: string | null }) {
   const known = REASON_TEXT[reason ?? ""];
   return (
@@ -161,8 +161,8 @@ function Reason({ reason }: { reason: string | null }) {
       {known?.connect ? (
         <>
           {" "}
-          <Link href="/app/connections" className="underline underline-offset-2 hover:text-fg">
-            Open Accounts
+          <Link href="/app/settings" className="underline underline-offset-2 hover:text-fg">
+            Open Settings
           </Link>
         </>
       ) : null}
@@ -323,7 +323,7 @@ export function CheckScreen({
         <Empty
           title="Connect Vercel to run the check"
           action={
-            <Link href="/app/connections?vercel=open#vercel" className={buttonStyles.primary}>
+            <Link href="/app/settings?vercel=open#vercel" className={buttonStyles.primary}>
               Connect Vercel
             </Link>
           }

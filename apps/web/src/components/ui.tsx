@@ -17,8 +17,9 @@ export function Row({ label, value, meta, action }: { label: ReactNode; value: R
   );
 }
 
-export function List({ children }: { children: ReactNode }) {
-  return <ul className={`overflow-hidden ${surface}`}>{children}</ul>;
+/** Boxed by default. `plain` draws hairline rows on the page, the way Now and History list things. */
+export function List({ children, plain = false }: { children: ReactNode; plain?: boolean }) {
+  return <ul className={plain ? "border-t border-line-1 [&>li]:px-0 [&>li:last-child]:border-b" : `overflow-hidden ${surface}`}>{children}</ul>;
 }
 
 export function PageHeader({ title, lede, children }: { title: string; lede?: ReactNode; children?: ReactNode }) {

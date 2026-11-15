@@ -8,6 +8,8 @@ import { getInstallationToken } from "@/lib/connections";
 import { locateRepo } from "@/lib/github-refresh";
 import { CLAIMED } from "@/lib/claims";
 import { deliverToAll, matchesProject } from "@/lib/alerts/channels";
+import { ignoredKeys } from "@/lib/ignores";
+import { alertMuted } from "@/lib/mutes";
 
 const FIFTEEN_MINUTES = 15 * 60_000;
 const DAY = 24 * 60 * 60_000;
@@ -116,7 +118,8 @@ export async function escalatePages(nowMs = Date.now()): Promise<number> {
   let sent = 0;
   for (const p of due) {
     const job = jobs.find((j) => j.id === p.jobId && j.userId === p.userId);
-    if (!job) continue;
+    // Muted, or the owner cleared this episode's notice: nobody wants the second ping.
+    if (!job || (await alertMuted(p.userId, job.project, "job_quiet")) || (await ignoredKeys(p.userId)).has(p.alertKey)) continue;
     const key = `pager_escalated:${p.jobId}:${p.at}`;
     const [person] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, p.userId)).limit(1);
     const [row] = await db.insert(schema.alerts).values({ userId: p.userId, kind: "job_quiet", key, channel: "channels", to: person?.email ?? "", subject: `${job.name}: still broken after 15 min`, payload: { jobId: job.id, project: job.project, pagedAt: p.at } })

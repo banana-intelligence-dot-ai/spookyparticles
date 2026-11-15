@@ -3,6 +3,8 @@ import { getDb, schema } from "@/db";
 import type { Actor } from "@/lib/actor";
 import { appendAudit } from "@/lib/audit";
 import { ApiError } from "@/lib/http";
+import { ignoredKeys } from "@/lib/ignores";
+import { muteFor, mutesFor } from "@/lib/mutes";
 import { CHECK_CATALOG } from "./catalog";
 import { cleanNote, inProgress, MAX_ATTEMPTS, OPEN_FOR, queue, validPrUrl, type Outcome } from "./handoff";
 import { checkReport, linkedRepo } from "./report";
@@ -36,7 +38,9 @@ export async function findingsReport(userId: string) { return (await context(use
 export async function takeNext(actor: Actor, retried = false, only: string | null = null) {
   const { checks, attempts, report } = await context(actor.userId);
   if (!checks.ready) return { finding: null, attempt: null, counts: { open: 0, waitingOnPerson: 0, needsPerson: 0, inProgress: 0 }, ready: false };
-  const ordered = report.projects.flatMap((p) => p.checks).filter((c) => c.id && (!only || c.id === only)).map((c) => checks.rows.find((r) => r.id === c.id)!);
+  // Muted projects and cleared suggestions are not handed out. One the person hands over by name still is.
+  const [mutes, cleared] = await Promise.all([mutesFor(actor.userId), ignoredKeys(actor.userId)]);
+  const ordered = report.projects.filter((p) => !muteFor(mutes, p.repo ?? p.name, "check")).flatMap((p) => p.checks).filter((c) => c.id && (only ? c.id === only : !cleared.has(c.id))).map((c) => checks.rows.find((r) => r.id === c.id)!);
   if (only && !ordered.length) throw new ApiError(404, "not_found", "No such finding");
   const { active, eligible, counts } = queue(ordered, attempts);
   const row = ordered.find((r) => r.id === (active?.checkId ?? eligible[0]?.id));

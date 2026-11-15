@@ -19,7 +19,9 @@ import { CHECK_KEYS, type CheckKey } from "./checks/rules";
 import { linkedRepo } from "./checks/report";
 import { INBOX_READ } from "./agent-listening";
 import { matchesIncidentProject } from "./incidents";
+import { medianFixMinutes } from "./fix-stats";
 import { breakKey, ignoredKeys } from "./ignores";
+import { muteFor, mutesFor, type Mute } from "./mutes";
 import { FAILED_STATES, failedDeployments, logFacts, retiredFailureIds } from "./projects";
 
 export const CAUGHT = "deploy.caught";
@@ -47,6 +49,8 @@ export type Catch = {
   alertedAt: string | null;
   heardAt: string | null;
   agent: string | null;
+  /** The key of the agent that heard, so Agents can count each agent's fixes. Never the key itself. */
+  agentKeyId?: string | null;
   fixedAt: string | null;
   fixedBy: FixedBy;
   /** When an agent asked Spooky to check production and production showed it fixed. */
@@ -60,6 +64,8 @@ export type Catch = {
   cause?: string | null;
   /** Jobs: which watched job, so the view can show its last note and offer Retire. */
   jobId?: string | null;
+  /** The key that clears this one notice (POST /api/v1/notices/clear). Deploys use the failure's break key. */
+  clearKey: string;
 };
 export type Catches = {
   catches: Catch[];
@@ -85,8 +91,10 @@ export type CatchInput = {
   jobs?: Map<string, JobFact>;
   /** Failed deployment nodes whose project is retired (archived, nothing live). */
   retiredNodes?: Set<string>;
-  /** Break keys the owner ignored. */
+  /** Break keys the owner ignored, and notices they cleared. */
   ignored?: Set<string>;
+  /** Projects, or kinds on a project, the owner stopped watching. */
+  mutes?: Mute[];
 };
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
@@ -123,7 +131,7 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
     if (a.kind === "job_quiet" || a.kind === "job_failed") {
       if (openJobs.has(jobId)) continue;
       const job = str(a.payload.job) ?? "A job";
-      const c: Catch = { id: a.key, kind: "job", project: str(a.payload.project), what: a.kind === "job_failed" ? `${job} run failed` : `${job} went quiet`, caughtAt: a.createdAt.toISOString(), alertedAt: alertAt(a), heardAt: null, agent: null, fixedAt: null, fixedBy: null, status: "open", note: null, jobId };
+      const c: Catch = { id: a.key, kind: "job", project: str(a.payload.project), what: a.kind === "job_failed" ? `${job} run failed` : `${job} went quiet`, caughtAt: a.createdAt.toISOString(), alertedAt: alertAt(a), heardAt: null, agent: null, fixedAt: null, fixedBy: null, status: "open", note: null, jobId, clearKey: a.key };
       openJobs.set(jobId, c);
       out.push(c);
     } else if (a.kind === "job_recovered") {
@@ -158,7 +166,7 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
     for (const a of alerts.filter((x) => x.kind === downKind)) {
       const back = backs.get(episode(a.key));
       const project = str(a.payload.project);
-      out.push({ id: a.key, kind, project, what, caughtAt: a.createdAt.toISOString(), alertedAt: alertAt(a), heardAt: null, agent: null, fixedAt: back ? back.createdAt.toISOString() : null, fixedBy: null, status: "open", note: null });
+      out.push({ id: a.key, kind, project, what, caughtAt: a.createdAt.toISOString(), alertedAt: alertAt(a), heardAt: null, agent: null, fixedAt: back ? back.createdAt.toISOString() : null, fixedBy: null, status: "open", note: null, clearKey: a.key });
     }
   }
 
@@ -197,6 +205,7 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
       fixedAt: fix ? (str(fix.properties.at) ?? fix.createdAt.toISOString()) : null,
       fixedBy: sha ? { kind: "commit", sha, message: str(fix?.properties.message) } : null,
       cause,
+      clearKey: nodeId ? breakKey(nodeId, at) : key,
       ...closed,
     });
   }
@@ -209,7 +218,7 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
     const pr = input.attempts
       .filter((a) => a.checkId === r.id && a.outcome === "pr_opened" && a.prUrl)
       .sort((a, b) => b.takenAt.getTime() - a.takenAt.getTime())[0];
-    out.push({ id: r.id, kind: "check", project: r.project, what: wordsFor(r.check as CheckKey, r.evidence).title, caughtAt: r.firstOpenAt.toISOString(), alertedAt: null, heardAt: null, agent: null, fixedAt: iso(fixedAt), fixedBy: pr?.prUrl ? { kind: "pr", url: pr.prUrl } : null, status: "open", note: null });
+    out.push({ id: r.id, kind: "check", project: r.project, what: wordsFor(r.check as CheckKey, r.evidence).title, caughtAt: r.firstOpenAt.toISOString(), alertedAt: null, heardAt: null, agent: null, fixedAt: iso(fixedAt), fixedBy: pr?.prUrl ? { kind: "pr", url: pr.prUrl } : null, status: "open", note: null, clearKey: r.id });
   }
 
   // Who heard: the first agent read of the same project after it broke (and before it was fixed).
@@ -225,6 +234,7 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
     c.heardAt = read.createdAt.toISOString();
     const keyId = str(read.properties.apiKeyId);
     c.agent = keyId ? (input.keyNames.get(keyId) ?? null) : null;
+    c.agentKeyId = keyId;
   }
 
   // Confirmed: the first time production checked out fixed for the project, after it broke.
@@ -238,14 +248,19 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
   }
 
   for (const c of out) if (c.fixedAt) c.status = "fixed";
+  // Cleared by the owner, or on a project they stopped watching: closed without a fix. Fixes stay fixes.
+  for (const c of out) {
+    if (c.status !== "open" && c.status !== "waiting") continue;
+    const mute = muteFor(input.mutes ?? [], c.project, c.kind);
+    if (input.ignored?.has(c.clearKey)) Object.assign(c, { status: "ignored", note: "You cleared this notice." });
+    else if (mute) Object.assign(c, { status: "ignored", note: mute.kind ? `You muted ${MUTE_WORDS[mute.kind]} on this project.` : "You stopped watching this project." });
+  }
   const inWindow = out.filter((c) => (c.fixedAt ? Date.parse(c.fixedAt) : now.getTime()) >= since);
   const rank: Record<CatchStatus, number> = { open: 0, waiting: 1, fixed: 2, retired: 3, ignored: 3 };
   const catches = inWindow
     .sort((a, b) => rank[a.status] - rank[b.status] || (a.fixedAt && b.fixedAt ? b.fixedAt.localeCompare(a.fixedAt) : b.caughtAt.localeCompare(a.caughtAt)))
     .slice(0, MAX);
-  const durations = catches.filter((c) => c.fixedAt).map((c) => (Date.parse(c.fixedAt as string) - Date.parse(c.caughtAt)) / 60_000).filter((m) => m >= 0).sort((a, b) => a - b);
-  const mid = durations.length >> 1;
-  const median = durations.length ? (durations.length % 2 ? durations[mid] : (durations[mid - 1] + durations[mid]) / 2) : null;
+  const median = medianFixMinutes(catches);
   const count = (...s: CatchStatus[]) => catches.filter((c) => s.includes(c.status)).length;
   return {
     catches,
@@ -292,6 +307,8 @@ export async function recordDeploys(userId: string, nowMs = Date.now()) {
   }
 }
 
+const MUTE_WORDS: Record<CatchKind, string> = { deploy: "failed deploys", job: "job alerts", site: "site-down alerts", server_errors: "server-error alerts", check: "check suggestions" };
+
 export async function catchesFor(userId: string): Promise<Catches> {
   await recordDeploys(userId);
   const db = getDb();
@@ -310,15 +327,16 @@ export async function catchesFor(userId: string): Promise<Catches> {
   const openJobs = openJobEpisodes(alerts);
   const fixedKeys = new Set(events.filter((e) => e.name === FIXED).map((e) => str(e.properties.key)));
   const unfixedNodes = [...new Set(events.filter((e) => e.name === CAUGHT && !fixedKeys.has(str(e.properties.key))).map((e) => str(e.properties.nodeId)).filter((x): x is string => Boolean(x)))];
-  const [jobs, retiredNodes, ignored] = await Promise.all([
+  const [jobs, retiredNodes, ignored, mutes] = await Promise.all([
     jobFacts(userId, openJobs),
     retiredFailureIds(userId, unfixedNodes, now.getTime()),
     ignoredKeys(userId),
+    mutesFor(userId),
   ]);
   const keyIds = [...new Set(events.map((e) => str(e.properties.apiKeyId)).filter((x): x is string => Boolean(x)))];
   const keys = keyIds.length ? await db.select({ id: schema.apiKeys.id, name: schema.apiKeys.name }).from(schema.apiKeys).where(and(eq(schema.apiKeys.userId, userId), inArray(schema.apiKeys.id, keyIds))) : [];
   const checks: CheckRow[] = checkRows.map(({ check: c, node }) => ({ id: c.id, check: c.check, state: c.state, evidence: c.evidence, firstOpenAt: c.firstOpenAt, fixedAt: c.fixedAt, dismissedAt: c.dismissedAt, project: linkedRepo(node) ?? node.name }));
-  return buildCatches({ alerts, events, checks, attempts, keyNames: new Map(keys.map((k) => [k.id, k.name])), jobs, retiredNodes, ignored }, now);
+  return buildCatches({ alerts, events, checks, attempts, keyNames: new Map(keys.map((k) => [k.id, k.name])), jobs, retiredNodes, ignored, mutes }, now);
 }
 
 /** Each job with an open episode: how it stands, and its first good run since the episode began. */

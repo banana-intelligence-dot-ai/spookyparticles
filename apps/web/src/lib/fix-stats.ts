@@ -26,3 +26,22 @@ export function medianFixMinutes(fixed: Pick<Catch, "caughtAt" | "fixedAt">[]): 
   const mid = d.length >> 1;
   return d.length % 2 ? d[mid] : (d[mid - 1] + d[mid]) / 2;
 }
+
+/** A length of time in a few words: "under a minute", "20 min", "3.5 h", "2 days". */
+export function duration(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60_000));
+  if (m < 1) return "under a minute";
+  if (m < 60) return `${m} min`;
+  const h = m / 60;
+  if (h < 24) return `${h < 10 ? Math.round(h * 10) / 10 : Math.round(h)} h`;
+  const d = h / 24;
+  return `${d < 10 ? Math.round(d * 10) / 10 : Math.round(d)} ${Math.round(d) === 1 ? "day" : "days"}`;
+}
+
+/** Who fixed it, from what the fix left behind: the commit, the agent's PR, or the agent that picked it up. */
+export function fixedByWords(c: Pick<Catch, "fixedBy" | "agent" | "heardAt">): string | null {
+  if (c.fixedBy?.kind === "commit") return `commit ${c.fixedBy.sha.slice(0, 7)}${c.fixedBy.message ? ` (${c.fixedBy.message.split("\n")[0]})` : ""}`;
+  if (c.fixedBy?.kind === "pr") return "your agent's pull request";
+  if (c.heardAt) return c.agent ? `${c.agent}, after it asked about it` : "your agent, after it asked about it";
+  return null;
+}

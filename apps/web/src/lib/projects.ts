@@ -14,6 +14,8 @@ import { providerFromCreator, providerOf } from "./hosts";
 import { moveHome, productionHost } from "./move-home";
 import { recordProductionMove } from "./move-home-record";
 import { breakKey, ignoredKeys } from "./ignores";
+import { mutesFor, type MuteKind } from "./mutes";
+import { sameProject } from "./break-guide";
 import { buildProjectPage, type PageFinding, type ProjectPage } from "./project-page";
 import type { SpendReport, Subscription, VendorScope } from "./spend";
 import type { UptimeState } from "./vercel-health";
@@ -99,6 +101,8 @@ export type ProjectView = {
   subscriptions: { id: string; vendor: string; plan: string | null; scope: VendorScope; monthlyCents: number | null; currency: string | null; inbox: string }[];
   notices: NoticeView[];
   openFindings: { id: string; kind: FindingKind; title: string; amountCents: number | null }[];
+  /** What the owner stopped watching here: the whole project, or some kinds of notice. Empty kinds and all false: fully watched. */
+  muted: { all: boolean; kinds: MuteKind[] };
 };
 
 export type ProjectsReport = {
@@ -205,12 +209,13 @@ export type Preloaded = { receipts: LoadedReceipt[]; spend: SpendReport };
 
 export async function projectsFor(userId: string, nowMs = Date.now(), pre?: Preloaded): Promise<ProjectsReport> {
   const db = getDb();
-  const [repos, deployments, edges, findings, ignored] = await Promise.all([
+  const [repos, deployments, edges, findings, ignored, mutes] = await Promise.all([
     projectRows(userId),
     db.select().from(schema.nodes).where(and(eq(schema.nodes.userId, userId), eq(schema.nodes.kind, "deployment"))),
     db.select().from(schema.edges).where(and(eq(schema.edges.userId, userId), eq(schema.edges.kind, "deploys"))),
     db.select().from(schema.findings).where(and(eq(schema.findings.userId, userId), eq(schema.findings.status, "open"))),
     ignoredKeys(userId),
+    mutesFor(userId),
   ]);
   const receipts = pre?.receipts ?? (await loadReceipts(userId));
   const spend = pre?.spend ?? (await spendFor(userId, nowMs, receipts));
@@ -370,6 +375,10 @@ export async function projectsFor(userId: string, nowMs = Date.now(), pre?: Prel
       subscriptions: subs.map((s) => ({ id: s.id, vendor: s.vendor, plan: s.plan, scope: s.scope, monthlyCents: s.monthlyCents, currency: s.currency, inbox: s.inbox })),
       notices,
       openFindings: open.map((f) => ({ id: f.id, kind: f.kind, title: f.title, amountCents: f.amountCents })),
+      muted: {
+        all: mutes.some((m) => m.kind === null && sameProject(m.project, r.name)),
+        kinds: mutes.filter((m) => m.kind !== null && sameProject(m.project, r.name)).map((m) => m.kind as MuteKind),
+      },
     };
   });
 

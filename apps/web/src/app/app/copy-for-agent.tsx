@@ -13,7 +13,7 @@ export const agentButton = "inline-flex h-11 items-center rounded-lg px-3 text-[
 export function RoutingLine({ text, sent }: { text: string; sent: boolean }) {
   return (
     <p className="flex items-start gap-2 text-[14px] leading-[1.45] text-fg">
-      <span aria-hidden className={`mt-[7px] size-1.5 shrink-0 rounded-full ${sent ? "bg-accent" : "ring-1 ring-inset ring-fg-3"}`} />
+      <span aria-hidden className={`mt-[7px] size-1.5 shrink-0 rounded-full ${sent ? "bg-red" : "ring-1 ring-inset ring-fg-3"}`} />
       <span>{text}</span>
     </p>
   );

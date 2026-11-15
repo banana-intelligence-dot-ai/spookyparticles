@@ -91,6 +91,8 @@ export type Project = {
   subscriptions: ProjectSubscription[];
   notices: Notice[];
   openFindings: { id: string; kind: string; title: string; amountCents: number | null }[];
+  /** What the owner stopped watching here. */
+  muted?: { all: boolean; kinds: string[] };
 };
 
 export type UnlinkedSubscription = ProjectSubscription & {
@@ -332,3 +334,11 @@ export const clock = (iso: string) => new Intl.DateTimeFormat("en-US", { hour: "
 export function siteConfirmedDown(p: { uptime?: { state: string; alertAt?: string | null } | null }): boolean {
   return p.uptime?.state === "down" && Boolean(p.uptime.alertAt);
 }
+
+export { projectHref } from "@/lib/break-guide";
+
+const IDLE_DAYS = 90;
+
+/** Idle 90+ days (or archived) and still billed: the drift worth money. */
+export const idlePaid = (p: Project, now: number) =>
+  (p.monthlyCents ?? 0) > 0 && (p.health === "archived" || p.health === "idle" || (lastActiveAt(p) !== null && daysSince(lastActiveAt(p) as string, now) >= IDLE_DAYS));

@@ -2,13 +2,13 @@
 import type { Catch } from "@/lib/catches";
 import type { Claim } from "@/lib/claims";
 import { runWindow, RUN_DAYS, type RunBin, type RunHistory } from "@/lib/run-history";
-import type { CatchesWithClaims } from "@/app/app/home-view";
-import type { JobRow } from "@/app/app/today-model";
+import type { CatchesWithClaims } from "@/app/app/projects-list";
+import type { JobRow } from "@/app/app/home-model";
 import { NOW } from "./fixtures";
 
 const at = (hoursAgo: number) => new Date(NOW - hoursAgo * 3_600_000).toISOString();
 const c = (id: string, project: string, what: string, caughtH: number, fixH: number | null, extra: Partial<Catch> = {}): Catch => ({
-  id, kind: "deploy", project, what, caughtAt: at(caughtH), alertedAt: at(caughtH - 0.02), heardAt: null, agent: null,
+  id, clearKey: id, kind: "deploy", project, what, caughtAt: at(caughtH), alertedAt: at(caughtH - 0.02), heardAt: null, agent: null,
   fixedAt: fixH === null ? null : at(caughtH - fixH), fixedBy: null, status: fixH === null ? "open" : "fixed", note: null, ...extra,
 });
 

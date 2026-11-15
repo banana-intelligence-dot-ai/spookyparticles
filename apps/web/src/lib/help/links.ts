@@ -5,12 +5,14 @@
 export type HelpLink = { label: string; href: string };
 
 export const HELP_PAGES: Record<string, string> = {
-  "/app": "Today",
+  "/app": "Now",
+  "/app/history": "History",
   "/app/projects": "Projects",
   "/app/check": "Check",
-  "/app/activity": "History",
+  "/app/activity": "Activity",
   "/app/jobs": "Schedules",
-  "/app/connections": "Connections",
+  "/app/agents": "Agents",
+  "/app/settings": "Settings",
   "/app/expirations": "Expirations",
   "/setup.md": "Setup guide",
 };

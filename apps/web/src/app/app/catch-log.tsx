@@ -1,25 +1,26 @@
 "use client";
 /**
- * Caught and fixed: the top of Today. Each dot is something that broke in the last 30 days,
- * placed by when it broke (across) and how long it took to fix (up: higher took longer).
+ * History: everything that broke in the last 30 days and how long each fix took. On top, each dot
+ * is one break, placed by when it broke (across) and how long it took to fix (up: higher took
+ * longer). Under it, every catch as a row, newest first, with its pair drawn to the same idea.
  * Still-open ones sit in a red band at the top; one waiting on its next run sits there hollow.
  * Ones closed without a fix (a retired project, an ignored failure) are listed under the chart.
  * Tap a dot for its story: broke, alerted, an agent asked, fixed, and by what. An open one also
  * says what happened, whether an agent has it, the one thing to do, and links that do it. Real
  * rows only; an empty month says so. A line under the numbers says where every catch stands, so
- * the counts always add up, and why "Open" can be more than Today's "Broken now".
+ * the counts always add up.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Chips } from "@/components/ui";
 import { apiSend } from "@/components/use-api";
-import { breakKind, breakPrompt, claimOn, openSplit, routingStatus, whatHappened, whatToDo, type ClaimLike } from "@/lib/break-guide";
-import type { Catch, CatchKind, Catches } from "@/lib/catches";
-import { CopyForAgent, RoutingLine, agentButton } from "./copy-for-agent";
+import { breakKind, breakPrompt, type ClaimLike, claimOn, openSplit, routingStatus, whatHappened, whatToDo } from "@/lib/break-guide";
+import type { Catch, Catches, CatchKind } from "@/lib/catches";
+import { duration, fixedByWords } from "@/lib/fix-stats";
+import { agentButton, CopyForAgent, RoutingLine } from "./copy-for-agent";
 import { absoluteTime } from "./data-model";
-import type { Project } from "./project-model";
-import { projectHref } from "./projects-view";
-import { PublicFeedToggle } from "./public-feed-toggle";
-import type { JobRow } from "./today-model";
+import { type Project, projectHref } from "./project-model";
+import { Pair } from "./pair";
+import type { JobRow } from "./home-model";
 
 const DAY = 86_400_000;
 const KIND_LABEL: Record<CatchKind, [string, string]> = {
@@ -47,15 +48,6 @@ const plot = (m: number) => {
   return H - BOTTOM - f * (H - BOTTOM - TOP - 10);
 };
 
-export function duration(ms: number): string {
-  const m = Math.max(0, Math.round(ms / 60_000));
-  if (m < 1) return "under a minute";
-  if (m < 60) return `${m} min`;
-  const h = m / 60;
-  if (h < 24) return `${h < 10 ? Math.round(h * 10) / 10 : Math.round(h)} h`;
-  const d = h / 24;
-  return `${d < 10 ? Math.round(d * 10) / 10 : Math.round(d)} ${Math.round(d) === 1 ? "day" : "days"}`;
-}
 
 type Point = { c: Catch; x: number; y: number; open: boolean; minutes: number | null };
 const isClosed = (c: Catch) => c.status === "retired" || c.status === "ignored";
@@ -94,6 +86,7 @@ export function defaultCatch(list: Catch[]): Catch | null {
 type Extra = { claims?: ClaimLike[]; jobs?: JobRow[]; projects?: Project[]; onChanged?: () => void };
 
 export function CatchLog({ data, now, claims = [], jobs = [], projects = [], onChanged }: { data: Catches; now: number } & Extra) {
+  const story = useRef<HTMLDivElement>(null);
   const kinds = useMemo(() => [...new Set(data.catches.map((c) => c.kind))], [data]);
   const [kind, setKind] = useState<CatchKind | "all">("all");
   const list = kind === "all" ? data.catches : data.catches.filter((c) => c.kind === kind);
@@ -110,21 +103,24 @@ export function CatchLog({ data, now, claims = [], jobs = [], projects = [], onC
 
   return (
     <section aria-labelledby="caught-title" className="mb-14">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-x-8 gap-y-5">
         <div>
-          <h2 id="caught-title" className="text-[20px] leading-[1.25] font-medium tracking-[-0.01em] text-fg">
-            Caught and fixed
-          </h2>
-          <p className="mt-1 max-w-[520px] text-[14px] leading-[1.5] text-fg-2">
-            Fixed by the time you realize it&apos;s broken. Each dot is something that broke in the last {data.windowDays} days; the lower it sits, the faster it was fixed.
+          <h1 id="caught-title" className="text-[32px] leading-[1.1] font-medium tracking-[-0.02em] text-fg">
+            History
+          </h1>
+          <p className="mt-2 max-w-[520px] text-[16px] leading-[1.5] text-pretty text-fg-2">
+            Fixed by the time you realize it&apos;s broken. Every break in the last {data.windowDays} days; lower is faster.
           </p>
-          {line ? <p className="mt-2 max-w-[520px] text-[13px] leading-[1.5] text-fg">{line}</p> : null}
-          {split && split.open !== split.broken ? <p className="mt-1 max-w-[520px] text-[13px] leading-[1.5] text-fg-2">{split.words}</p> : null}
+          {split && split.open !== split.broken ? (
+            <p className="mt-2 max-w-[520px] text-[13px] leading-[1.5] text-fg-2">{s.waiting ? split.words.replace(/^\d+ open/, `${s.open + s.waiting} open`).replace(/\.$/, `, ${s.waiting} waiting on ${s.waiting === 1 ? "its" : "their"} next run.`) : split.words}</p>
+          ) : line && (s.closed || s.waiting) ? (
+            <p className="mt-2 max-w-[520px] text-[13px] leading-[1.5] text-fg-2">{line}</p>
+          ) : null}
         </div>
         <dl className="flex gap-8">
           <Stat label="Caught" value={String(s.caught)} />
           <Stat label="Fixed" value={String(s.fixed)} tone={s.fixed ? "accent" : null} />
-          {s.open ? <Stat label="Open" value={String(s.open)} tone="red" /> : null}
+          {s.open + s.waiting ? <Stat label="Open" value={String(s.open + s.waiting)} tone="red" /> : null}
           <Stat label="Median fix" value={s.medianFixMinutes === null ? "None yet" : duration(s.medianFixMinutes * 60_000)} />
         </dl>
       </div>
@@ -134,6 +130,7 @@ export function CatchLog({ data, now, claims = [], jobs = [], projects = [], onC
           {kinds.length > 1 ? (
             <div className="mb-3">
               <Chips
+                wrap
                 label="Show"
                 value={kind}
                 onChange={(k) => {
@@ -212,7 +209,7 @@ export function CatchLog({ data, now, claims = [], jobs = [], projects = [], onC
                       cx={`${p.x}%`}
                       cy={p.y}
                       r={active ? 7 : 5}
-                      className={`transition-[r] duration-150 motion-reduce:transition-none ${p.c.status === "waiting" ? `fill-bg ${active ? "stroke-fg" : "stroke-fg-2"}` : `${p.open ? "fill-red" : "fill-accent"} ${active ? "stroke-fg" : "stroke-bg"}`}`}
+                      className={`transition-[r] duration-150 motion-reduce:transition-none ${p.c.status === "waiting" ? `fill-bg ${active ? "stroke-fg" : "stroke-fg-2"}` : `${!p.open ? "fill-accent" : p.c.kind === "check" ? "fill-amber" : "fill-red"} ${active ? "stroke-fg" : "stroke-bg"}`}`}
                       strokeWidth={active ? 2 : 1.5}
                     />
                   </g>
@@ -239,15 +236,72 @@ export function CatchLog({ data, now, claims = [], jobs = [], projects = [], onC
             </p>
           ) : null}
 
-          {shown ? <Story c={shown} now={now} claims={claims} jobs={jobs} projects={projects} onChanged={onChanged} /> : null}
+          <div ref={story} className="scroll-mt-6">
+            {shown ? <Story c={shown} now={now} claims={claims} jobs={jobs} projects={projects} onChanged={onChanged} /> : null}
+          </div>
+
+          <h2 className="mt-12 mb-2 flex items-baseline gap-3 text-[20px] leading-[1.25] font-medium tracking-[-0.01em] text-fg">
+            Every catch
+            <span className="num text-[14px] font-normal tracking-normal text-fg-2">{list.length}</span>
+          </h2>
+          <ul className="border-t border-line-1">
+            {[...list]
+              .sort((a, b) => b.caughtAt.localeCompare(a.caughtAt))
+              .map((c) => (
+                <CatchRow
+                  key={c.id}
+                  c={c}
+                  now={now}
+                  picked={shown?.id === c.id}
+                  onPick={() => {
+                    setPicked(c.id);
+                    story.current?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+                  }}
+                />
+              ))}
+          </ul>
         </>
       ) : (
         <p className="rounded-2xl border border-line-2 bg-raised px-5 py-6 text-[14px] leading-[1.6] text-fg-2">
           Nothing broke in the last {data.windowDays} days that Spooky Particles saw. When a deploy fails, a job goes quiet or a site goes down, it lands here with how long the fix took.
         </p>
       )}
-      <PublicFeedToggle />
     </section>
+  );
+}
+
+const STANDING: Record<Exclude<Catch["status"], "fixed">, string> = {
+  open: "Still open",
+  waiting: "Waiting on its next run",
+  retired: "Closed: project retired",
+  ignored: "Closed: cleared",
+};
+
+/** One catch as a row: when, its pair, how long, what, and how it ended. Picking it opens its story above. */
+function CatchRow({ c, now, picked, onPick }: { c: Catch; now: number; picked: boolean; onPick: () => void }) {
+  const ms = (c.fixedAt ? Date.parse(c.fixedAt) : now) - Date.parse(c.caughtAt);
+  const state = c.status === "fixed" ? "fixed" : c.status === "open" ? "open" : c.status === "waiting" ? "waiting" : "closed";
+  const by = c.status === "fixed" ? fixedByWords(c) : null;
+  return (
+    <li className="border-b border-line-1">
+      <button
+        type="button"
+        aria-pressed={picked}
+        onClick={onPick}
+        className={`-mx-2 grid w-[calc(100%+1rem)] grid-cols-[104px_minmax(0,1fr)] items-baseline gap-x-6 gap-y-1 rounded-lg px-2 py-3 text-left outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-fg/40 sm:grid-cols-[104px_68px_minmax(0,1.7fr)_minmax(0,0.8fr)_128px] ${picked ? "bg-raised" : ""}`}
+      >
+        <Pair ms={ms} state={state} tone={c.kind === "check" ? "amber" : "red"} className="self-center" />
+        <span className={`num font-mono text-[13px] ${c.status === "fixed" ? "text-fg" : "text-fg-3"}`}>{c.status === "fixed" || c.status === "open" || c.status === "waiting" ? duration(ms) : ""}</span>
+        <span className="col-span-2 min-w-0 text-[14px] leading-[1.45] sm:col-span-1 sm:flex sm:items-baseline sm:gap-2">
+          <span className="text-fg sm:truncate" title={c.what}>{c.what}</span>
+          {c.project ? <span className="font-mono text-[13px] whitespace-nowrap text-fg-2 sm:shrink-0"><span className="sm:hidden"> · </span>{c.project}</span> : null}
+        </span>
+        <span className={`col-span-2 min-w-0 truncate text-[13px] sm:col-span-1 ${c.status !== "open" ? "text-fg-2" : c.kind === "check" ? "text-amber" : "text-red"}`}>{c.status === "fixed" ? (by ? `Fixed by ${by}` : "Fixed") : c.status === "open" ? (c.kind === "check" ? "Waiting on you" : "With your agents") : STANDING[c.status]}</span>
+        <span className="num col-span-2 font-mono text-[12px] whitespace-nowrap text-fg-3 sm:col-span-1 sm:text-right" title={absoluteTime(c.caughtAt)}>
+          {new Date(c.caughtAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+        </span>
+      </button>
+    </li>
   );
 }
 
@@ -275,7 +329,7 @@ function Story({ c, now, claims = [], jobs = [], projects = [], onChanged }: { c
         : c.status === "retired"
           ? { label: "Closed: project retired", at: null }
           : c.status === "ignored"
-            ? { label: "Closed: you ignored it", at: null }
+            ? { label: "Closed: cleared", at: null }
             : { label: `Still open, ${duration(now - broke)}`, at: null },
     ...(c.fixedAt && c.confirmedAt ? [{ label: "Checked on production", at: c.confirmedAt, tone: "accent" as const }] : []),
   ];

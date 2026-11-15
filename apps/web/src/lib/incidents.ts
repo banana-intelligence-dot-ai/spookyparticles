@@ -1,5 +1,7 @@
 /** The same current deployment and job incidents for REST and MCP readers. */
-import { jobIssue, listJobs, type JobIssue } from "./checkins";
+import { jobIssue, listJobs, type JobIssue, type JobView } from "./checkins";
+import { clearedJobIds } from "./ignores";
+import { muteFor, mutesFor } from "./mutes";
 import { refreshRepoQuietly } from "./github-refresh";
 import { failedDeployments } from "./projects";
 import { resyncHostsQuietlyFor } from "./sync";
@@ -53,12 +55,18 @@ export function matchesIncidentProject(project: string | null, narrowedTo: strin
   return candidate === name || candidate.endsWith(`/${name}`) || candidate === name.split("/").pop();
 }
 
+/** Jobs that can still reach an agent: not on a project the owner stopped watching, and not cleared from the open list. */
+export async function watchedJobs(userId: string): Promise<JobView[]> {
+  const [jobs, mutes, cleared] = await Promise.all([listJobs(userId), mutesFor(userId), clearedJobIds(userId)]);
+  return jobs.filter((j) => !muteFor(mutes, j.project, "job") && !cleared.has(j.id));
+}
+
 export async function incidentsFor(userId: string, project = ""): Promise<IncidentsReport> {
   const name = project.trim().toLowerCase();
   const refreshed = name ? await refreshRepoQuietly(userId, name) : "skipped";
   await resyncHostsQuietlyFor(userId);
   const now = Date.now();
-  const [deployments, jobs] = await Promise.all([failedDeployments(userId), listJobs(userId)]);
+  const [deployments, jobs, mutes] = await Promise.all([failedDeployments(userId), watchedJobs(userId), mutesFor(userId)]);
   const failed = deployments.filter((d) => d.at && now - Date.parse(d.at) <= WINDOW_MS);
   const deployIncidents = failed
     .map((d) => {
@@ -79,7 +87,7 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
         source: d.cause ? `${d.provider ?? "host"} build log` : d.provider === "Vercel" ? "Vercel deployments" : "GitHub deployments",
       } satisfies DeployIncident;
     })
-    .filter((incident) => matchesIncidentProject(incident.project, name));
+    .filter((incident) => matchesIncidentProject(incident.project, name) && !muteFor(mutes, incident.project, "deploy"));
   const jobIncidents = jobs.flatMap((job): JobIncident[] => {
     const issue = jobIssue(job);
     if (!issue || !matchesIncidentProject(job.project, name)) return [];

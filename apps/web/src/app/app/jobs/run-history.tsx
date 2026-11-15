@@ -9,7 +9,7 @@
 import { useState } from "react";
 import type { Miss, RunHistory, RunRow } from "@/lib/run-history";
 import { absoluteTime } from "../data-model";
-import { duration } from "../catch-log";
+import { duration } from "@/lib/fix-stats";
 
 const HOUR = 3_600_000;
 const SHOW = 8;

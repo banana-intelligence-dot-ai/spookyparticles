@@ -18,12 +18,12 @@ import {
   type ClaimLike,
 } from "@/lib/break-guide";
 import type { Catch } from "@/lib/catches";
-import { fixedByAgent as byAgent, medianFixMinutes as medianMinutes } from "@/lib/fix-stats";
+import { duration as fixDuration, fixedByAgent as byAgent, fixedByWords, medianFixMinutes as medianMinutes } from "@/lib/fix-stats";
+
+export { fixedByWords };
 import type { RunRow } from "@/lib/run-history";
-import { duration as fixDuration } from "./catch-log";
 import { plural } from "./data-model";
 import { dayHeading, dayKey, isFailedState, lastProductionAt, siteConfirmedDown, type Deployment, type Project } from "./project-model";
-import type { JobRow } from "./today-model";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -150,6 +150,8 @@ const make = (tone: Tone, word: string, detail: string | null, at: string | null
  * 3 jobs on time." / "No deploys found." Spend findings never make a project want a look here.
  */
 export function projectStatus(p: Project, ctx: Ctx): ProjectStatus {
+  // Stopped by the owner: no pings, nothing open, and the list says so instead of a stale break.
+  if (p.muted?.all) return make("none", "Not watched", "You stopped watching it", null);
   const mine = forProject(ctx.catches, p.name);
   const jobs = forProject(ctx.jobs, p.name);
   const broken = brokenReasons(p, mine, jobs);
@@ -271,14 +273,6 @@ export type HistoryItem =
   | { type: "closed"; id: string; at: string; what: string; note: string };
 export type HistoryDay = { key: string; heading: string; items: HistoryItem[]; summary: string | null };
 
-/** Who fixed it, from what the fix left behind: the commit, the agent's PR, or the agent that picked it up. */
-export function fixedByWords(c: Pick<Catch, "fixedBy" | "agent" | "heardAt">): string | null {
-  if (c.fixedBy?.kind === "commit") return `commit ${c.fixedBy.sha.slice(0, 7)}${c.fixedBy.message ? ` (${c.fixedBy.message.split("\n")[0]})` : ""}`;
-  if (c.fixedBy?.kind === "pr") return "your agent's pull request";
-  if (c.heardAt) return c.agent ? `${c.agent}, after it asked about it` : "your agent, after it asked about it";
-  return null;
-}
-
 /**
  * The project's last 30 days as days, newest first. Each break sits on the day it was fixed (or
  * caught, while open), and each day ends with its successes summed: "12 deploys, 48 job runs,
@@ -344,3 +338,6 @@ export function projectHistory(input: { catches: Catch[]; deployments: Pick<Depl
   }
   return out;
 }
+
+/** One scheduled job as /api/v1/checkins returns it. */
+export type JobRow = { id: string; name: string; project: string | null; status: "new" | "never_checked_in" | "up" | "late" | "down" | "paused" | "retired"; lastPingAt: string | null; lastPingKind: string | null; lastNote: string | null; periodMinutes: number; missCount: number; nextDueAt?: string | null };

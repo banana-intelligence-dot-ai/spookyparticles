@@ -22,8 +22,13 @@ export function PublicFeedToggle() {
     await state.reload();
   };
 
+  return <PublicFeedSwitch on={on} busy={busy} error={error} onFlip={() => void flip()} />;
+}
+
+/** Presentational, so the dev preview draws it against fixtures. */
+export function PublicFeedSwitch({ on, busy, error, onFlip }: { on: boolean; busy: boolean; error: string | null; onFlip: () => void }) {
   return (
-    <div className="mt-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-t border-line-1 pt-5">
+    <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
       <div className="max-w-[520px]">
         <p id="feed-label" className="text-[14px] text-fg">Show my fixes on the homepage</p>
         <p className="mt-1 text-[13px] leading-[1.55] text-pretty text-fg-2">
@@ -38,7 +43,7 @@ export function PublicFeedToggle() {
         aria-checked={on}
         aria-labelledby="feed-label"
         disabled={busy}
-        onClick={() => void flip()}
+        onClick={onFlip}
         className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60 ${on ? "border-accent bg-accent/80" : "border-line-3 bg-raised-2"}`}
       >
         <span className={`inline-block size-5 rounded-full bg-fg transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />

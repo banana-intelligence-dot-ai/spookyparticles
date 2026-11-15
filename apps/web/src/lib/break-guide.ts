@@ -131,7 +131,10 @@ export function openSplit(open: { kind: string; project: string | null; status: 
   const parts = [
     `${broken} broken now`,
     repeats ? `${repeats} more ${repeats === 1 ? "failure" : "failures"} of the same ${repeats === 1 ? "break" : "breaks"}` : null,
-    checks ? `${checks} check ${checks === 1 ? "finding" : "findings"} waiting for you` : null,
+    checks ? `${checks} check ${checks === 1 ? "suggestion" : "suggestions"} waiting for you` : null,
   ].filter(Boolean);
   return { open: list.length, broken, repeats, checks, words: parts.length > 1 ? `${list.length} open: ${parts.join(", ")}.` : `${list.length} open, all broken now.` };
 }
+
+/** The app's page for one project. */
+export const projectHref = (name: string) => `/app/projects/${name.split("/").map(encodeURIComponent).join("/")}`;

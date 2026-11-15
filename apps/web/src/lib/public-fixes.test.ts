@@ -4,6 +4,7 @@ import { buildFeed, FEED_OFF, FEED_ON, inFeed, publicFixes } from "./public-fixe
 
 const base: Catch = {
   id: "c1",
+  clearKey: "c1",
   kind: "deploy",
   project: "secret-app",
   what: "Build failed in secret-app: TypeError at src/pay.ts",

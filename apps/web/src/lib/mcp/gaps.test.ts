@@ -9,12 +9,25 @@ const m = vi.hoisted(() => ({
   activityReport: vi.fn(),
   createJobFromBody: vi.fn(),
   updateJob: vi.fn(),
+  updateJobFromBody: vi.fn(),
+  updateTrackedExpiration: vi.fn(),
+  setVendorScope: vi.fn(),
+  recomputeFindings: vi.fn(),
+  startReadingFor: vi.fn(),
+  buildExport: vi.fn(),
   setIgnored: vi.fn(),
   setFindingStatus: vi.fn(),
   addTrackedExpiration: vi.fn(),
   getConnection: vi.fn(),
   startSync: vi.fn(),
+  openItemsFor: vi.fn(),
+  agentsFor: vi.fn(),
+  catchesFor: vi.fn(),
+  clearedFor: vi.fn(),
+  mutesFor: vi.fn(),
   publicFeedEnabled: vi.fn(),
+  setCleared: vi.fn(),
+  setMuted: vi.fn(),
   setPublicFeed: vi.fn(),
 }));
 
@@ -23,12 +36,21 @@ vi.mock("@/lib/alerts/channels", () => ({ listChannels: m.listChannels }));
 vi.mock("@/lib/run-history", () => ({ runHistoryFor: m.runHistoryFor }));
 vi.mock("@/lib/activity-report", () => ({ activityReport: m.activityReport }));
 vi.mock("@/lib/checkin-create", () => ({ createJobFromBody: m.createJobFromBody }));
+vi.mock("@/lib/checkin-update", () => ({ updateJobFromBody: m.updateJobFromBody }));
+vi.mock("@/lib/expirations/update", () => ({ updateTrackedExpiration: m.updateTrackedExpiration }));
+vi.mock("@/lib/findings", () => ({ setVendorScope: m.setVendorScope, recomputeFindings: m.recomputeFindings }));
+vi.mock("@/lib/reading", () => ({ startReadingFor: m.startReadingFor }));
+vi.mock("@/lib/export", () => ({ buildExport: m.buildExport }));
 vi.mock("@/lib/checkins", async (orig) => ({ ...(await orig<typeof import("@/lib/checkins")>()), updateJob: m.updateJob }));
-vi.mock("@/lib/ignores", async (orig) => ({ ...(await orig<typeof import("@/lib/ignores")>()), setIgnored: m.setIgnored }));
+vi.mock("@/lib/ignores", async (orig) => ({ ...(await orig<typeof import("@/lib/ignores")>()), setIgnored: m.setIgnored, setCleared: m.setCleared, clearedFor: m.clearedFor }));
+vi.mock("@/lib/mutes", async (orig) => ({ ...(await orig<typeof import("@/lib/mutes")>()), mutesFor: m.mutesFor, setMuted: m.setMuted }));
+vi.mock("@/lib/public-fixes", async (orig) => ({ ...(await orig<typeof import("@/lib/public-fixes")>()), publicFeedEnabled: m.publicFeedEnabled, setPublicFeed: m.setPublicFeed }));
+vi.mock("@/lib/open-items", async (orig) => ({ ...(await orig<typeof import("@/lib/open-items")>()), openItemsFor: m.openItemsFor }));
+vi.mock("@/lib/agents", async (orig) => ({ ...(await orig<typeof import("@/lib/agents")>()), agentsFor: m.agentsFor }));
+vi.mock("@/lib/catches", async (orig) => ({ ...(await orig<typeof import("@/lib/catches")>()), catchesFor: m.catchesFor }));
 vi.mock("@/lib/findings-status", () => ({ setFindingStatus: m.setFindingStatus }));
 vi.mock("@/lib/expirations/add", () => ({ addTrackedExpiration: m.addTrackedExpiration }));
 vi.mock("@/lib/connections", async (orig) => ({ ...(await orig<typeof import("@/lib/connections")>()), getConnection: m.getConnection }));
-vi.mock("@/lib/public-fixes", () => ({ publicFeedEnabled: m.publicFeedEnabled, setPublicFeed: m.setPublicFeed }));
 vi.mock("@/lib/sync", async (orig) => ({ ...(await orig<typeof import("@/lib/sync")>()), startSync: m.startSync }));
 
 import { handleMessage } from "./protocol";
@@ -46,16 +68,25 @@ const text = (res: unknown) => JSON.stringify(res);
 
 beforeEach(() => { vi.clearAllMocks(); });
 
-const READS = ["public_feed", "list_connections", "list_alert_channels", "job_history", "recent_activity"];
+const READS = ["public_feed", "list_connections", "list_alert_channels", "job_history", "recent_activity", "open_items", "fix_history", "list_agents", "list_mutes"];
 const WRITES: [string, Record<string, unknown>][] = [
   ["create_job", { name: "Nightly backup", periodMinutes: 1440 }],
   ["retire_job", { job_id: ID }],
+  ["update_job", { job_id: ID, name: "Renamed" }],
   ["restore_job", { job_id: ID }],
   ["ignore_break", { key: "dpl_1:2026-11-01", project: "me/app" }],
   ["unignore_break", { key: "dpl_1:2026-11-01", project: "me/app" }],
   ["set_suggestion_status", { finding_id: ID, status: "dismissed" }],
   ["add_expiration", { kind: "api_key", name: "STRIPE_KEY_PROD", expiresOn: "2027-01-01" }],
+  ["update_expiration", { expiration_id: ID, expiresOn: "2027-02-01" }],
+  ["set_vendor_scope", { vendor_key: "acme", scope: "work" }],
+  ["recompute_spend_findings", {}],
+  ["read_billing_mail", { connection_id: ID, limit: 10 }],
   ["sync_connection", { connection_id: ID }],
+  ["clear_notice", { key: "notice-1", project: "me/app" }],
+  ["restore_notice", { key: "notice-1", project: "me/app" }],
+  ["mute", { project: "me/app", kind: "deploy", reason: "retired" }],
+  ["unmute", { project: "me/app", kind: "deploy" }],
   ["set_public_feed", { on: false }],
 ];
 
@@ -100,6 +131,28 @@ it("job_history and recent_activity pass the user id", async () => {
   expect(m.runHistoryFor).toHaveBeenCalledWith("user-1");
   expect(m.activityReport).toHaveBeenCalledWith("user-1", 5, "2026-11-01");
   expect(text(await call(["read"], "recent_activity", { limit: 0 }))).toContain("limit");
+});
+
+it("new read tools use the calling user", async () => {
+  m.openItemsFor.mockResolvedValue({ onYou: [], withAgents: [] });
+  m.catchesFor.mockResolvedValue({ catches: [], summary: {} });
+  m.agentsFor.mockResolvedValue({ agents: [] });
+  m.mutesFor.mockResolvedValue([]);
+  m.clearedFor.mockResolvedValue([]);
+  m.publicFeedEnabled.mockResolvedValue(false);
+  for (const name of ["open_items", "fix_history", "list_agents", "list_mutes", "public_feed"]) await call(["read"], name);
+  for (const fn of [m.openItemsFor, m.catchesFor, m.agentsFor, m.mutesFor, m.clearedFor, m.publicFeedEnabled]) expect(fn).toHaveBeenCalledWith("user-1");
+});
+
+it("mute passes project, kind, and reason through", async () => {
+  m.setMuted.mockResolvedValue({ muted: true, mute: null });
+  await call(["read", "write"], "mute", { project: " me/app ", kind: "deploy", reason: " retired " });
+  expect(m.setMuted).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1" }), { project: "me/app", kind: "deploy", reason: "retired" }, true);
+});
+
+it("clear_notice refuses a request without key or keys", async () => {
+  expect(text(await call(["read", "write"], "clear_notice", { project: "me/app" }))).toContain("Send key or keys");
+  expect(m.setCleared).not.toHaveBeenCalled();
 });
 
 it("create_job passes the actor and never returns the token or ping URL", async () => {
@@ -170,4 +223,54 @@ it("public feed: read for the calling user, set through the audited store", asyn
   await call(["read", "write"], "set_public_feed", { on: false });
   expect(m.setPublicFeed).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", label: "api_key:k1" }), false);
   expect(await call(["read", "write"], "set_public_feed", { on: "yes" })).toMatchObject({ error: expect.anything() });
+});
+
+
+it("update_job passes the actor and hides the ping URL", async () => {
+  m.updateJobFromBody.mockResolvedValue({ id: ID, name: "Renamed", pingUrl: SECRET_LINK });
+  const out = text(await call(["read", "write"], "update_job", { job_id: ID, name: "Renamed", paused: true }));
+  expect(m.updateJobFromBody).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", label: "api_key:k1" }), ID, { name: "Renamed", paused: true });
+  expect(out).toContain("Renamed");
+  expect(out).not.toContain("SECRETTOKEN123");
+  expect(out).not.toContain("/api/ping/");
+  expect(text(await call(["read", "write"], "update_job", { job_id: ID, retired: true }))).toContain("Unexpected tool argument");
+});
+
+it("update_expiration passes the actor and does not echo a refused secret", async () => {
+  m.updateTrackedExpiration.mockResolvedValue({ id: ID, name: "STRIPE_KEY_PROD" });
+  await call(["read", "write"], "update_expiration", { expiration_id: ID, expiresOn: "2027-02-01" });
+  expect(m.updateTrackedExpiration).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1" }), ID, { expiresOn: "2027-02-01" });
+  m.updateTrackedExpiration.mockRejectedValue(new ApiError(400, "secret_value", "name: looks like a secret value; send only a name or short hint"));
+  const out = text(await call(["read", "write"], "update_expiration", { expiration_id: ID, name: "sk-live-abc" }));
+  expect(out).toContain("looks like a secret");
+  expect(out).not.toContain("sk-live-abc");
+});
+
+it("vendor scope and recompute pass the calling actor", async () => {
+  m.setVendorScope.mockResolvedValue({ vendorKey: "acme", scope: "work" });
+  m.recomputeFindings.mockResolvedValue({ findings: 1, subscriptions: 1 });
+  await call(["read", "write"], "set_vendor_scope", { vendor_key: "acme", scope: "work" });
+  await call(["read", "write"], "recompute_spend_findings");
+  expect(m.setVendorScope).toHaveBeenCalledWith("user-1", "acme", "work", "api_key:k1");
+  expect(m.recomputeFindings).toHaveBeenCalledWith("user-1", "api_key:k1");
+});
+
+it("read_billing_mail uses the caller's connection and audit label", async () => {
+  const connection = { id: ID, userId: "user-1", provider: "gmail" };
+  m.getConnection.mockResolvedValue(connection);
+  m.startReadingFor.mockResolvedValue({ started: true });
+  await call(["read", "write"], "read_billing_mail", { connection_id: ID, limit: 10 });
+  expect(m.getConnection).toHaveBeenCalledWith(ID, "user-1");
+  expect(m.startReadingFor).toHaveBeenCalledWith(connection, "api_key:k1", { maxMessages: 10 });
+});
+
+it("export_data is available to read keys and uses the audited builder", async () => {
+  m.buildExport.mockResolvedValue({ nodes: [], auditLog: [] });
+  await call(["read"], "export_data");
+  expect(m.buildExport).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", label: "api_key:k1" }));
+  m.buildExport.mockResolvedValue({ nodes: Array(30000).fill("large"), auditLog: [] });
+  const out = text(await call(["read"], "export_data"));
+  expect(out).toContain("tooLarge");
+  expect(out).toContain("30000");
+  expect(out).not.toContain("large");
 });

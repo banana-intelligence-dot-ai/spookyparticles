@@ -1,12 +1,14 @@
 import { Suspense } from "react";
-import { ProjectsView } from "../projects-view";
+import { ProjectsListView } from "../projects-list";
 
 export const metadata = { title: "Projects" };
 
 export default function ProjectsPage() {
   return (
-    <Suspense fallback={<p className="text-[14px] text-fg-3">Loading…</p>}>
-      <ProjectsView />
-    </Suspense>
+    <div className="max-w-5xl">
+      <Suspense fallback={<p className="text-[14px] text-fg-3">Loading…</p>}>
+        <ProjectsListView />
+      </Suspense>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import { ActivityView } from "../activity-view";
 
-export const metadata = { title: "History" };
+export const metadata = { title: "Activity" };
 
 export default function ActivityPage() {
   return (

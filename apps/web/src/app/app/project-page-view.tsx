@@ -6,15 +6,14 @@
  * the same page as JSON. Read-only: recommendations link to the vendor, nothing is executed.
  */
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { CopyButton } from "@/components/copy-button";
 import { Empty, ErrorLine, Parts, surface } from "@/components/ui";
 import { formatUsd, useApi } from "@/components/use-api";
 import { touch } from "@/lib/analytics/client";
 import type { DomainRow, EvidenceRow, HostSide, ProjectPage, Recommendation, ServiceRow } from "@/lib/project-page";
 import { absoluteTime, plural } from "./data-model";
-import { HEALTH, ago, deployWord, dueWords, host, inboxNamer, isFailedState } from "./project-model";
-import { projectHref } from "./projects-view";
+import { ago, deployWord, dueWords, HEALTH, host, inboxNamer, isFailedState, projectHref } from "./project-model";
 
 export function ProjectPageView({ owner, repo }: { owner: string; repo: string }) {
   const path = `/api/v1/projects/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;

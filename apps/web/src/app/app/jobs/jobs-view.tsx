@@ -3,6 +3,7 @@
  * Jobs: every scheduled thing that checks in, whether it did, and where the alert goes when
  * it does not. Operate mode: one list, one form, plain words, the curl line one click away.
  */
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CopyButton } from "@/components/copy-button";
 import { Empty, ErrorLine, List, PageHeader, SectionTitle, buttonStyles, surface } from "@/components/ui";
@@ -37,16 +38,8 @@ type Job = {
   missCount: number;
   pingUrl: string | null;
 };
-export type Channel = { id: string; kind: "ntfy" | "slack" | "teams" | "email"; label: string; project: string | null; enabled: boolean; lastOkAt: string | null; lastError: string | null };
 
 const PERIODS: [string, number][] = [["every 5 minutes", 5], ["every 15 minutes", 15], ["hourly", 60], ["every 6 hours", 360], ["daily", 1440], ["weekly", 10080]];
-const KIND_LABEL: Record<Channel["kind"], string> = { ntfy: "Phone (ntfy)", slack: "Slack", teams: "Microsoft Teams", email: "Email" };
-const KIND_HINT: Record<Channel["kind"], string> = {
-  ntfy: "A topic name on ntfy.sh (install the ntfy app, subscribe to the same topic), or a full https topic URL on your own server.",
-  slack: "An incoming webhook URL from hooks.slack.com (Slack app settings, Incoming Webhooks, Add New Webhook).",
-  teams: "The URL of a Workflows “Post to a channel when a webhook request is received” flow, or a classic incoming webhook.",
-  email: "An address. With no channel at all, alerts go to your account email.",
-};
 const STATUS_WORD: Record<Job["status"], string> = { new: "waiting for first check-in", never_checked_in: "never checked in", up: "on time", late: "late", down: "quiet", paused: "paused", retired: "retired" };
 const STATUS_DOT: Record<Job["status"], string> = { new: "ring-1 ring-inset ring-line-3", never_checked_in: "bg-amber", up: "bg-accent", late: "bg-amber", down: "bg-red", paused: "bg-fg-3", retired: "bg-fg-3" };
 
@@ -73,13 +66,11 @@ const period = (m: number) => PERIODS.find(([, v]) => v === m)?.[0] ?? (m % 60 =
 export function JobsView() {
   const jobs = useApi<{ jobs: Job[] }>("/api/v1/checkins", { pollMs: () => 30_000 });
   const history = useApi<RunHistory>("/api/v1/checkins/history", { pollMs: () => 60_000 });
-  const channels = useApi<{ channels: Channel[] }>("/api/v1/alert-channels");
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => setNow(Date.now()), [jobs.data]);
   const [notice, setNotice] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const list = jobs.data?.jobs ?? [];
-  const chans = channels.data?.channels ?? [];
 
   return (
     <>
@@ -123,7 +114,15 @@ export function JobsView() {
         </section>
       ) : null}
 
-      {jobs.data ? <Channels list={chans} loading={channels.loading} onChanged={() => channels.reload()} onNotice={setNotice} /> : null}
+      {jobs.data ? (
+        <p className="text-[14px] text-fg-2">
+          Alerts about these jobs go to your agents first, then to the channels in{" "}
+          <Link href="/app/settings#channels-title" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+            Settings
+          </Link>
+          .
+        </p>
+      ) : null}
     </>
   );
 }
@@ -238,7 +237,7 @@ function JobRow({ j, now, onChanged, onNotice }: { j: Job; now: number; onChange
   };
   const detail = j.status === "retired" ? "retired" : j.source === "vercel" && j.status === "paused" && !j.nextDueAt ? "not watched: schedule not understood" : j.status === "down" && j.lastPingKind === "fail" && j.missCount === 0 ? `run failed${j.lastNote ? `: ${j.lastNote}` : ""}` : j.status === "down" ? `${j.missCount} missed, last heard ${ago(j.lastPingAt, now)}` : j.status === "new" || j.status === "never_checked_in" ? "no check-in yet" : `last ${ago(j.lastPingAt, now)}${j.nextDueAt && j.status !== "paused" ? `, ${inWords(j.nextDueAt, now)}` : ""}`;
   const statusWord = j.watchNote ?? STATUS_WORD[j.status];
-  const statusDisplay = j.evidenceState === "not_readable" && j.watchNote ? <>{j.watchNote.split("Connections")[0]}<a href="/app/connections?vercel=open#vercel" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">Connections</a>{j.watchNote.split("Connections")[1]}</> : statusWord;
+  const statusDisplay = j.evidenceState === "not_readable" && j.watchNote ? <>{j.watchNote.split("Settings")[0]}<a href="/app/settings?vercel=open#vercel" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">Settings</a>{j.watchNote.split("Settings")[1]}</> : statusWord;
   return (
     <li id={`job-${j.id}`} className={`scroll-mt-24 border-b border-line-1 px-4 py-3 last:border-b-0 sm:px-6${j.status === "retired" ? " opacity-55" : ""}`}>
       <div className="flex items-center gap-3">
@@ -331,105 +330,5 @@ function EditSettings({ job, onClose, onChanged }: { job: Job; onClose: () => vo
         <button type="button" className={buttonStyles.ghost} onClick={onClose} disabled={busy}>Cancel</button>
       </div>
     </form>
-  );
-}
-
-export function Channels({ list, loading, onChanged, onNotice }: { list: Channel[]; loading: boolean; onChanged: () => void; onNotice: (m: string) => void }) {
-  const [kind, setKind] = useState<Channel["kind"]>("ntfy");
-  const [target, setTarget] = useState("");
-  const [project, setProject] = useState("");
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState<string | null>(null);
-
-  const generateTopic = () => {
-    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    const bytes = new Uint8Array(24);
-    crypto.getRandomValues(bytes);
-    setTarget(Array.from(bytes, (byte) => alphabet[byte & 63]).join(""));
-  };
-
-  const add = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy("add");
-    setError(null);
-    const r = await apiPost("/api/v1/alert-channels", { kind, target, project: project.trim() || null });
-    setBusy(null);
-    if (!r.ok) {
-      setError(r.error ?? "That channel was not added.");
-      return;
-    }
-    setTarget("");
-    setProject("");
-    onChanged();
-  };
-  const test = async (id: string) => {
-    setBusy(id);
-    setSent(null);
-    const r = await apiPost(`/api/v1/alert-channels/${id}/test`);
-    setBusy(null);
-    if (!r.ok) onNotice(r.error ?? "The test did not go through.");
-    else setSent(id);
-    onChanged();
-  };
-  const remove = async (id: string) => {
-    setBusy(id);
-    const r = await apiSend("DELETE", `/api/v1/alert-channels/${id}`);
-    setBusy(null);
-    if (!r.ok) onNotice(r.error ?? "That did not remove.");
-    onChanged();
-  };
-
-  return (
-    <section aria-labelledby="channels-title" className="mb-12">
-      <SectionTitle id="channels-title" count={list.length || undefined}>Where alerts go</SectionTitle>
-      {!list.length && !loading ? <p className={`mb-4 px-4 py-4 text-[14px] text-fg-2 sm:px-6 ${surface}`}>Nothing set, so alerts go to your account email. Add your phone or a channel below.</p> : null}
-      {list.length ? (
-        <List>
-          {list.map((c) => (
-            <li key={c.id} className="border-b border-line-1 px-4 py-3 last:border-b-0 sm:flex sm:items-center sm:gap-x-4 sm:px-6">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span aria-hidden className={`size-[7px] shrink-0 rounded-full ${c.lastError ? "bg-amber" : c.lastOkAt ? "bg-accent" : "ring-1 ring-inset ring-line-3"}`} />
-                <span className="shrink-0 text-[14px] text-fg">{KIND_LABEL[c.kind]}</span>
-                <span className="min-w-0 truncate font-mono text-[13px] text-fg-2">{c.label}</span>
-                {c.project ? <span className="min-w-0 truncate font-mono text-[12px] text-fg-2">Project: {c.project}</span> : null}
-              </div>
-              <div className="mt-2 flex items-center gap-2 pl-[19px] sm:mt-0 sm:pl-0">
-                {c.lastError ? <span className="mr-auto text-[12px] text-amber">{c.lastError}</span> : sent === c.id ? <span className="mr-auto text-[12px] text-fg-2">sent</span> : <span className="mr-auto text-[12px] text-fg-3">{c.lastOkAt ? "Working" : "Not tested yet"}</span>}
-                <button type="button" className={buttonStyles.ghost} disabled={busy === c.id} onClick={() => test(c.id)}>Send a test</button>
-                <button type="button" className={buttonStyles.quietDanger} disabled={busy === c.id} onClick={() => remove(c.id)}>Remove</button>
-              </div>
-            </li>
-          ))}
-        </List>
-      ) : null}
-      <form onSubmit={add} className={`${surface} mt-4 p-5 sm:p-6`}>
-        <div className="grid gap-4 sm:grid-cols-[200px_minmax(0,1fr)_auto] sm:items-end">
-          <label className="flex flex-col gap-1.5 text-[14px] text-fg-2">
-            Channel
-            <select value={kind} onChange={(e) => setKind(e.target.value as Channel["kind"])} className={INPUT}>
-              {(Object.keys(KIND_LABEL) as Channel["kind"][]).map((k) => (
-                <option key={k} value={k}>{KIND_LABEL[k]}</option>
-              ))}
-            </select>
-          </label>
-          <div className="flex flex-col gap-1.5 text-[14px] text-fg-2">
-            <label htmlFor="channel-target">{kind === "ntfy" ? "Topic" : kind === "email" ? "Address" : "Webhook URL"}</label>
-            <div className="flex gap-2">
-              <input id="channel-target" value={target} onChange={(e) => setTarget(e.target.value)} autoComplete="off" spellCheck={false} className={`${INPUT} min-w-0 flex-1 font-mono`} required />
-              {kind === "ntfy" ? <button type="button" className={buttonStyles.ghost} onClick={generateTopic}>Generate one</button> : null}
-            </div>
-          </div>
-          <button type="submit" className={buttonStyles.primary} disabled={busy === "add" || !target.trim()}>{busy === "add" ? "Adding…" : "Add"}</button>
-        </div>
-        <label className="mt-3 flex max-w-sm flex-col gap-1.5 text-[14px] text-fg-2">
-          Project (optional)
-          <input value={project} onChange={(e) => setProject(e.target.value)} maxLength={120} placeholder="All projects" className={INPUT} />
-        </label>
-        {kind === "ntfy" ? <p className="mt-3 max-w-[70ch] text-[14px] leading-[1.55] text-fg-2">Anyone who knows this topic can read your alerts on ntfy.sh, so use a long random one and keep it private.</p> : null}
-        <p className="mt-3 max-w-[70ch] text-[14px] leading-[1.55] text-fg-2">{KIND_HINT[kind]} Stored encrypted, shown masked, removable here.</p>
-        {error ? <p className="mt-2 text-[14px] text-amber">{error}</p> : null}
-      </form>
-    </section>
   );
 }

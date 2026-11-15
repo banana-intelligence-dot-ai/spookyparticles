@@ -71,7 +71,7 @@ describe("openSplit", () => {
       { kind: "deploy", project: "a/old", status: "fixed" },
     ]);
     expect(s).toMatchObject({ open: 4, broken: 2, repeats: 0, checks: 2 });
-    expect(s?.words).toBe("4 open: 2 broken now, 2 check findings waiting for you.");
+    expect(s?.words).toBe("4 open: 2 broken now, 2 check suggestions waiting for you.");
   });
   it("counts two failures of one deploy once", () => {
     const s = openSplit([

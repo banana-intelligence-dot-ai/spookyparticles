@@ -148,8 +148,8 @@ describe("help tools", () => {
 
 describe("links and dashes", () => {
   it("links only known app pages the answer names", () => {
-    expect(linksFrom("Open /app/connections, then see /setup.md. Not /app/secret or /api/v1/me.")).toEqual([
-      { label: "Connections", href: "/app/connections" },
+    expect(linksFrom("Open /app/settings, then see /setup.md. Not /app/secret or /api/v1/me.")).toEqual([
+      { label: "Settings", href: "/app/settings" },
       { label: "Setup guide", href: "/setup.md" },
     ]);
   });

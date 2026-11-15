@@ -1,4 +1,4 @@
-/** The /api/v1/connections shape and the words the app uses for it, shared by Today, Spend and Connections. */
+/** The /api/v1/connections shape and the words the app uses for it, shared by Now, Spend and Settings. */
 import { formatInt } from "@/components/use-api";
 import { etaWords } from "@/lib/sync-eta";
 
@@ -120,7 +120,7 @@ export type Fix = { href: string; label: string; external: boolean };
 /** Where to fix a broken connection, or null: Gmail signs in again; GitHub's install page for an app GitHub dropped. */
 export function fixFor(c: Pick<Connection, "provider" | "status">): Fix | null {
   if (c.status !== "errored") return null;
-  if (c.provider === "gmail") return { href: "/api/connect/gmail/start?next=/app/connections", label: "Reconnect", external: false };
+  if (c.provider === "gmail") return { href: "/api/connect/gmail/start?next=/app/settings", label: "Reconnect", external: false };
   if (c.provider === "github") return { href: "https://github.com/settings/installations", label: "Fix on GitHub", external: true };
   return null;
 }

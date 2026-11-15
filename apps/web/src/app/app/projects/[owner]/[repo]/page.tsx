@@ -12,9 +12,11 @@ export async function generateMetadata({ params }: { params: Params }) {
 // so the shell prerenders and the project streams in; without it the build fails.
 export default function ProjectPage({ params }: { params: Params }) {
   return (
-    <Suspense fallback={<p className="text-[14px] text-fg-3">Loading…</p>}>
-      <Resolved params={params} />
-    </Suspense>
+    <div className="max-w-5xl">
+      <Suspense fallback={<p className="text-[14px] text-fg-3">Loading…</p>}>
+        <Resolved params={params} />
+      </Suspense>
+    </div>
   );
 }
 

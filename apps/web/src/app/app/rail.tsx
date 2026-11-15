@@ -5,33 +5,37 @@ import { Footer, Wordmark } from "@/components/brand";
 import { HelpPanel } from "@/components/help-panel";
 import { useApi } from "@/components/use-api";
 import { authClient } from "@/lib/auth-client";
+import type { OpenReport } from "@/lib/open-items";
 
-/** Two places: your projects, and the accounts Spooky reads. */
+/**
+ * Five places, in the order the owner asks about them: what is open now, what got fixed, the
+ * projects, the agents, and the settings. Everything else is a page Settings links to.
+ */
 export const RAIL_ITEMS = [
-  { href: "/app", label: "Projects" },
-  { href: "/app/connections", label: "Accounts" },
+  { href: "/app", label: "Now" },
+  { href: "/app/history", label: "History" },
+  { href: "/app/projects", label: "Projects" },
+  { href: "/app/agents", label: "Agents" },
+  { href: "/app/settings", label: "Settings" },
 ] as const;
 
-/** Side features that left the nav. They keep working by URL and through the API. */
-export const PARKED = [
-  { href: "/app/findings", label: "Spend" },
-  { href: "/app/services", label: "Services" },
-  { href: "/app/expirations", label: "Expirations" },
-] as const;
-
-/** The small "More" list in the rail footer: the deeper pages first, then the parked ones. */
+/** Pages that left the rail. They keep working by URL and through the API; Settings lists them. */
 export const MORE = [
-  { href: "/app/today", label: "Today" },
-  { href: "/app/check", label: "Check" },
-  { href: "/app/activity", label: "History" },
-  { href: "/app/jobs", label: "Schedules" },
-  ...PARKED,
+  { href: "/app/check", label: "Check", what: "Setup suggestions for each project, most serious first." },
+  { href: "/app/jobs", label: "Schedules", what: "Scheduled jobs and whether each ran on time." },
+  { href: "/app/activity", label: "Activity", what: "Every deploy, sync and change Spooky saw or made." },
+  { href: "/app/findings", label: "Spend", what: "Bills read from a connected inbox." },
+  { href: "/app/services", label: "Services", what: "The services each project signed up for." },
+  { href: "/app/expirations", label: "Expirations", what: "Domains, certificates and keys with an end date." },
 ] as const;
 
-/** Projects is home: it owns /app and every project page under /app/projects. */
+const under = (href: string, pathname: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+/** Now is exactly /app. Settings also owns the pages it links to, so the rail always shows where you are. */
 export function isActive(href: string, pathname: string): boolean {
-  if (href === "/app") return pathname === "/app" || pathname.startsWith("/app/projects");
-  return pathname === href || pathname.startsWith(`${href}/`);
+  if (href === "/app") return pathname === "/app";
+  if (href === "/app/settings") return under(href, pathname) || MORE.some((m) => under(m.href, pathname));
+  return under(href, pathname);
 }
 
 type Me = { user: { email: string; name: string } };
@@ -40,10 +44,12 @@ export function Rail() {
   const pathname = usePathname();
   const router = useRouter();
   const me = useApi<Me>("/api/v1/me");
+  const open = useApi<OpenReport>("/api/v1/open", { pollMs: () => 60_000 });
   return (
     <RailView
       pathname={pathname}
       email={me.data?.user.email ?? null}
+      onYou={open.data?.summary.onYou ?? 0}
       onSignOut={async () => {
         await authClient.signOut();
         router.push("/");
@@ -53,7 +59,7 @@ export function Rail() {
 }
 
 /** Presentational, so the dev preview can draw the real shell. */
-export function RailView({ pathname, email, onSignOut }: { pathname: string; email: string | null; onSignOut: () => void }) {
+export function RailView({ pathname, email, onYou = 0, onSignOut }: { pathname: string; email: string | null; onYou?: number; onSignOut: () => void }) {
   return (
     <aside className="flex shrink-0 flex-col border-b border-line-1 bg-bg-deep md:sticky md:top-0 md:h-dvh md:w-56 md:border-r md:border-b-0">
       <div className="flex h-14 items-center justify-between pr-1 pl-4 md:h-16 md:px-5">
@@ -63,49 +69,30 @@ export function RailView({ pathname, email, onSignOut }: { pathname: string; ema
           <HelpPanel />
         </div>
       </div>
-      <nav className="flex gap-1 px-2 pb-2 md:flex-col md:px-3 md:pb-0" aria-label="App">
+      <nav className="flex gap-0.5 overflow-x-auto px-2 pb-2 [scrollbar-width:none] md:flex-col md:gap-1 md:overflow-visible md:px-3 md:pb-0" aria-label="App">
         {RAIL_ITEMS.map((item) => {
           const active = isActive(item.href, pathname);
+          const count = item.href === "/app" ? onYou : 0;
           return (
             <Link
               key={item.href}
               href={item.href}
               aria-current={active ? "page" : undefined}
-              className={`flex h-11 shrink-0 items-center rounded-lg px-3 text-[14px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-fg/40 md:h-9 ${
+              className={`flex h-11 shrink-0 items-center gap-2 rounded-lg px-2.5 text-[14px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-fg/40 md:h-9 md:justify-between md:px-3 ${
                 active ? "bg-raised-2 text-fg" : "text-fg-2 hover:bg-raised hover:text-fg"
               }`}
             >
               {item.label}
+              {count ? (
+                <span className="num inline-flex items-center gap-1.5 font-mono text-[12px] text-amber">
+                  <span aria-hidden className="size-1.5 rounded-full bg-amber" />
+                  {count}
+                  <span className="sr-only"> on you</span>
+                </span>
+              ) : null}
             </Link>
           );
         })}
-        {/* Phones have no footer: the More list opens from the nav row. */}
-        <details className="group relative shrink-0 md:hidden">
-          <summary
-            className={`flex h-11 cursor-pointer list-none items-center gap-1 rounded-lg px-3 text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40 [&::-webkit-details-marker]:hidden ${
-              MORE.some((m) => isActive(m.href, pathname)) ? "bg-raised-2 text-fg" : "text-fg-2 hover:text-fg"
-            }`}
-          >
-            More
-            <svg viewBox="0 0 16 16" aria-hidden className="size-3 transition-transform group-open:rotate-180 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </summary>
-          <ul className="absolute top-12 right-0 z-20 w-48 rounded-xl border border-line-2 bg-bg-deep p-1 shadow-lg">
-            {MORE.map((m) => (
-              <li key={m.href}>
-                <Link href={m.href} aria-current={isActive(m.href, pathname) ? "page" : undefined} className="flex h-11 items-center rounded-lg px-3 text-[14px] text-fg-2 hover:bg-raised hover:text-fg aria-[current=page]:text-fg">
-                  {m.label}
-                </Link>
-              </li>
-            ))}
-            <li className="mt-1 border-t border-line-1 pt-1">
-              <button type="button" onClick={onSignOut} className="flex h-11 w-full items-center rounded-lg px-3 text-left text-[14px] text-fg-2 hover:bg-raised hover:text-fg">
-                Sign out
-              </button>
-            </li>
-          </ul>
-        </details>
       </nav>
       <div className="mt-auto hidden px-2 pt-2 md:block">
         <HelpPanel />
@@ -119,22 +106,6 @@ export function RailView({ pathname, email, onSignOut }: { pathname: string; ema
         <button type="button" className="self-start text-[14px] text-fg-2 hover:text-fg" onClick={onSignOut}>
           Sign out
         </button>
-        <nav aria-label="More">
-          <p className="text-[12px] text-fg-3">More</p>
-          <ul className="mt-1 flex flex-col">
-            {MORE.map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  aria-current={isActive(item.href, pathname) ? "page" : undefined}
-                  className="inline-flex h-7 items-center rounded text-[13px] text-fg-2 outline-none hover:text-fg focus-visible:ring-2 focus-visible:ring-fg/40 aria-[current=page]:text-fg"
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
         <Footer className="text-[12px]" />
       </div>
     </aside>

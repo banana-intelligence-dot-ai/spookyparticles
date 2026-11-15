@@ -27,5 +27,5 @@ export async function GET(req: Request) {
     return page("The daily digest is off.", "Nothing else changed. Alerts about problems still reach you. To turn the digest back on, write to hello@spookyparticles.com.");
   }
   await setDeployFailedEnabled(u, false, "link:opt-out");
-  return page("Deploy failure alerts are off.", "Nothing else changed. Failures still show on your Today page and in the API. To turn them back on, write to hello@spookyparticles.com.");
+  return page("Deploy failure alerts are off.", "Nothing else changed. Failures still show on your Now page and in the API. To turn them back on, write to hello@spookyparticles.com.");
 }

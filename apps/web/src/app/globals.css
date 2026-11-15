@@ -559,3 +559,12 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .live-dot::after { animation: none; opacity: 0; }
 }
+
+/* An open pair: the dashes drift toward the fix that has not come yet. */
+.pair-open { animation: pair-drift 2.4s linear infinite; }
+@keyframes pair-drift {
+  to { background-position: 6px 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pair-open { animation: none; }
+}

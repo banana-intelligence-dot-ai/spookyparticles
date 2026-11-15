@@ -1,28 +1,23 @@
 "use client";
 /**
- * Projects, the home: the value said once with the account's real numbers, then one list of
- * projects, broken first, each with its status in words. Quiet and no-data projects fold away.
- * Reads the same endpoints Today did (projects, catches with claims, check-ins); writes nothing.
+ * Projects: one list, broken first, each with its status in words. Quiet and no-data projects
+ * fold away, and so do the ones the owner stopped watching. Reads projects, catches with claims
+ * and check-ins; writes nothing.
  */
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Empty, ErrorLine } from "@/components/ui";
+import { Empty, ErrorLine, PageHeader } from "@/components/ui";
 import { useApi } from "@/components/use-api";
 import type { Catches } from "@/lib/catches";
 import type { Claim } from "@/lib/claims";
-import { isRunning, type Connection } from "./connection-model";
+import { type Connection, isRunning } from "./connection-model";
 import { absoluteTime } from "./data-model";
-import { projectStatus, sortByStatus, splitQuiet, valueLine, type ProjectStatus, type Tone } from "./home-model";
-import { Onboarding, onboardingComplete } from "./onboarding";
-import { ago, type ProjectsReport } from "./project-model";
-import { projectHref } from "./projects-view";
-import type { JobRow } from "./today-model";
+import { type JobRow, projectStatus, type ProjectStatus, sortByStatus, splitQuiet, type Tone } from "./home-model";
+import { ago, projectHref, type ProjectsReport } from "./project-model";
 
 export type CatchesWithClaims = Catches & { claims?: Claim[] };
 
-export function HomeView() {
-  const params = useSearchParams();
+export function ProjectsListView() {
   const conns = useApi<{ connections: Connection[] }>("/api/v1/connections", {
     pollMs: (d) => (d?.connections.some((c) => isRunning(c.sync)) ? 5000 : null),
   });
@@ -41,13 +36,12 @@ export function HomeView() {
   useEffect(() => setNow(Date.now()), [projects.data, catches.data]);
 
   return (
-    <HomeScreen
+    <ProjectsList
       ready={Boolean(conns.data) && Boolean(projects.data) && now !== null}
       connections={conns.data?.connections ?? []}
       projects={projects.data}
       catches={catches.data ?? null}
       jobs={checkins.data?.jobs ?? []}
-      params={params}
       error={conns.error ?? projects.error}
       now={now ?? 0}
     />
@@ -70,13 +64,12 @@ export const TONE_WORD: Record<Tone, string> = {
 };
 
 /** Presentational, so the dev preview draws the real screen against fixtures. */
-export function HomeScreen({
+export function ProjectsList({
   ready,
   connections,
   projects,
   catches,
   jobs,
-  params,
   error,
   now,
 }: {
@@ -85,7 +78,6 @@ export function HomeScreen({
   projects: ProjectsReport | null | undefined;
   catches: CatchesWithClaims | null;
   jobs: JobRow[];
-  params: URLSearchParams;
   error: string | null;
   now: number;
 }) {
@@ -96,80 +88,47 @@ export function HomeScreen({
     return sortByStatus(list.map((p) => ({ name: p.name, project: p, status: projectStatus(p, ctx) })));
   }, [list, catches, jobs, now]);
   const { shown, folded } = splitQuiet(rows);
-  const value = catches ? valueLine({ projects: list, catches: catches.catches }) : null;
-  const setup = ready && !onboardingComplete(connections);
+  const stopped = folded.filter((r) => r.project.muted?.all).length;
   const syncing = connections.some((c) => isRunning(c.sync));
   const last = connections.map((c) => c.lastSyncedAt).filter((x): x is string => Boolean(x)).sort().at(-1);
-  // The value line leads; setup sits under it once there is anything to show.
-  const onboarding = <Onboarding connections={connections} params={params} now={now} />;
 
   return (
     <>
-      <h1 className="sr-only">Projects</h1>
+      <PageHeader title="Projects" lede="Every repo and Vercel project Spooky reads, broken first. Open one for its deploys, jobs and site.">
+        <p className="text-[13px] text-fg-3">{syncing ? "Syncing now" : last ? <span title={absoluteTime(last)}>Checked {ago(last, now)}</span> : null}</p>
+      </PageHeader>
       {error ? <ErrorLine message={error} /> : null}
       {!ready && !error ? <p className="text-[16px] text-fg-2">Loading…</p> : null}
-      {setup && !list.length ? onboarding : null}
 
       {ready && list.length ? (
-        <>
-          <section aria-label="What Spooky did for you" className="mb-12 max-w-[760px] sm:mb-16">
-            {value ? (
-              <>
-                <p className="num text-[14px] text-fg-2">{value.watching}</p>
-                <p className="num mt-3 text-[26px] leading-[1.2] font-medium tracking-[-0.02em] text-balance text-fg sm:text-[34px]">{value.headline}</p>
-                {value.open || value.checks ? (
-                  <p className="num mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-[15px] text-fg-2">
-                    {value.open ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span aria-hidden className={`size-[7px] rounded-full ${value.openCount ? "bg-red" : "bg-live"}`} />
-                        {value.open}
-                      </span>
-                    ) : null}
-                    {value.checks ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span aria-hidden className="size-[7px] rounded-full bg-amber" />
-                        {value.checks}
-                      </span>
-                    ) : null}
-                  </p>
-                ) : null}
-              </>
-            ) : (
-              <p className="text-[14px] text-fg-3">Reading what broke and what got fixed…</p>
-            )}
-          </section>
-
-          {setup ? <div className="mb-12 sm:mb-16">{onboarding}</div> : null}
-
-          <section aria-labelledby="list-title">
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-              <h2 id="list-title" className="text-[20px] leading-[1.25] font-medium tracking-[-0.01em] text-fg">
-                Projects
-              </h2>
-              <p className="text-[13px] text-fg-3">{syncing ? "Syncing now" : last ? <span title={absoluteTime(last)}>Checked {ago(last, now)}</span> : null}</p>
-            </div>
-            <ul className="border-t border-line-1">
-              {shown.map((r) => (
-                <ProjectRow key={r.project.id} name={r.name} status={r.status} />
-              ))}
-              {showQuiet ? folded.map((r) => <ProjectRow key={r.project.id} name={r.name} status={r.status} />) : null}
-            </ul>
-            {folded.length ? (
-              <button
-                type="button"
-                aria-expanded={showQuiet}
-                onClick={() => setShowQuiet((v) => !v)}
-                className="mt-1 inline-flex min-h-11 items-center gap-2 rounded-lg text-[14px] text-fg-2 underline decoration-line-3 underline-offset-4 outline-none hover:text-fg hover:decoration-fg focus-visible:ring-2 focus-visible:ring-fg/40"
-              >
-                {showQuiet ? "Hide the quiet ones" : `${folded.length} more with nothing to report`}
-              </button>
-            ) : null}
-          </section>
-        </>
+        <section aria-label="Projects">
+          <ul className="border-t border-line-1">
+            {shown.map((r) => (
+              <ProjectRow key={r.project.id} name={r.name} status={r.status} />
+            ))}
+            {showQuiet ? folded.map((r) => <ProjectRow key={r.project.id} name={r.name} status={r.status} />) : null}
+          </ul>
+          {folded.length ? (
+            <button
+              type="button"
+              aria-expanded={showQuiet}
+              onClick={() => setShowQuiet((v) => !v)}
+              className="mt-1 inline-flex min-h-11 items-center gap-2 rounded-lg text-[14px] text-fg-2 underline decoration-line-3 underline-offset-4 outline-none hover:text-fg hover:decoration-fg focus-visible:ring-2 focus-visible:ring-fg/40"
+            >
+              {showQuiet ? "Hide the quiet ones" : `${folded.length} more with nothing to report${stopped ? `, ${stopped} not watched` : ""}`}
+            </button>
+          ) : null}
+        </section>
       ) : null}
 
-      {ready && !list.length && !setup ? (
-        <Empty title="No projects yet.">Spooky lists every repo on the GitHub accounts you install it on. Add one on Accounts.</Empty>
+      {ready && !list.length ? (
+        <Empty title="No projects yet.">
+          Spooky lists every repo on the GitHub accounts you install it on.{" "}
+          <Link href="/app/settings" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+            Add one in Settings
+          </Link>
+          .
+        </Empty>
       ) : null}
     </>
   );

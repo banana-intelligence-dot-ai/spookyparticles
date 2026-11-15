@@ -1,5 +1,10 @@
 "use client";
-import { useSearchParams } from "next/navigation";
+/**
+ * Settings: the accounts Spooky reads, where alerts go, what is not watched, the homepage feed,
+ * ways to sign in, your data, and the pages that left the rail. Read only toward your accounts.
+ */
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { CopyButton } from "@/components/copy-button";
 import {
@@ -13,17 +18,13 @@ import {
   surface,
 } from "@/components/ui";
 import { ConnectionState } from "../connection-state";
-import { apiPost, apiSend, formatInt, useApi } from "@/components/use-api";
-import {
-  ConnectedAgents,
-  SignInWays,
-  type AgentKey,
-  type Identity,
-  type KeyAccess,
-  type NewKey,
-} from "./agents";
+import { apiPost, formatInt, useApi } from "@/components/use-api";
+import { PublicFeedToggle } from "../public-feed-toggle";
+import { MORE } from "../rail";
+import { SignInWays, type Identity } from "./sign-in-ways";
+import { Stopped } from "./stopped";
 import { VercelConnect } from "./vercel-connect";
-import { Channels, type Channel } from "../jobs/jobs-view";
+import { Channels, type Channel } from "./channels";
 import { authClient } from "@/lib/auth-client";
 import {
   PROVIDER,
@@ -42,13 +43,13 @@ const GITHUB_NOTICE: Record<string, string> = {
     "Add the GitHub account that made the install. Signing in to it proves the install is yours; it then links on its own.",
 };
 
-export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { integrationEnabled: boolean; vercelSignInEnabled: boolean }) {
+export function SettingsView({ integrationEnabled, vercelSignInEnabled }: { integrationEnabled: boolean; vercelSignInEnabled: boolean }) {
   const params = useSearchParams();
   const conns = useApi<{ connections: Connection[] }>("/api/v1/connections", {
     pollMs: (d) => (d?.connections.some((c) => running(c.sync)) ? 3000 : null),
   });
-  const keys = useApi<{ apiKeys: AgentKey[] }>("/api/v1/api-keys");
-  const me = useApi<{ signInIdentities?: Identity[] }>("/api/v1/me");
+  const router = useRouter();
+  const me = useApi<{ user?: { email: string }; signInIdentities?: Identity[] }>("/api/v1/me");
   const channels = useApi<{ channels: Channel[] }>("/api/v1/alert-channels");
   const [otherAccountDismissed, setOtherAccountDismissed] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -70,7 +71,7 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
     setLinking(true);
     await authClient.linkSocial({
       provider: "github",
-      callbackURL: "/app/connections",
+      callbackURL: "/app/settings",
     });
     setLinking(false);
   };
@@ -114,34 +115,11 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
     params.get("identity") === "other_account" &&
     !otherAccountDismissed;
 
-  const createKey = async (
-    name: string,
-    access: KeyAccess,
-    expiresOn: string | null,
-  ): Promise<NewKey | string> => {
-    const r = await apiPost<{ apiKey?: NewKey } & Partial<NewKey>>(
-      "/api/v1/api-keys",
-      { name, scopes: access === "write" ? ["read", "write"] : ["read"], expiresOn },
-    );
-    if (!r.ok || !r.data) return r.error ?? "That key wasn't made. Try again.";
-    const k = (r.data.apiKey ?? r.data) as NewKey;
-    await keys.reload();
-    return k;
-  };
-  const revokeKey = async (id: string): Promise<string | null> => {
-    const r = await apiSend(
-      "DELETE",
-      `/api/v1/api-keys/${encodeURIComponent(id)}`,
-    );
-    await keys.reload();
-    return r.ok ? null : (r.error ?? "That didn't revoke. Try again.");
-  };
-
   return (
     <>
       <PageHeader
-        title="Accounts"
-        lede="What Spooky reads, who it tells, and where alerts go. Read only. Revoke any of it here; nothing is ever deleted on your accounts."
+        title="Settings"
+        lede="What Spooky reads, where alerts go, and what you stopped watching. Read only toward your accounts; nothing is ever deleted on them."
       />
 
       {error ? (
@@ -241,18 +219,16 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
       ) : null}
 
       {conns.data ? (
-        <ConnectedAgents
-          keys={keys.status === 404 ? [] : (keys.data?.apiKeys ?? null)}
-          now={now ?? 0}
-          primary={hasGithub && hasVercel}
-          onCreate={createKey}
-          onRevoke={revokeKey}
-        />
-      ) : null}
-      {conns.data ? (
         <div className="mt-14">
           <Channels list={channels.data?.channels ?? []} loading={channels.loading} onChanged={() => channels.reload()} onNotice={setNotice} />
         </div>
+      ) : null}
+      {conns.data ? <Stopped now={now ?? 0} /> : null}
+      {conns.data ? (
+        <section aria-labelledby="feed-title" className="mt-14">
+          <SectionTitle id="feed-title">Homepage feed</SectionTitle>
+          <PublicFeedToggle />
+        </section>
       ) : null}
       {me.data?.signInIdentities && (vercelSignInEnabled || me.data.signInIdentities.length > 0) ? (
         <SignInWays identities={me.data.signInIdentities.filter((identity) => identity.provider !== "vercel" || vercelSignInEnabled)} now={now ?? 0} vercelEnabled={vercelSignInEnabled} />
@@ -279,7 +255,87 @@ export function ConnectionsView({ integrationEnabled, vercelSignInEnabled }: { i
           />
         </div>
       ) : null}
+      {conns.data ? <YourData /> : null}
+      {conns.data ? (
+        <MorePages />
+      ) : null}
+      {me.data?.user ? (
+        <p className="mt-14 flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] text-fg-2 md:hidden">
+          <span className="min-w-0 truncate">Signed in as {me.data.user.email}</span>
+          <button
+            type="button"
+            className="inline-flex min-h-11 items-center text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg sm:min-h-0"
+            onClick={async () => {
+              await authClient.signOut();
+              router.push("/");
+            }}
+          >
+            Sign out
+          </button>
+        </p>
+      ) : null}
     </>
+  );
+}
+
+/** The pages that left the rail, each with what it is for. */
+export function MorePages() {
+  return (
+    <section aria-labelledby="more-title" className="mt-14">
+      <SectionTitle id="more-title">More pages</SectionTitle>
+      <ul className="border-t border-line-1">
+        {MORE.map((m) => (
+          <li key={m.href} className="border-b border-line-1">
+            <Link href={m.href} className="group -mx-2 flex min-h-12 items-center gap-4 rounded-lg px-2 py-2.5 outline-none transition-colors hover:bg-raised focus-visible:ring-2 focus-visible:ring-fg/40">
+              <span className="w-28 shrink-0 text-[14px] text-fg">{m.label}</span>
+              <span className="min-w-0 flex-1 text-[14px] text-pretty text-fg-2">{m.what}</span>
+              <svg viewBox="0 0 16 16" aria-hidden className="size-3.5 shrink-0 text-fg-3 transition-colors group-hover:text-fg" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M6 3.5 10.5 8 6 12.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Everything Spooky holds about the account, as one JSON file. The same call an agent makes: POST /api/v1/export. */
+export function YourData() {
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  const download = async () => {
+    setState("busy");
+    try {
+      const res = await fetch("/api/v1/export", { method: "POST", credentials: "same-origin" });
+      if (!res.ok) throw new Error(String(res.status));
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "spooky-particles-export.json";
+      a.click();
+      URL.revokeObjectURL(url);
+      setState("idle");
+    } catch {
+      setState("failed");
+    }
+  };
+  return (
+    <section aria-labelledby="data-title" className="mt-14">
+      <SectionTitle
+        id="data-title"
+        action={
+          <button type="button" className={buttonStyles.secondary} disabled={state === "busy"} onClick={() => void download()}>
+            {state === "busy" ? "Preparing…" : "Download my data"}
+          </button>
+        }
+      >
+        Your data
+      </SectionTitle>
+      <p className="-mt-2 max-w-[62ch] text-[14px] leading-[1.5] text-pretty text-fg-2">
+        Everything Spooky holds about this account, as one JSON file. Tokens and secret values are never in it.
+      </p>
+      {state === "failed" ? <p className="mt-2 text-[14px] text-red">The export didn&apos;t download. Try again.</p> : null}
+    </section>
   );
 }
 
@@ -403,13 +459,13 @@ export function ConnectionsList({
           {panels[g.provider]}
           {g.rows.length === 0 ? (
             <p
-              className={`px-4 py-4 text-[14px] text-pretty text-fg-2 sm:px-6 ${surface}`}
+              className="border-y border-line-1 py-4 text-[14px] text-pretty text-fg-2"
             >
               {EMPTY_LINE[g.provider] ?? "Nothing connected yet."}
             </p>
           ) : null}
           {g.rows.length ? (
-            <List>
+            <List plain>
               {g.rows.map((c) => (
                 <ConnectionRow
                   key={c.id}

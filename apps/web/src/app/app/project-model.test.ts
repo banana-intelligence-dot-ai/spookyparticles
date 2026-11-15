@@ -109,7 +109,7 @@ describe("siteConfirmedDown", () => {
 describe("archived repo that still deploys", () => {
   it("names the live production deploy instead of calling it archived", async () => {
     const { healthReason, lastActiveAt } = await import("./project-model");
-    const { idlePaid } = await import("./projects-view");
+    const { idlePaid } = await import("./project-model");
     const p = {
       id: "n1", name: "n8peace/my-happenings", kind: "repo", host: null, framework: null, url: null, productionUrl: null, uptime: null, private: true,
       defaultBranch: "main", language: null, status: "archived", lastPushAt: at(19), health: "ok",

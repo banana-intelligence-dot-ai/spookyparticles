@@ -196,7 +196,7 @@ export function ActivityScreen({
   return (
     <>
       <header className="mb-8">
-        <h1 className="text-[32px] leading-[1.1] font-medium tracking-[-0.02em] text-fg">History</h1>
+        <h1 className="text-[32px] leading-[1.1] font-medium tracking-[-0.02em] text-fg">Activity</h1>
         <p className="mt-2 max-w-[560px] text-[14px] leading-[1.5] text-pretty text-fg-2">What your services told you, newest first: failed deploys, incidents, charges and renewals. Nothing to set up.</p>
         {ready && items.length ? (
           <>
@@ -357,7 +357,7 @@ function WeekLine({ items, now, readAt, signedOut }: { items: Item[]; now: numbe
       {" "}
       Mail was last read {shortDate(staleSince)}, so {week.length ? "anything newer" : "this week"} isn&apos;t in yet.{" "}
       {signedOut ? "Google signed Spooky out of your inbox. " : null}
-      <Link href="/app/connections" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+      <Link href="/app/settings" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
         {signedOut ? "Reconnect Gmail" : "Read new mail"}
       </Link>
     </span>

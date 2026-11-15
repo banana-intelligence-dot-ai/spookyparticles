@@ -45,7 +45,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
    It prints a code and a link, and opens the link in their browser on a Mac. If no browser opens (Linux, ssh), send them the printed link. The code lasts 10 minutes; if it expires, run \`start\` again for a new one. Tell your human the code and ask them to:
    1. Sign in with **Continue with Vercel** if asked.
-   2. Check the code matches, then click **Approve**. The key it makes is read-only, belongs to this computer, is saved in the macOS Keychain (elsewhere, a file only they can read), and can be revoked under Connections.
+   2. Check the code matches, then click **Approve**. The key it makes is read-only, belongs to this computer, is saved in the macOS Keychain (elsewhere, a file only they can read), and can be revoked on the Agents page.
    3. On the same page, click **Install on GitHub** and choose the repositories (all is fine; read-only: metadata, deployments and Actions runs).
    4. Click **Connect Vercel**. **Install on Vercel** is one click with Vercel-set read scopes. Pasting a token instead also watches schedules with no code change, because Vercel's integration scopes do not include request history yet. Either works; they can add the other later. You stay out of that page.
 
@@ -54,7 +54,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
    - Exit 0: connected. It printed the status and what is broken now.
    - Exit 3: still waiting after 15 minutes; it says whether GitHub or Vercel is still waiting. Send ${base}/app and run \`sh scripts/spooky.sh status\` after they finish.
    - Exit 1: it prints why. If the key was revoked or wrong, run \`sh scripts/spooky.sh start --sign-in-again\`. Anything else: show your human the exact text.
-   - If it says this Spooky has no agent sign-in, ask them to make a key under ${base}/app/connections → **Connect an agent** → **Make key** and export it as \`SPOOKY_API_KEY\` themselves.
+   - If it says this Spooky has no agent sign-in, ask them to make a key under ${base}/app/agents → **Connect an agent** → **Make key** and export it as \`SPOOKY_API_KEY\` themselves.
 
 4. Show your human what it printed, with the source of each number. If it lists anything still on another host, offer to walk them through moving one: \`GET ${base}/api/v1/elsewhere\` (load the key as in **Your own calls**) gives each project's Vercel import link and the matching migration guide.
 5. Turn on agent alerts, so Claude Code, Cursor and Codex hear about a break when a session starts:
@@ -92,11 +92,11 @@ export SPOOKY_API_KEY="$(security find-generic-password -s spookyparticles.com -
 
 ## Optional, later
 
-Check-ins, check findings, recorded services and expiration dates need a **write** key. Ask your human to make one under ${base}/app/connections and put it in \`SPOOKY_API_KEY\` themselves.
+Check-ins, check findings, recorded services and expiration dates need a **write** key. Ask your human to make one under ${base}/app/agents and put it in \`SPOOKY_API_KEY\` themselves.
 
 ## Connect over MCP
 
-If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Sixteen read tools: \`whats_broken\`, \`did_my_push_land\`, \`claim_break\`, \`confirm_fix\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_expirations\`, \`list_connections\`, \`list_alert_channels\`, \`job_history\`, \`recent_activity\`, \`public_feed\`, \`help\`. A write key also gets twelve more: \`next_finding\`, \`report_finding\`, \`record_service\`, \`create_job\`, \`retire_job\`, \`restore_job\`, \`ignore_break\`, \`unignore_break\`, \`set_suggestion_status\`, \`add_expiration\`, \`sync_connection\` and \`set_public_feed\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
+If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Twenty-one read tools: \`public_feed\`, \`list_expirations\`, \`whats_broken\`, \`did_my_push_land\`, \`claim_break\`, \`confirm_fix\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_connections\`, \`list_alert_channels\`, \`job_history\`, \`recent_activity\`, \`open_items\`, \`fix_history\`, \`list_agents\`, \`list_mutes\`, \`export_data\` and \`help\`. A write key also gets twenty-one more: \`next_finding\`, \`report_finding\`, \`record_service\`, \`create_job\`, \`update_job\`, \`retire_job\`, \`restore_job\`, \`clear_notice\`, \`restore_notice\`, \`mute\`, \`unmute\`, \`ignore_break\`, \`unignore_break\`, \`set_suggestion_status\`, \`add_expiration\`, \`update_expiration\`, \`set_vendor_scope\`, \`recompute_spend_findings\`, \`read_billing_mail\`, \`set_public_feed\` and \`sync_connection\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
 
 \`\`\`bash
 claude mcp add --transport http spooky ${base}/api/mcp --header "Authorization: Bearer $SPOOKY_API_KEY"
@@ -215,7 +215,7 @@ printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -
 ## Existing setup
 
 1. Get the scripts (step 2), then run \`sh scripts/spooky.sh status\`. If it answers, do not create another key and do not reconnect anything.
-2. If a connection needs attention, send ${base}/app/connections and ask the human to follow its instructions.
+2. If a connection needs attention, send ${base}/app/settings and ask the human to follow its instructions.
 3. If agent alerts or the fixer are not on yet, do steps 5 and 6.
 
 ## Things only your human may do

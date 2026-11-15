@@ -11,6 +11,7 @@ import { appendAudit } from "@/lib/audit";
 import { randomToken } from "@/lib/crypto";
 import { appUrl } from "@/lib/env";
 import { deliverToAll, matchesProject, type DeliveryResult } from "./alerts/channels";
+import { alertMuted } from "./mutes";
 import { pageGithub, pagerEnabled } from "./pager";
 import { nextRun } from "./vercel-schedules";
 import type { Probe } from "./probes";
@@ -122,7 +123,7 @@ function view(j: typeof schema.checkinJobs.$inferSelect, nowMs = Date.now()): Jo
     probe: j.probe,
     evidenceState: j.evidenceState,
     watched: j.status !== "retired" && (j.source === "manual" || (j.status !== "paused" && j.evidenceState === "ok")),
-    watchNote: j.status === "retired" ? null : j.source === "vercel" && j.evidenceState === "not_readable" ? "Found on Vercel, not watched yet. Vercel's integration cannot read request history. To watch it, add a read token for this team on Connections, or add one check-in line." : j.source === "vercel" && j.evidenceState === "unavailable" ? "Vercel request history is unavailable right now." : null,
+    watchNote: j.status === "retired" ? null : j.source === "vercel" && j.evidenceState === "not_readable" ? "Found on Vercel, not watched yet. Vercel's integration cannot read request history. To watch it, add a read token for this team in Settings, or add one check-in line." : j.source === "vercel" && j.evidenceState === "unavailable" ? "Vercel request history is unavailable right now." : null,
     periodMinutes: j.periodMinutes,
     graceMinutes: j.graceMinutes,
     status,
@@ -391,6 +392,8 @@ export function ago(ms: number): string {
 export async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind: "job_quiet" | "job_failed" | "job_recovered", n: { subject: string; text: string; priority: "high" | "default" | "low"; key: string; firstEpisode?: boolean }) {
   const db = getDb();
   try {
+    // Stopped watching this project (or its jobs): no alert, no ping, no GitHub page. The run chart still shows the run.
+    if (await alertMuted(j.userId, j.project, kind)) return;
     const link = new URL("/app/jobs", appUrl()).toString();
     const [person] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, j.userId)).limit(1);
     // Claim the key first: two sweeps racing produce one alert.

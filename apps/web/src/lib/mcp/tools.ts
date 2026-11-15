@@ -1,29 +1,38 @@
 import { listChannels } from "@/lib/alerts/channels";
 import { createJobFromBody } from "@/lib/checkin-create";
+import { updateJobFromBody } from "@/lib/checkin-update";
 import { jobIssue, listJobs, updateJob, type JobView } from "@/lib/checkins";
 import { activityReport } from "@/lib/activity-report";
 import { getConnection } from "@/lib/connections";
 import { listConnectionsFor } from "@/lib/connections-read";
 import { addTrackedExpiration } from "@/lib/expirations/add";
+import { updateTrackedExpiration } from "@/lib/expirations/update";
+import { buildExport } from "@/lib/export";
+import { recomputeFindings, setVendorScope } from "@/lib/findings";
+import { startReadingFor } from "@/lib/reading";
 import { setFindingStatus } from "@/lib/findings-status";
-import { ignoreInput, setIgnored } from "@/lib/ignores";
+import { agentsFor } from "@/lib/agents";
+import { clearInput, clearedFor, ignoreInput, setCleared, setIgnored } from "@/lib/ignores";
+import { MUTE_KINDS, muteInput, mutesFor, setMuted } from "@/lib/mutes";
+import { openItemsFor } from "@/lib/open-items";
+import { publicFeedEnabled, setPublicFeed } from "@/lib/public-fixes";
 import { runHistoryFor } from "@/lib/run-history";
 import { startSync } from "@/lib/sync";
 import { recordInboxRead } from "@/lib/agent-listening";
-import { recordDeploys } from "@/lib/catches";
+import { catchesFor, recordDeploys } from "@/lib/catches";
 import { claimBreak, claimsFor } from "@/lib/claims";
 import { confirmFix } from "@/lib/confirm-fix";
-import { incidentsFor } from "@/lib/incidents";
+import { incidentsFor, watchedJobs } from "@/lib/incidents";
 import { projectPageFor, projectsFor } from "@/lib/projects";
 import { resyncHostsQuietlyFor } from "@/lib/sync";
 import type { Actor } from "@/lib/actor";
+import { sameProject } from "@/lib/break-guide";
 import { findingsReport, reportAttempt, takeNext } from "@/lib/checks/handoff-store";
 import { expirationsFor } from "@/lib/expirations/store";
 import { helpFor } from "@/lib/help/ask";
 import { HELP_MAX_CHARS } from "@/lib/help/input";
 import { ApiError } from "@/lib/http";
 import { listServices, recordService } from "@/lib/services/store";
-import { publicFeedEnabled, setPublicFeed } from "@/lib/public-fixes";
 import { ToolError, type Tool, type ToolRegistry } from "./protocol";
 
 const empty = { type: "object" as const, properties: {}, additionalProperties: false as const };
@@ -95,7 +104,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => {
-        const [report, jobs, claims] = await Promise.all([incidentsFor(userId), listJobs(userId), claimsFor(userId)]);
+        const [report, jobs, claims] = await Promise.all([incidentsFor(userId), watchedJobs(userId), claimsFor(userId)]);
         return {
           checkedAt: report.checkedAt,
           claims,
@@ -257,6 +266,55 @@ export function toolsFor(actor: Actor): ToolRegistry {
       },
       run: async (input) => activityReport(userId, input.limit ?? 100, typeof input.since === "string" ? input.since : null),
     }),
+    open_items: tool({
+      description: "What is open right now, split into onYou (your person must act) and withAgents (failed deploys and jobs an agent can take). Each item says what happened, the one next step, who has it, and the clearKeys that clear it. Also the last few fixes and the 30-day numbers. Start here.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => openItemsFor(userId),
+    }),
+    fix_history: tool({
+      description: "Every break Spooky caught in the last 30 days and how it ended: when it broke, when your person was pinged, which agent heard, when it was fixed and by what, with the median time to fix. Optional project narrows it.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        project: { type: "string", minLength: 1, maxLength: 120, description: "Optional project name, like owner/repo" },
+        status: { type: "string", enum: ["fixed", "open", "waiting", "retired", "ignored"], description: "Optional: only breaks in this state" },
+      } },
+      validate: (input) => {
+        const basic = validate(input, [], ["project", "status"]);
+        if (basic) return basic;
+        if (input.project !== undefined && (typeof input.project !== "string" || !input.project.trim() || input.project.length > 120)) return "project must be a project name";
+        if (input.status !== undefined && !["fixed", "open", "waiting", "retired", "ignored"].includes(input.status as string)) return "status must be fixed, open, waiting, retired or ignored";
+        return null;
+      },
+      run: async (input) => {
+        const report = await catchesFor(userId);
+        const project = typeof input.project === "string" ? input.project.trim() : null;
+        const catches = report.catches.filter((c) => (!project || (c.project !== null && sameProject(c.project, project))) && (!input.status || c.status === input.status));
+        return project || input.status ? { ...report, catches, summary: undefined, matched: catches.length } : report;
+      },
+    }),
+    list_agents: tool({
+      description: "Every agent key on this account and what it did: the projects it asked about, the breaks it holds now, how many were fixed after it heard, and broken projects no agent asked about. Keys are never returned; your person connects or revokes an agent in the web app.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => agentsFor(userId),
+    }),
+    list_mutes: tool({
+      description: "What your person stopped watching (whole projects, or one kind of notice on a project) and the single notices they cleared. Use unmute or restore_notice to bring one back.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => { const [mutes, cleared] = await Promise.all([mutesFor(userId), clearedFor(userId)]); return { mutes, cleared }; },
+    }),
+    export_data: tool({
+      description: "Export all account data as JSON, excluding token ciphertext. Large exports give array counts and a REST download path.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => viaApi(async () => {
+        const data = await buildExport(actor);
+        if (JSON.stringify(data).length <= 150_000) return data;
+        const counts = Object.fromEntries((Object.entries(data) as [string, unknown][]).filter(([, rows]) => Array.isArray(rows)).map(([key, rows]) => [key, (rows as unknown[]).length]));
+        return { tooLarge: true, counts, download: "POST /api/v1/export with the same key" };
+      }),
+    }),
     help: tool({
       description: "Ask the Spooky Particles help assistant a question about Spooky itself: what a status means, how to connect GitHub or Vercel, how agent sign-in and the fixer work, why something is red. It can read this person's projects, jobs and connections. Answers only about Spooky. Limited to 5 questions a minute and 30 a day.",
       inputSchema: {
@@ -351,6 +409,30 @@ export function toolsFor(actor: Actor): ToolRegistry {
         checkInLine: "Not shown over MCP. Ask your person to copy it from the Jobs page in the web app.",
       })),
     }),
+    update_job: write({
+      description: "Change a watched job's name, timing, pause, schedule or probe. The check-in link is never returned. Retire or restore with the dedicated tools.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        job_id: { type: "string", minLength: 36, maxLength: 36, description: "Job ID" },
+        name: { type: "string", minLength: 2, maxLength: 80 },
+        periodMinutes: { type: "integer", minimum: 1, maximum: 44640 },
+        graceMinutes: { type: "integer", minimum: 1, maximum: 10080 },
+        project: { type: ["string", "null"], maxLength: 120 },
+        owner: { type: ["string", "null"], maxLength: 80 },
+        maxRunMinutes: { type: ["integer", "null"], minimum: 1, maximum: 10080 },
+        minCount: { type: ["integer", "null"], minimum: 0, maximum: 1000000000 },
+        paused: { type: "boolean" },
+        schedule: { type: ["string", "null"], maxLength: 120 },
+        timeZone: { type: ["string", "null"], maxLength: 60 },
+        probe: { type: ["object", "null"], description: "null, or {url, expect: [{path, op, value}]}, or {url, page: {links, answer}}" },
+      }, required: ["job_id"] },
+      validate: (input) => validate(input, ["job_id"], ["job_id", "name", "periodMinutes", "graceMinutes", "project", "owner", "maxRunMinutes", "minCount", "paused", "schedule", "timeZone", "probe"])
+        ?? (UUID.test(input.job_id as string) ? null : "job_id must be a job ID")
+        ?? (input.paused !== undefined && typeof input.paused !== "boolean" ? "paused must be true or false" : null),
+      run: async (input) => viaApi(async () => {
+        const { job_id, ...body } = input;
+        return { job: jobWithoutLink(await updateJobFromBody(actor, job_id as string, body)) };
+      }),
+    }),
     retire_job: write({
       description: "Retire a scheduled job so Spooky stops watching it. Nothing is deleted; restore_job brings it back.",
       inputSchema: idSchema("job_id", "Job ID from list_jobs"),
@@ -371,8 +453,50 @@ export function toolsFor(actor: Actor): ToolRegistry {
         return { job: jobWithoutLink(job) };
       }),
     }),
+    clear_notice: write({
+      description: "Clear one open item that does not matter, using its clearKeys from open_items. It leaves the open list and stays in history as cleared. The next break of the same thing shows again; to stop those too, use mute. Writes to Spooky only; restore_notice undoes it.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        key: { type: "string", minLength: 1, maxLength: 200, description: "One clear key from open_items" },
+        keys: { type: "array", minItems: 1, maxItems: 50, items: { type: "string", minLength: 1, maxLength: 200 }, description: "Or every clear key of one open item" },
+        project: { type: "string", maxLength: 120, description: "Project name" },
+        what: { type: "string", maxLength: 200, description: "The notice's title, kept so the cleared list reads well" },
+      } },
+      validate: (input: Record<string, unknown>) => validate(input, [], ["key", "keys", "project", "what"]) ?? (input.key === undefined && input.keys === undefined ? "Send key or keys" : null) ?? (input.project !== undefined && typeof input.project !== "string" ? "project must be text" : null) ?? (input.what !== undefined && typeof input.what !== "string" ? "what must be text" : null),
+      run: async (input) => viaApi(async () => setCleared(actor, clearInput(input), true)),
+    }),
+    restore_notice: write({
+      description: "Bring a cleared notice back to the open list.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        key: { type: "string", minLength: 1, maxLength: 200, description: "One clear key from open_items" },
+        keys: { type: "array", minItems: 1, maxItems: 50, items: { type: "string", minLength: 1, maxLength: 200 }, description: "Or every clear key of one open item" },
+        project: { type: "string", maxLength: 120, description: "Project name" },
+        what: { type: "string", maxLength: 200, description: "The notice's title, kept so the cleared list reads well" },
+      } },
+      validate: (input: Record<string, unknown>) => validate(input, [], ["key", "keys", "project", "what"]) ?? (input.key === undefined && input.keys === undefined ? "Send key or keys" : null) ?? (input.project !== undefined && typeof input.project !== "string" ? "project must be text" : null) ?? (input.what !== undefined && typeof input.what !== "string" ? "what must be text" : null),
+      run: async (input) => viaApi(async () => setCleared(actor, clearInput(input), false)),
+    }),
+    mute: write({
+      description: "Stop watching a project, or one kind of notice on it (deploy, job, site, server_errors, check), for example a project that ended. No more pings, nothing in the agent inbox and no open items for it. History keeps what happened. Ask your person before muting a project they did not name. Writes to Spooky only; unmute undoes it.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        project: { type: "string", minLength: 1, maxLength: 120, description: "Project name, like owner/repo" },
+        kind: { type: "string", enum: ["all", ...MUTE_KINDS], description: "all (default) is the whole project; or one kind of notice" },
+        reason: { type: "string", maxLength: 200, description: "Optional: why, in a few words" },
+      }, required: ["project"] },
+      validate: (input: Record<string, unknown>) => validate(input, ["project"], ["project", "kind", "reason"]) ?? (input.reason !== undefined && typeof input.reason !== "string" ? "reason must be text" : null),
+      run: async (input) => viaApi(async () => setMuted(actor, muteInput(input), true)),
+    }),
+    unmute: write({
+      description: "Watch a muted project, or a muted kind of notice on it, again.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        project: { type: "string", minLength: 1, maxLength: 120, description: "Project name, like owner/repo" },
+        kind: { type: "string", enum: ["all", ...MUTE_KINDS], description: "all (default) is the whole project; or one kind of notice" },
+        reason: { type: "string", maxLength: 200, description: "Optional: why, in a few words" },
+      }, required: ["project"] },
+      validate: (input: Record<string, unknown>) => validate(input, ["project"], ["project", "kind", "reason"]) ?? (input.reason !== undefined && typeof input.reason !== "string" ? "reason must be text" : null),
+      run: async (input) => viaApi(async () => setMuted(actor, muteInput(input), false)),
+    }),
     ignore_break: write({
-      description: "Stop counting one failed deploy, for example a retired project. The ignore names that exact failure, so the next failure shows again. Writes to Spooky only; unignore_break undoes it.",
+      description: "Older name for clear_notice, kept for agents already set up. Stop counting one failed deploy, for example a retired project. The ignore names that exact failure, so the next failure shows again. Writes to Spooky only; unignore_break undoes it.",
       inputSchema: { type: "object", additionalProperties: false, properties: {
         key: { type: "string", minLength: 1, maxLength: 200, description: "The break's key from the project's deployments" },
         project: { type: "string", maxLength: 120, description: "Project name" },
@@ -415,6 +539,57 @@ export function toolsFor(actor: Actor): ToolRegistry {
       }, required: ["kind", "name", "expiresOn"] },
       validate: (input) => validate(input, ["kind", "name", "expiresOn"], ["kind", "name", "expiresOn", "provider", "project"]),
       run: async (input) => viaApi(async () => ({ expiration: await addTrackedExpiration(actor, input) })),
+    }),
+    update_expiration: write({
+      description: "Change a tracked expiration's name, kind, provider, hint, project or date. Secret-looking values are refused.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        expiration_id: { type: "string", minLength: 36, maxLength: 36 },
+        kind: { type: "string", enum: ["api_key", "token", "certificate", "other"] },
+        name: { type: "string", minLength: 1, maxLength: 80 },
+        provider: { type: ["string", "null"], maxLength: 40 },
+        hint: { type: ["string", "null"], maxLength: 6 },
+        project: { type: ["string", "null"], maxLength: 120 },
+        expiresOn: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      }, required: ["expiration_id"] },
+      validate: (input) => validate(input, ["expiration_id"], ["expiration_id", "kind", "name", "provider", "hint", "project", "expiresOn"])
+        ?? (UUID.test(input.expiration_id as string) ? null : "expiration_id must be an expiration ID"),
+      run: async (input) => viaApi(async () => {
+        const { expiration_id, ...body } = input;
+        const expiration = await updateTrackedExpiration(actor, expiration_id as string, body);
+        return { expiration };
+      }),
+    }),
+    set_vendor_scope: write({
+      description: "Mark a vendor as work or personal, and recompute spend findings.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        vendor_key: { type: "string", minLength: 1, maxLength: 80, pattern: "^[a-z0-9]+$" },
+        scope: { type: "string", enum: ["work", "personal"] },
+      }, required: ["vendor_key", "scope"] },
+      validate: (input) => validate(input, ["vendor_key", "scope"], ["vendor_key", "scope"])
+        ?? (/^[a-z0-9]{1,80}$/.test(input.vendor_key as string) ? null : "vendor_key must be lowercase letters and digits")
+        ?? (input.scope === "work" || input.scope === "personal" ? null : "scope must be work or personal"),
+      run: async (input) => viaApi(() => setVendorScope(userId, input.vendor_key as string, input.scope as "work" | "personal", actor.label)),
+    }),
+    recompute_spend_findings: write({
+      description: "Rebuild subscriptions, bill-to-project edges and spend findings from receipts.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => viaApi(() => recomputeFindings(userId, actor.label)),
+    }),
+    read_billing_mail: write({
+      description: "Start reading unread billing candidates in one connected inbox, newest first.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        connection_id: { type: "string", minLength: 36, maxLength: 36 },
+        limit: { type: "number", description: "Optional maximum messages for this run" },
+      }, required: ["connection_id"] },
+      validate: (input) => validate(input, ["connection_id"], ["connection_id", "limit"])
+        ?? (UUID.test(input.connection_id as string) ? null : "connection_id must be a connection ID")
+        ?? (input.limit !== undefined && (typeof input.limit !== "number" || !Number.isFinite(input.limit)) ? "limit must be a finite number" : null),
+      run: async (input) => viaApi(async () => {
+        const c = await getConnection(input.connection_id as string, userId).catch(() => null);
+        if (!c) throw new ApiError(404, "not_found", "Connection not found");
+        return startReadingFor(c, actor.label, { maxMessages: input.limit as number | undefined });
+      }),
     }),
     set_public_feed: write({
       description: "Turn this account's anonymous rows on the spookyparticles.com homepage fix feed on or off. Only ask your person first if they have not said. Audited; set it back any time.",

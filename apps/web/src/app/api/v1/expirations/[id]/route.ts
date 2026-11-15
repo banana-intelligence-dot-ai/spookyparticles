@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { appendAudit } from "@/lib/audit";
-import { expirationAuditFields, expirationId, trackedExpirationInput } from "@/lib/expirations/tracked";
+import { expirationId } from "@/lib/expirations/tracked";
+import { updateTrackedExpiration } from "@/lib/expirations/update";
 import { api, ApiError, json } from "@/lib/http";
 import { requireActor } from "@/lib/require-actor";
 
@@ -9,21 +10,8 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export const PATCH = api<Ctx>(async (req, ctx) => {
   const actor = await requireActor(req, "write");
-  const id = expirationId((await ctx.params).id);
-  const db = getDb();
-  const [old] = await db.select().from(schema.trackedExpirations).where(and(eq(schema.trackedExpirations.id, id), eq(schema.trackedExpirations.userId, actor.userId))).limit(1);
-  if (!old) throw new ApiError(404, "not_found", "Expiration not found");
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const input = trackedExpirationInput({
-    kind: body.kind ?? old.kind,
-    name: body.name ?? old.name,
-    provider: body.provider === undefined ? old.provider : body.provider,
-    hint: body.hint === undefined ? old.hint : body.hint,
-    project: body.project === undefined ? old.project : body.project,
-    expiresOn: body.expiresOn ?? old.expiresOn,
-  });
-  const [row] = await db.update(schema.trackedExpirations).set({ ...input, updatedAt: new Date() }).where(and(eq(schema.trackedExpirations.id, id), eq(schema.trackedExpirations.userId, actor.userId))).returning();
-  await appendAudit({ actor: actor.label, userId: actor.userId, action: "expiration.changed", target: `expiration:${id}`, before: expirationAuditFields({ kind: old.kind, name: old.name, provider: old.provider, hint: old.hint, project: old.project, expiresOn: old.expiresOn }), after: expirationAuditFields(input) });
+  const row = await updateTrackedExpiration(actor, (await ctx.params).id, body);
   return json({ expiration: row });
 });
 
