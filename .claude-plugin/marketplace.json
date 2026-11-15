@@ -1,0 +1,14 @@
+{
+  "name": "banana-intelligence",
+  "owner": { "name": "Banana Intelligence LLC", "url": "https://bananaintelligence.ai" },
+  "metadata": { "description": "Open-source agent tools from Banana Intelligence." },
+  "plugins": [
+    {
+      "name": "spooky-particles",
+      "source": "./",
+      "description": "Pager for apps on Vercel. Sends the cause of a break to your coding agent to fix, and pings you only if the check still fails.",
+      "homepage": "https://spookyparticles.com",
+      "category": "monitoring"
+    }
+  ]
+}

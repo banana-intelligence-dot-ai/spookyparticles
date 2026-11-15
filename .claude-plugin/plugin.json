@@ -1,0 +1,31 @@
+{
+  "name": "spooky-particles",
+  "description": "Pager for apps on Vercel. Sends the cause of a break to your coding agent to fix, and pings you only if the check still fails.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Banana Intelligence LLC",
+    "url": "https://bananaintelligence.ai"
+  },
+  "homepage": "https://spookyparticles.com",
+  "privacyPolicyUrl": "https://spookyparticles.com/privacy",
+  "repository": "https://github.com/banana-intelligence-dot-ai/spookyparticles",
+  "license": "MIT",
+  "keywords": [
+    "vercel",
+    "monitoring",
+    "deploys",
+    "cron",
+    "uptime",
+    "mcp",
+    "devops"
+  ],
+  "mcpServers": {
+    "spooky": {
+      "type": "http",
+      "url": "https://spookyparticles.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SPOOKY_API_KEY}"
+      }
+    }
+  }
+}

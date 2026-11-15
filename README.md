@@ -23,6 +23,23 @@ npx skills add banana-intelligence-dot-ai/spookyparticles
 
 Or copy one folder from `skills/` into your agent's skills folder, for example `.claude/skills/` for Claude Code.
 
+### Claude Code plugin
+
+The plugin bundles every skill here plus the Spooky MCP server:
+
+```bash
+claude plugin marketplace add banana-intelligence-dot-ai/spookyparticles
+claude plugin install spooky-particles@banana-intelligence
+```
+
+Or, on Claude Code 2.1.275 or later, in one step:
+
+```
+/plugin install spooky-particles --marketplace banana-intelligence-dot-ai/spookyparticles
+```
+
+The MCP server reads your key from the `SPOOKY_API_KEY` environment variable. Make a key at [spookyparticles.com/app/connections](https://spookyparticles.com/app/connections) and export it in your shell yourself. Never paste it into chat. Privacy: [spookyparticles.com/privacy](https://spookyparticles.com/privacy).
+
 | # | Standard item | Skill | Spooky shows it in |
 |---|---|---|---|
 | 1 | Someone hears within 10 minutes when the live site stops answering | [spooky-uptime](skills/spooky-uptime/SKILL.md) | `uptime.state` in `GET /api/v1/projects` |
@@ -38,7 +55,7 @@ Or copy one folder from `skills/` into your agent's skills folder, for example `
 | 11 | Every outside service is listed, with cost and use | [spooky-service](skills/spooky-service/SKILL.md) | `services[].usage`, `monthlyCostUsd` in `GET /api/v1/services` |
 | 12 | A spend limit is set | [spooky-spend-limit](skills/spooky-spend-limit/SKILL.md) | not checked yet; `bill` in `GET /api/v1/services` helps pick the amount |
 
-The `spooky` skill (served at [spookyparticles.com/skill.md](https://spookyparticles.com/skill.md)) works through Spooky's findings one at a time and points to the skill for each item.
+The `spooky` skill ([skills/spooky](skills/spooky/SKILL.md), also served at [spookyparticles.com/skill.md](https://spookyparticles.com/skill.md)) works through Spooky's findings one at a time and points to the skill for each item.
 
 ## How it is built
 
