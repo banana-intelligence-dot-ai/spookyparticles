@@ -79,7 +79,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
   const heard = (project: string) => Promise.all([actor.apiKeyId ? recordInboxRead(userId, actor.apiKeyId, project) : null, recordDeploys(userId)]);
   const read: ToolRegistry = {
     public_feed: tool({
-      description: "Whether this account's agent fixes show on the spookyparticles.com homepage feed. Rows there are anonymous: a time, the kind of break and minutes to fix. set_public_feed changes it.",
+      description: "Whether this account's fixes show on the spookyparticles.com homepage feed. Rows there are anonymous: a time, the kind of break and minutes to fix. set_public_feed changes it.",
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => ({ on: await publicFeedEnabled(userId) }),

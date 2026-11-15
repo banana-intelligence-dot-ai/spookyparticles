@@ -25,7 +25,7 @@ export function PublicFeedToggle() {
   return (
     <div className="mt-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-t border-line-1 pt-5">
       <div className="max-w-[520px]">
-        <p id="feed-label" className="text-[14px] text-fg">Show my agents&apos; fixes on the homepage</p>
+        <p id="feed-label" className="text-[14px] text-fg">Show my fixes on the homepage</p>
         <p className="mt-1 text-[13px] leading-[1.55] text-pretty text-fg-2">
           Anonymous. Each row is only a time, the kind of break and how long the fix took, like{" "}
           <span className="font-mono text-fg">Nov 14 · 10:09 · Deploy failed · 10 min</span>. Never a project, repo, name or error. Turn it off any time.

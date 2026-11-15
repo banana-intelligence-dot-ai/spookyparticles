@@ -61,8 +61,8 @@ export function LiveCount() {
   return (
     <a href="#live-fixes" className="ml-auto inline-flex min-h-11 items-center gap-2 font-mono text-[12px] text-fg-2 tabular-nums hover:text-fg">
       <span aria-hidden className="live-dot" />
-      {feed.fixed} fixed by agents
-      <span className="sr-only"> in the last {feed.windowDays} days</span>
+      {feed.fixed} fixed
+      <span className="sr-only"> after an alert, in the last {feed.windowDays} days</span>
     </a>
   );
 }
@@ -83,7 +83,7 @@ export function LiveFixes({ fallback, fallbackTitle }: { fallback: readonly Fall
         <>
           <dl className="mt-5 grid grid-cols-2 gap-6">
             <div>
-              <dt className="font-mono text-[12px] text-fg-3">Fixed by agents</dt>
+              <dt className="font-mono text-[12px] text-fg-3">Fixed after an alert</dt>
               <dd className="mt-1 text-[34px] leading-none font-medium tracking-[-0.02em] text-fg tabular-nums">{feed.fixed}</dd>
             </div>
             <div>

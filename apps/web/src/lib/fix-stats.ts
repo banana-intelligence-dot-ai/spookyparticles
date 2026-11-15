@@ -7,13 +7,12 @@ export function fixedByAgent(c: Pick<Catch, "heardAt" | "confirmedAt" | "fixedBy
 }
 
 /**
- * The stricter rule for anything shown in public: a code change landed (a commit or PR) and an agent
- * was on it (it heard about the break first, or opened the PR). A job that came back on its own
- * after an agent merely looked does not count.
+ * The public feed's rule (Nate, 2026-11-14: "if we send a notification and it got fixed, consider it
+ * included"): Spooky alerted someone, an agent heard about it, or an agent opened the PR. Public copy
+ * says "fixed after an alert", not "fixed by agents", because a fix after an alert may be a person's.
  */
-export function provenAgentFix(c: Pick<Catch, "heardAt" | "fixedBy">): boolean {
-  if (!c.fixedBy) return false;
-  return c.fixedBy.kind === "pr" || Boolean(c.heardAt);
+export function fixedAfterAlert(c: Pick<Catch, "alertedAt" | "heardAt" | "fixedBy">): boolean {
+  return Boolean(c.alertedAt || c.heardAt || c.fixedBy?.kind === "pr");
 }
 
 /** Median minutes from caught to fixed, over fixes that have both times. Null when there are none. */

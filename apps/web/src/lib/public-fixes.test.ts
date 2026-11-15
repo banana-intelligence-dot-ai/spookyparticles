@@ -26,15 +26,15 @@ describe("publicFixes", () => {
     for (const leak of ["secret", "pay", "abc1234", "nate", "Claude", "TypeError"]) expect(text).not.toContain(leak);
   });
 
-  it("skips fixes with no agent in them, and anything not fixed", () => {
-    const human = { ...base, heardAt: null, confirmedAt: null };
+  it("skips fixes nobody was alerted about, and anything not fixed", () => {
+    const human = { ...base, heardAt: null, alertedAt: null, confirmedAt: null };
     const open = { ...base, status: "open" as const, fixedAt: null };
     expect(publicFixes([human, open])).toEqual([]);
   });
 
-  it("skips fixes with no code change, like a job that came back while an agent looked", () => {
-    const job = { ...base, kind: "job" as const, fixedBy: null, confirmedAt: "2026-11-14T10:10:00.000Z" };
-    expect(publicFixes([job])).toEqual([]);
+  it("counts a job that came back after an alert went out", () => {
+    const job = { ...base, kind: "job" as const, fixedBy: null, heardAt: null, alertedAt: "2026-11-14T10:02:00.000Z" };
+    expect(publicFixes([job])).toEqual([{ at: "2026-11-14T10:09:00.000Z", what: "Scheduled job went quiet", minutes: 10 }]);
   });
 
   it("shows one commit that fixed two projects as one fix", () => {
@@ -42,7 +42,7 @@ describe("publicFixes", () => {
   });
 
   it("counts a PR fix as an agent's", () => {
-    expect(publicFixes([{ ...base, heardAt: null, fixedBy: { kind: "pr", url: "https://github.com/x/y/pull/1" } }])).toHaveLength(1);
+    expect(publicFixes([{ ...base, heardAt: null, alertedAt: null, fixedBy: { kind: "pr", url: "https://github.com/x/y/pull/1" } }])).toHaveLength(1);
   });
 });
 

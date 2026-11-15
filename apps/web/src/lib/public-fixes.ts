@@ -1,5 +1,5 @@
 /**
- * The public fix feed on the homepage: fixes agents made, anonymized. Each row is only a time, a
+ * The public fix feed on the homepage: breaks fixed after Spooky alerted someone, anonymized. Each row is only a time, a
  * kind of break and how long the fix took: never a project, repo, person, error text or commit.
  * On by default for accounts created on or after the privacy policy that says so (section 6);
  * accounts from before it stay off until the owner turns it on, as section 14 promises. Anyone can
@@ -9,7 +9,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { appendAudit } from "./audit";
 import type { Catch, CatchKind } from "./catches";
-import { medianFixMinutes, provenAgentFix } from "./fix-stats";
+import { fixedAfterAlert, medianFixMinutes } from "./fix-stats";
 
 export const FEED_ON = "public_feed.on";
 export const FEED_OFF = "public_feed.off";
@@ -42,10 +42,10 @@ export type PublicFeed = {
   checkedAt: string;
 };
 
-/** One account's catches, reduced to anonymous rows: fixed by a code change an agent was on, with both times known. */
+/** One account's catches, reduced to anonymous rows: fixed after an alert, with both times known. */
 export function publicFixes(catches: Catch[]): PublicFix[] {
   return catches
-    .filter((c) => c.status === "fixed" && c.fixedAt && provenAgentFix(c))
+    .filter((c) => c.status === "fixed" && c.fixedAt && fixedAfterAlert(c))
     .map((c) => {
       const fixedMs = Date.parse(c.fixedAt as string);
       const at = new Date(Math.floor(fixedMs / 60_000) * 60_000).toISOString();

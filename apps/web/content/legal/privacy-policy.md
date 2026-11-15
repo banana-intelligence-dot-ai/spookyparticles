@@ -88,7 +88,7 @@ You can revoke our access at any time in your Google Account settings (myaccount
 
 **Share cards.** The result card is private by default and shows totals only. Rows are hidden unless you opt each one in after a preview. If a public share page is offered later, it will use unguessable, revocable links that are hidden from search engines. You decide what is on it.
 
-**Public fix feed.** Our homepage shows a live count and list of fixes coding agents made for Spooky Particles accounts. Each row shows only when the fix happened, the kind of problem (for example "Deploy failed") and how many minutes it took. It never shows your name, email, project, repository, domain, error text or code. This is on for accounts created on or after 15 November 2026, and off for older accounts unless you turn it on. You can turn it off at any time on the Today page, and your fixes leave the feed within 15 minutes.
+**Public fix feed.** Our homepage shows a live count and list of problems fixed after Spooky Particles sent an alert about them. Each row shows only when the fix happened, the kind of problem (for example "Deploy failed") and how many minutes it took. It never shows your name, email, project, repository, domain, error text or code. This is on for accounts created on or after 15 November 2026, and off for older accounts unless you turn it on. You can turn it off at any time on the Today page, and your fixes leave the feed within 15 minutes.
 
 **Subprocessors.** Section 8.
 
