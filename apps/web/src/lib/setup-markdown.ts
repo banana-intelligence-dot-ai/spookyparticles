@@ -70,7 +70,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
    \`\`\`
 
    Then hand your human the start line it prints, to run in their own terminal. Do not start it yourself. Never put a key in a file or in chat.
-7. Tell them alerts already reach their account email, and that they can add a phone, Slack or Teams channel on ${base}/app/jobs.
+7. Tell them alerts already reach their account email, and that they can add an ntfy (phone), Slack or Teams channel on ${base}/app/jobs.
 
 ## Report back
 
@@ -190,7 +190,7 @@ printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @-
   ${base}/api/v1/alert-channels
 \`\`\`
 
-Spooky starts the fix job first. If the check is still down after 15 minutes, it alerts the person's phone, Slack, or email. Agent machines can claim the break after the GitHub claim expires.
+Spooky starts the fix job first. If the check is still down after 15 minutes, it alerts the person on ntfy, Slack, Teams or email. Agent machines can claim the break after the GitHub claim expires.
 
 ## Watch the result, not just the run
 

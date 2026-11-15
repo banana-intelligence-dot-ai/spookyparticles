@@ -83,7 +83,7 @@ export function JobsView() {
 
   return (
     <>
-      <PageHeader title="Schedules" lede="Your scheduled jobs, like crons and nightly builds, and whether each ran on time. When one misses, you hear by phone, Slack, Teams or email, and again when it's back.">
+      <PageHeader title="Schedules" lede="Your scheduled jobs, like crons and nightly builds, and whether each ran on time. When one misses, you hear on ntfy, Slack, Teams or email, and again when it's back.">
         <button type="button" className={list.length ? buttonStyles.secondary : buttonStyles.primary} onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
           Add a job
         </button>

@@ -18,6 +18,7 @@ import { CopyForAgent, RoutingLine, agentButton } from "./copy-for-agent";
 import { absoluteTime } from "./data-model";
 import type { Project } from "./project-model";
 import { projectHref } from "./projects-view";
+import { PublicFeedToggle } from "./public-feed-toggle";
 import type { JobRow } from "./today-model";
 
 const DAY = 86_400_000;
@@ -245,6 +246,7 @@ export function CatchLog({ data, now, claims = [], jobs = [], projects = [], onC
           Nothing broke in the last {data.windowDays} days that Spooky Particles saw. When a deploy fails, a job goes quiet or a site goes down, it lands here with how long the fix took.
         </p>
       )}
+      <PublicFeedToggle />
     </section>
   );
 }

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Footer, Wordmark } from "@/components/brand";
+import { LiveCount, LiveFixes } from "./_landing/live-fixes";
 import { Particles } from "./_landing/particles";
 import { PastePrompt } from "./_landing/paste-prompt";
 import { SignInNotice } from "./_landing/signin-notice";
@@ -22,7 +23,7 @@ const COPY = {
   sub: "Spooky Particles connects your deploys to your coding agent for 24/7 resolution.",
   how: [
     { h: "Your deploys, wired to your agent.", p: "A deploy fails, a page stops answering, or a scheduled job goes quiet. Spooky checks every 5 minutes, day and night, and sends your coding agent the cause. It fixes, tests and ships." },
-    { h: "It can ping you too.", p: "Fixed means the check passes again. If it doesn’t, Spooky pings you on your phone, Slack, Teams or email." },
+    { h: "It can ping you too.", p: "Fixed means the check passes again. If it doesn’t, Spooky pings you on ntfy, Slack, Teams or email." },
     { h: "Every fix is tracked.", p: "Each break, page and fix is kept, so you see what healed itself and what needed you." },
   ],
   setupH: "Three things to connect.",
@@ -37,14 +38,14 @@ const COPY = {
   pricingH: "Pricing",
   price: "Free",
   priceNote: "Requires your own coding agent: Claude Code, Codex or Cursor. Fixes run on your plan.",
-  priceIncludes: ["Vercel and GitHub, read-only", "Checks every 5 minutes", "Pings to phone, Slack, Teams or email", "Every fix tracked"],
+  priceIncludes: ["Vercel and GitHub, read-only", "Checks every 5 minutes", "Pings to ntfy, Slack, Teams or email", "Every fix tracked"],
   faqH: "Questions",
   faq: [
     { q: "Which hosts does it work with?", a: "Vercel only, for now." },
     { q: "Which agents does it work with?", a: "Claude Code, Codex and Cursor hear about a break when a session starts. Fixes while nobody is at the keyboard run on Claude Code or Codex." },
     { q: "Does my laptop need to be on?", a: "No. A GitHub job can start the fix on your own Claude plan at any hour. Or the fixer runs on your computer while it’s on." },
     { q: "Can it break or delete anything?", a: "No. Spooky reads Vercel and GitHub read-only and never deletes. Your agent ships a fix only the way your repo’s own rules allow, or opens a pull request." },
-    { q: "How do I hear about it?", a: "Your account email by default. Add your phone, Slack or Teams in a minute." },
+    { q: "How do I hear about it?", a: "Your account email by default. Add ntfy on your phone, Slack or Teams in a minute." },
     { q: "Why is it free?", a: "Your agent does the fixing, on your plan. Spooky watches and connects the two." },
   ],
 } as const;
@@ -113,6 +114,7 @@ export default function Landing() {
       />
       <header className="relative z-[1] mx-auto flex w-full max-w-[1216px] items-center px-4 py-4 sm:px-12 sm:py-6">
         <Wordmark />
+        <LiveCount />
       </header>
 
       <main className="relative z-[1] flex flex-1 flex-col">
@@ -153,23 +155,9 @@ export default function Landing() {
             ))}
           </section>
 
-          <section aria-labelledby="fixes-h" className="mt-24">
-            <h2 id="fixes-h" className="text-[20px] font-medium tracking-[-0.01em] text-fg">
-              {COPY.fixesH}
-            </h2>
-            <ul className="mt-5 border-t border-line-1">
-              {COPY.fixes.map((f) => (
-                <li key={f.date} className="grid grid-cols-[64px_1fr] gap-x-4 gap-y-1 border-b border-line-1 py-4 text-[15px] tabular-nums min-[821px]:grid-cols-[72px_1fr_auto]">
-                  <span className="font-mono text-[13px] leading-[1.7] text-fg-3">{f.date}</span>
-                  <span className="text-fg">
-                    {f.what}
-                    {f.tag ? <span className="ml-2 rounded-full border border-line-2 px-2 py-0.5 font-mono text-[11px] text-fg-3">{f.tag}</span> : null}
-                  </span>
-                  <span className="col-start-2 font-mono text-[13px] leading-[1.7] text-accent min-[821px]:col-start-3">{f.took}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <div className="mt-24">
+            <LiveFixes fallback={COPY.fixes} fallbackTitle={COPY.fixesH} />
+          </div>
 
           <section aria-labelledby="pricing-h" className="mt-24">
             <h2 id="pricing-h" className="text-[20px] font-medium tracking-[-0.01em] text-fg">

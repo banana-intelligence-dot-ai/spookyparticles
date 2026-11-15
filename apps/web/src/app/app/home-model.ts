@@ -18,6 +18,7 @@ import {
   type ClaimLike,
 } from "@/lib/break-guide";
 import type { Catch } from "@/lib/catches";
+import { fixedByAgent as byAgent, medianFixMinutes as medianMinutes } from "@/lib/fix-stats";
 import type { RunRow } from "@/lib/run-history";
 import { duration as fixDuration } from "./catch-log";
 import { plural } from "./data-model";
@@ -42,18 +43,6 @@ export function stillOpen(catches: Catch[]): Catch[] {
   return [...seen.values()];
 }
 
-function medianMinutes(fixed: Catch[]): number | null {
-  const d = fixed
-    .map((c) => (Date.parse(c.fixedAt as string) - Date.parse(c.caughtAt)) / 60_000)
-    .filter((m) => m >= 0)
-    .sort((a, b) => a - b);
-  if (!d.length) return null;
-  const mid = d.length >> 1;
-  return d.length % 2 ? d[mid] : (d[mid - 1] + d[mid]) / 2;
-}
-
-/** A fix counts as your agents' when an agent asked about the break, opened the PR, or confirmed it on production. */
-const byAgent = (c: Catch) => Boolean(c.heardAt || c.confirmedAt || c.fixedBy?.kind === "pr");
 
 export type ValueLine = { watching: string; headline: string; open: string | null; openCount: number; checks: string | null };
 
