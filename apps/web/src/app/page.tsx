@@ -88,7 +88,7 @@ const WEBSITE_LD = {
 
 function WaysIn({ vercelEnabled }: { vercelEnabled: boolean }) {
   return (
-    <div className="flex w-full flex-col items-stretch gap-2.5 min-[821px]:w-auto min-[821px]:flex-row min-[821px]:flex-wrap min-[821px]:items-center min-[821px]:justify-center">
+    <div className="flex w-full flex-col items-stretch gap-3 min-[821px]:w-auto min-[821px]:gap-2.5 min-[821px]:flex-row min-[821px]:flex-wrap min-[821px]:items-center min-[821px]:justify-center">
       <SignIn large ink inline vercelEnabled={vercelEnabled} />
       <PastePrompt prompt={AGENT_PROMPT} />
     </div>
@@ -117,20 +117,20 @@ export default function Landing() {
 
       <main className="relative z-[1] flex flex-1 flex-col">
         {/* First screen: Einstein, the line, two ways in. Nothing else. */}
-        <section className="hero relative mx-auto flex min-h-[72dvh] w-full max-w-[1216px] flex-col items-center justify-center px-4 pb-10 text-center sm:px-12">
+        <section className="hero relative mx-auto flex min-h-[calc(100svh-56px)] w-full max-w-[1216px] flex-col items-center justify-center px-4 pb-10 text-center sm:px-12 min-[821px]:min-h-[72dvh]">
           <div className="hero-portrait" aria-hidden />
           <div className="hero-scrim" aria-hidden />
           <p className="relative font-mono text-[12.5px] leading-[1.5] text-fg-2">
             {COPY.quote}
             <span className="ml-2.5 text-fg-3">{COPY.quoteSource}</span>
           </p>
-          <h1 className="relative mt-7 text-[38px] leading-[1.04] font-medium tracking-[-0.025em] text-fg min-[821px]:mt-9 min-[821px]:text-[64px] min-[821px]:leading-[1.02]">
+          <h1 className="relative mt-10 text-[38px] leading-[1.04] font-medium tracking-[-0.025em] text-fg min-[821px]:mt-9 min-[821px]:text-[64px] min-[821px]:leading-[1.02]">
             {COPY.h1[0]} <span className="block text-fg-2">{COPY.h1[1]}</span>
           </h1>
-          <p className="relative mt-4 max-w-[34ch] text-[16px] leading-[1.55] text-pretty text-fg-2 min-[821px]:mt-5 min-[821px]:max-w-[44ch] min-[821px]:text-[17px]">
+          <p className="relative mt-6 max-w-[34ch] text-[16px] leading-[1.55] text-pretty text-fg-2 min-[821px]:mt-5 min-[821px]:max-w-[44ch] min-[821px]:text-[17px]">
             {COPY.sub[0]} <span className="text-fg">{COPY.sub[1]}</span>
           </p>
-          <div className="relative mt-7 w-full min-[821px]:mt-9 min-[821px]:w-auto">
+          <div className="relative mt-10 w-full min-[821px]:mt-9 min-[821px]:w-auto">
             <Suspense fallback={null}>
               <SignInNotice />
             </Suspense>
