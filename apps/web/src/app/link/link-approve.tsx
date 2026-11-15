@@ -5,10 +5,12 @@
  */
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { apiPost, errorMessage, SIGNED_OUT } from "@/components/use-api";
+import { apiPost, errorMessage, SIGNED_OUT, useApi } from "@/components/use-api";
 import { buttonStyles, surface } from "@/components/ui";
 import { normalizeUserCode } from "@/lib/device-code";
 import { linkReturnTo } from "@/lib/sign-in-notice";
+import { isRunning, type Connection } from "../app/connection-model";
+import { Onboarding, onboardingComplete } from "../app/onboarding";
 
 type Asking = {
   userCode: string;
@@ -80,28 +82,7 @@ export function LinkApprove() {
 
   if (view.kind === "loading") return <p className="text-[14px] text-fg-3">Looking up that code…</p>;
 
-  if (view.kind === "done") {
-    return (
-      <div role="status">
-        <h1 className="text-[24px] leading-[1.2] font-medium tracking-[-0.01em] text-fg">
-          {view.approved ? "Approved. Go back to your terminal." : "Denied. Nothing was shared."}
-        </h1>
-        <p className="mt-3 text-[14px] text-pretty text-fg-2">
-          {view.approved ? (
-            <>
-              The agent picks up its own read key there. You can see it and revoke it any time under{" "}
-              <a href="/app/connections" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
-                Connected agents
-              </a>
-              .
-            </>
-          ) : (
-            "You can close this tab."
-          )}
-        </p>
-      </div>
-    );
-  }
+  if (view.kind === "done") return view.approved ? <ApprovedNext /> : <Denied />;
 
   if (view.kind === "ask") {
     const { req } = view;
@@ -178,6 +159,63 @@ export function LinkApprove() {
         </button>
       </form>
       {error ? <p className="mt-3 text-[14px] text-red">{error}</p> : null}
+    </div>
+  );
+}
+
+function Denied() {
+  return (
+    <div role="status">
+      <h1 className="text-[24px] leading-[1.2] font-medium tracking-[-0.01em] text-fg">Denied. Nothing was shared.</h1>
+      <p className="mt-3 text-[14px] text-pretty text-fg-2">You can close this tab.</p>
+    </div>
+  );
+}
+
+const revokeNote = (
+  <>
+    You can see its key and revoke it any time under{" "}
+    <a href="/app/connections" className="text-fg underline decoration-line-3 underline-offset-4 hover:decoration-fg">
+      Connected agents
+    </a>
+    .
+  </>
+);
+
+/**
+ * After Approve, the same page carries the rest of setup: connect GitHub and Vercel here, and the
+ * agent waiting in the terminal picks up when both finish a first read. Once both are synced it
+ * says go back to the terminal, which is all a returning user ever sees.
+ */
+function ApprovedNext() {
+  const conns = useApi<{ connections: Connection[] }>("/api/v1/connections", {
+    pollMs: (d) => (d?.connections.some((c) => isRunning(c.sync)) ? 5000 : null),
+  });
+  const params = useSearchParams();
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => setNow(Date.now()), [conns.data]);
+  const list = conns.data?.connections ?? null;
+
+  if (!list || now === null || onboardingComplete(list)) {
+    return (
+      <div role="status">
+        <h1 className="text-[24px] leading-[1.2] font-medium tracking-[-0.01em] text-fg">Approved. Go back to your terminal.</h1>
+        <p className="mt-3 text-[14px] text-pretty text-fg-2">Your agent has its read key now. {revokeNote}</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div role="status">
+        <h1 className="text-[24px] leading-[1.2] font-medium tracking-[-0.01em] text-balance text-fg">Approved. Now connect GitHub and Vercel.</h1>
+        <p className="mt-3 text-[14px] text-pretty text-fg-2">
+          Both are read-only. Your agent is waiting in the terminal and shows you what it found once both finish their first read.
+        </p>
+      </div>
+      <div className="mt-8">
+        <Onboarding connections={list} params={params} now={now} />
+      </div>
+      <p className="text-[14px] text-pretty text-fg-3">{revokeNote}</p>
     </div>
   );
 }

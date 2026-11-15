@@ -15,8 +15,8 @@ You never hold the person's Vercel or GitHub access. Your only credential is an 
 
 ## Setup
 
-1. Check that `SPOOKY_API_KEY` is set in your environment. Never print it. Never ask for it in chat.
-2. If it is missing, follow https://spookyparticles.com/setup.md. The person makes the key themselves. It needs the **write** scope to take findings or record service sign-ups. A **read** key can still look.
+1. Check that `SPOOKY_API_KEY` is set in your environment, or that this computer is already signed in (`sh ~/spookyparticles/scripts/spooky.sh status` answers). Never print the key. Never ask for it in chat.
+2. If neither, follow https://spookyparticles.com/setup.md. Its `sh scripts/spooky.sh start` shows the person a sign-in code; they approve it in their browser and a **read** key is saved on this computer, never in chat. A read key can look. Taking findings or recording service sign-ups needs a **write** key, which the person makes under Connections and exports as `SPOOKY_API_KEY` themselves.
 3. Connect the tools. In Claude Code:
 
 ```bash

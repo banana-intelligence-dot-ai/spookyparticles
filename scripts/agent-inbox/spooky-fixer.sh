@@ -5,9 +5,9 @@
 # that nobody has claimed, it claims it, runs your own agent headless in that repo, then asks
 # Spooky to check production. Opt-in, runs on your machine, uses your agent subscription.
 #
-# One-time setup, then start. It signs this computer in first: you approve a code in your
-# browser, and the key it gets is saved in the macOS Keychain.
-#   sh spooky-fixer.sh --setup --start
+# One-time setup. It signs this computer in first: you approve a code in your browser,
+# and the key it gets is saved in the macOS Keychain. Then run the start line it prints.
+#   sh spooky-fixer.sh --setup
 # Setup lists your GitHub repos from Spooky, clones the ones you keep into ~/spooky-fixer
 # (or --dir), writes ~/spooky-fixer/fixer.conf, finds claude or codex, and prints the start line.
 #
@@ -225,6 +225,12 @@ key_saved=false
 if [ -z "$SPOOKY_API_KEY" ]; then
   SPOOKY_API_KEY=$(load_key | tr -d ' \t\r\n')
   case "$SPOOKY_API_KEY" in sp_?*) key_saved=true ;; *) SPOOKY_API_KEY= ;; esac
+fi
+# Used by scripts/spooky.sh start --sign-in-again. Keep the old saved key until the new
+# sign-in succeeds, then store_key replaces it.
+if [ "${SPOOKY_SIGN_IN_AGAIN:-}" = 1 ] && [ "$sign_in_only" = true ]; then
+  SPOOKY_API_KEY=
+  key_saved=false
 fi
 # A saved key that Spooky no longer accepts (revoked or expired) is dropped, so sign-in runs again.
 if [ "$key_saved" = true ] && ! key_ok "$SPOOKY_API_KEY"; then

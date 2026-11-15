@@ -49,12 +49,13 @@ all="$*"
 input=$(cat)
 [ -n "${SPOOKY_API_KEY:-}" ] && case "$all" in *"$SPOOKY_API_KEY"*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
 case "$all" in *sp_DEVICEkey*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
-method=GET url= project= push=false
+method=GET url= project= push=false write_status=false
 while [ $# -gt 0 ]; do
   case "$1" in
     -X) method=$2; shift ;;
     --data-urlencode) case "$2" in project=*) project=${2#project=} ;; esac; shift ;;
     -K) push=true; shift ;;
+    -w) write_status=true; shift ;;
     -H|-d|-m|-o) shift ;;
     http*) url=$1 ;;
   esac
@@ -77,12 +78,33 @@ case "$url" in
     else echo '{"key":"sp_DEVICEkey-SECRET-777","name":"Claude Code on test","prefix":"sp_DEVI","scopes":["read"]}'; fi
     exit 0 ;;
 esac
-[ "$input" = "Authorization: Bearer $SPOOKY_API_KEY" ] || [ "$input" = "Authorization: Bearer sp_DEVICEkey-SECRET-777" ] \
+expected_key=${SPOOKY_API_KEY:-}
+[ -n "$expected_key" ] || expected_key=$(cat "$FAKE/keychain" 2>/dev/null) || expected_key=
+[ -n "$expected_key" ] || expected_key=$(cat "$HOME/.config/spooky/agent-key" 2>/dev/null) || expected_key=
+[ -n "$expected_key" ] && case "$all" in *"$expected_key"*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
+[ "$input" = "Authorization: Bearer $expected_key" ] || [ "$input" = "Authorization: Bearer sp_DEVICEkey-SECRET-777" ] \
   || { echo "bad auth" >> "$FAKE/calls"; exit 22; }
 file=$(printf '%s' "$project" | tr / _)
 case "$method $url" in
-  "GET "*/api/v1/me) [ -e "$FAKE/reject-key" ] && exit 22; echo '{}' ;;
+  "GET "*/api/v1/me)
+    [ -e "$FAKE/reject-key" ] && exit 22
+    if [ "$write_status" = true ]; then printf '200'; else echo '{}'; fi ;;
+  "GET "*/api/v1/setup\?format=text)
+    n=$(cat "$FAKE/setup-polls" 2>/dev/null || echo 0)
+    ready_after=$(cat "$FAKE/setup-ready-after" 2>/dev/null || echo 1)
+    if [ "$n" -ge "$ready_after" ]; then
+      printf 'GitHub: synced\nVercel: synced\nBroken now: 0\nScheduled jobs: 2 watched, 0 needs a look\nStill on another host: 0\nNext: All clear.\n'
+    else
+      printf 'GitHub: synced\nVercel: syncing\nBroken now: 0\nScheduled jobs: 2 watched, 0 needs a look\nStill on another host: 0\nNext: First read is running.\n'
+    fi ;;
+  "GET "*/api/v1/setup)
+    n=$(( $(cat "$FAKE/setup-polls" 2>/dev/null || echo 0) + 1 )); printf '%s\n' "$n" > "$FAKE/setup-polls"
+    echo "setup json" >> "$FAKE/calls"
+    ready_after=$(cat "$FAKE/setup-ready-after" 2>/dev/null || echo 1)
+    if [ "$n" -ge "$ready_after" ]; then echo '{"ready":true,"github":"synced","vercel":"synced"}'
+    else echo '{"ready":false,"github":"synced","vercel":"syncing"}'; fi ;;
   "GET "*/api/v1/projects) echo "projects" >> "$FAKE/calls"; cat "$FAKE/projects.json" ;;
+  "GET "*/api/v1/incidents\?format=text) cat "$FAKE/incidents-all.txt" 2>/dev/null ;;
   "GET "*/api/v1/incidents) cat "$FAKE/incidents-$file.txt" 2>/dev/null ;;
   "POST "*/api/v1/incidents/claim) echo "claim $project" >> "$FAKE/calls"; cat "$FAKE/claim.txt" ;;
   "POST "*/api/v1/incidents/confirm) echo "confirm $project" >> "$FAKE/calls"; cat "$FAKE/confirm.txt" ;;
@@ -145,7 +167,11 @@ cat > "$HOME/bin/open" <<'EOF'
 #!/bin/sh
 echo "open $*" >> "$FAKE/calls"
 EOF
-chmod +x "$HOME/bin/curl" "$HOME/bin/claude" "$HOME/bin/codex" "$HOME/bin/gh" "$HOME/bin/git" "$HOME/bin/pbpaste" "$HOME/bin/security" "$HOME/bin/open"
+cat > "$HOME/bin/sleep" <<'EOF'
+#!/bin/sh
+echo "sleep $*" >> "$FAKE/calls"
+EOF
+chmod +x "$HOME/bin/curl" "$HOME/bin/claude" "$HOME/bin/codex" "$HOME/bin/gh" "$HOME/bin/git" "$HOME/bin/pbpaste" "$HOME/bin/security" "$HOME/bin/open" "$HOME/bin/sleep"
 
 deploy_block() {
   cat <<EOF
@@ -164,6 +190,27 @@ EOF
 }
 count() { grep -c "^$1\$" "$FAKE/calls" 2>/dev/null || true; }
 fixer() { sh "$here/spooky-fixer.sh" --once "$@" >> "$FAKE/out" 2>&1; }
+
+# One command: the environment key is used without appearing in output, status is plain text,
+# and start keeps polling until both connections have finished their first read.
+SPOOKY_API_KEY="sp_CLI-SECRET-env-24680"
+export SPOOKY_API_KEY
+printf '2\n' > "$FAKE/setup-ready-after"
+: > "$FAKE/setup-polls"
+sh "$here/../spooky.sh" status > "$FAKE/spooky-out" 2>&1 || fail "spooky status failed"
+grep -q '^GitHub: synced$' "$FAKE/spooky-out" || fail "status did not print setup text"
+sh "$here/../spooky.sh" start >> "$FAKE/spooky-out" 2>&1 || fail "spooky start failed"
+[ "$(count 'setup json')" -ge 2 ] || fail "start did not wait for ready"
+grep -q 'Waiting for GitHub and Vercel' "$FAKE/spooky-out" || fail "start printed no wait progress"
+grep -q '^Vercel: synced$' "$FAKE/spooky-out" || fail "start did not print final status"
+if grep -q 'sp_CLI-SECRET' "$FAKE/spooky-out"; then fail "spooky printed the environment key"; fi
+
+# With no environment key, status loads the fake Keychain entry and still keeps it out of output.
+unset SPOOKY_API_KEY
+printf 'sp_CLI-SECRET-keychain-13579\n' > "$FAKE/keychain"
+sh "$here/../spooky.sh" status >> "$FAKE/spooky-out" 2>&1 || fail "spooky status with Keychain key failed"
+if grep -q 'sp_CLI-SECRET' "$FAKE/spooky-out"; then fail "spooky printed a saved key"; fi
+rm -f "$FAKE/keychain"
 
 SPOOKY_API_KEY="sp_k3y-SECRET-value-98765"
 SPOOKY_NTFY_TOPIC="topic-SECRET-4242"
