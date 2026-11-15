@@ -15,7 +15,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
 ## Before you start
 
-1. Check whether \`SPOOKY_API_KEY\` is set in your environment. Never print its value.
+1. Check whether \`SPOOKY_API_KEY\` is set without printing it: \`[ -n "\${SPOOKY_API_KEY:-}" ] && echo set\`.
 2. If you find \`SPOOKY_API_KEY\` (starts with \`sp_\`) already set, skip to **Existing setup**.
 3. Do not wait on questions (the one exception is the fixer offer in step 6). Ask them to connect every GitHub account and organization they deploy from. Ask only when something on the way is unclear.
 
@@ -43,20 +43,20 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
    sh scripts/spooky.sh start
    \`\`\`
 
-   It prints a code and opens ${base}/link in their browser. Tell your human the code and ask them to:
+   It prints a code and a link, and opens the link in their browser on a Mac. If no browser opens (Linux, ssh), send them the printed link. The code lasts 10 minutes; if it expires, run \`start\` again for a new one. Tell your human the code and ask them to:
    1. Sign in with **Continue with Vercel** if asked.
    2. Check the code matches, then click **Approve**. The key it makes is read-only, belongs to this computer, is saved in the macOS Keychain (elsewhere, a file only they can read), and can be revoked under Connections.
    3. On the same page, click **Install on GitHub** and choose the repositories (all is fine; read-only: metadata, deployments and Actions runs).
-   4. Click **Connect Vercel**. **Install on Vercel** is one click with Vercel-set read scopes. Pasting a token instead also watches schedules with no code change, because Vercel's integration scopes do not include request history yet. Either works; they can add the other later.
+   4. Click **Connect Vercel**. **Install on Vercel** is one click with Vercel-set read scopes. Pasting a token instead also watches schedules with no code change, because Vercel's integration scopes do not include request history yet. Either works; they can add the other later. You stay out of that page.
 
    Never ask for a token in chat and never accept one if offered; the human pastes it on that page and nobody else sees it. A pasted Vercel token cannot be made read-only by Vercel, so read-only is enforced in Spooky Particles' code: it sends GET requests, plus one read-only query of request history that shows whether each schedule ran. Say that if they ask.
 
    - Exit 0: connected. It printed the status and what is broken now.
-   - Exit 3: still waiting after 15 minutes; it names what is missing. Send ${base}/app and run \`sh scripts/spooky.sh status\` after they finish.
-   - \`401\`: the key was revoked. Run \`sh scripts/spooky.sh start --sign-in-again\`. Anything else: show your human the exact text.
+   - Exit 3: still waiting after 15 minutes; it says whether GitHub or Vercel is still waiting. Send ${base}/app and run \`sh scripts/spooky.sh status\` after they finish.
+   - Exit 1: it prints why. If the key was revoked or wrong, run \`sh scripts/spooky.sh start --sign-in-again\`. Anything else: show your human the exact text.
    - If it says this Spooky has no agent sign-in, ask them to make a key under ${base}/app/connections → **Connect an agent** → **Make key** and export it as \`SPOOKY_API_KEY\` themselves.
 
-4. Show your human what it printed, with the source of each number. If it lists anything still on another host, offer to walk them through moving one: \`GET ${base}/api/v1/elsewhere\` gives each project's Vercel import link and the matching migration guide.
+4. Show your human what it printed, with the source of each number. If it lists anything still on another host, offer to walk them through moving one: \`GET ${base}/api/v1/elsewhere\` (load the key as in **Your own calls**) gives each project's Vercel import link and the matching migration guide.
 5. Turn on agent alerts, so Claude Code, Cursor and Codex hear about a break when a session starts:
 
    \`\`\`bash
@@ -71,6 +71,16 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
    Then hand your human the start line it prints, to run in their own terminal. Do not start it yourself. Never put a key in a file or in chat.
 7. Tell them alerts already reach their account email, and that they can add a phone, Slack or Teams channel on ${base}/app/jobs.
+
+## Report back
+
+Finish with a short message in this shape:
+
+- What was done: which Vercel and GitHub accounts are connected, that this computer is signed in, what \`start\` printed, and whether agent alerts and the fixer are on.
+- What the human must do: anything left from the list above, with the exact link.
+- Next steps (at most two): for example "check back in 10 minutes for the first findings" or "connect a GitHub organization".
+
+Setup ends here. Everything below is reference for later.
 
 ## Your own calls
 
@@ -214,14 +224,6 @@ printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -
 - Approve a sign-in code, and connect, rotate or revoke agents and their keys.
 - Act on a finding: cancel a plan, update a card, renew a domain, change DNS, delete anything, send any email.
 - Approve anything that costs money.
-
-## Report back
-
-Finish with a short message in this shape:
-
-- What was done: which Vercel and GitHub accounts are connected, that this computer is signed in, what \`start\` printed, and whether agent alerts and the fixer are on.
-- What the human must do: anything left from the list above, with the exact link.
-- Next steps (at most two): for example "check back in 10 minutes for the first findings" or "connect a GitHub organization".
 
 ## What this gives you
 
