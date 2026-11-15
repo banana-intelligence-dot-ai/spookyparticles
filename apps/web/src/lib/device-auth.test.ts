@@ -333,12 +333,28 @@ describe("approve and lookup", () => {
     expect(JSON.stringify(got)).not.toContain(sha256Hex(body.deviceCode));
   });
 
-  it("requires a browser session: an API key is refused", async () => {
+  it("lets an approve-scope key approve and name it in the audit", async () => {
     const { body } = await start();
     actor = keyActor;
     const r = await decide(body.userCode, true);
+    expect(r).toEqual({ status: 200, body: { status: "approved" } });
+    expect(deps.audit).toHaveBeenCalledWith(expect.objectContaining({ actor: "api_key:k1", action: "device.approved" }));
+    const look = await routes.lookup(new Request(`https://spookyparticles.com/api/v1/device/approve?userCode=${body.userCode}`), undefined);
+    expect(look.status).toBe(200);
+  });
+
+  it("refuses a write-only key", async () => {
+    const { body } = await start();
+    actor = { ...keyActor, scopes: ["read", "write"] };
+    deps.requireActor = vi.fn(async (_req, scope) => {
+      if (!actor) throw new ApiError(401, "unauthenticated", "Sign in or send an API key");
+      if (!actor.scopes.includes(scope)) throw new ApiError(403, "insufficient_scope", "This key lacks the approve scope");
+      return actor;
+    });
+    routes = wire(deps);
+    const r = await decide(body.userCode, true);
     expect(r.status).toBe(403);
-    expect(r.body.error.code).toBe("session_required");
+    expect(r.body.error.code).toBe("insufficient_scope");
     const look = await routes.lookup(new Request(`https://spookyparticles.com/api/v1/device/approve?userCode=${body.userCode}`), undefined);
     expect(look.status).toBe(403);
     actor = null;

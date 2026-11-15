@@ -3,7 +3,7 @@
  * Each delivery is one HTTP call with a timeout; nothing here throws. Targets are the
  * user's own topic, webhook URL or address, encrypted at rest and shown masked.
  */
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, gte } from "drizzle-orm";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { getDb, schema } from "@/db";
@@ -11,6 +11,9 @@ import { appendAudit } from "@/lib/audit";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { sendEmail } from "./email";
 import { pagerEnabled } from "@/lib/pager";
+import { appUrl } from "@/lib/env";
+import { ApiError } from "@/lib/http";
+import type { Actor } from "@/lib/actor";
 
 export type ChannelKind = "ntfy" | "slack" | "teams" | "email" | "github";
 export type Notice = { subject: string; text: string; html?: string; link?: string | null; priority?: "high" | "default" | "low" };
@@ -187,7 +190,7 @@ export async function listChannels(userId: string): Promise<ChannelView[]> {
   return rows.map((r) => ({ id: r.id, kind: r.kind, label: r.label, project: r.project, enabled: r.enabled, lastOkAt: r.lastOkAt?.toISOString() ?? null, lastError: r.lastError, createdAt: r.createdAt.toISOString() }));
 }
 
-export async function addChannel(userId: string, kind: ChannelKind, raw: string, project: string | null = null): Promise<{ ok: true; channel: ChannelView } | { ok: false; reason: string }> {
+export async function addChannel(userId: string, kind: ChannelKind, raw: string, project: string | null = null, actor = `user:${userId}`): Promise<{ ok: true; channel: ChannelView } | { ok: false; reason: string }> {
   const v = validateTarget(kind, raw);
   if (!v.ok) return v;
   const sealed = encrypt(v.target);
@@ -196,21 +199,42 @@ export async function addChannel(userId: string, kind: ChannelKind, raw: string,
     .values({ userId, kind, label: v.label, project, encryptedTarget: sealed.ciphertext, keyId: sealed.keyId })
     .returning();
   // Audit the channel id and kind only, never the secret address.
-  await appendAudit({ actor: `user:${userId}`, userId, action: "alert_channel.added", target: `alert_channel:${row.id}`, after: { kind: row.kind } });
+  await appendAudit({ actor, userId, action: "alert_channel.added", target: `alert_channel:${row.id}`, after: { kind: row.kind } });
   return { ok: true, channel: { id: row.id, kind: row.kind, label: row.label, project: row.project, enabled: row.enabled, lastOkAt: null, lastError: null, createdAt: row.createdAt.toISOString() } };
 }
 
-export async function updateChannelProject(userId: string, id: string, project: string | null): Promise<ChannelView | null> {
+export async function updateChannelProject(userId: string, id: string, project: string | null, actor = `user:${userId}`): Promise<ChannelView | null> {
   const [row] = await getDb().update(schema.alertChannels).set({ project }).where(and(eq(schema.alertChannels.userId, userId), eq(schema.alertChannels.id, id))).returning();
   if (!row) return null;
-  await appendAudit({ actor: `user:${userId}`, userId, action: "alert_channel.updated", target: `alert_channel:${id}`, after: { project } });
+  await appendAudit({ actor, userId, action: "alert_channel.updated", target: `alert_channel:${id}`, after: { project } });
   return { id: row.id, kind: row.kind, label: row.label, project: row.project, enabled: row.enabled, lastOkAt: row.lastOkAt?.toISOString() ?? null, lastError: row.lastError, createdAt: row.createdAt.toISOString() };
 }
 
-export async function removeChannel(userId: string, id: string): Promise<boolean> {
+export async function removeChannel(userId: string, id: string, actor = `user:${userId}`): Promise<boolean> {
   const r = await getDb().delete(schema.alertChannels).where(and(eq(schema.alertChannels.userId, userId), eq(schema.alertChannels.id, id))).returning({ id: schema.alertChannels.id });
-  if (r.length > 0) await appendAudit({ actor: `user:${userId}`, userId, action: "alert_channel.removed", target: `alert_channel:${id}` });
+  if (r.length > 0) await appendAudit({ actor, userId, action: "alert_channel.removed", target: `alert_channel:${id}` });
   return r.length > 0;
+}
+
+const TESTS_PER_HOUR = 10;
+
+export async function testChannel(actor: Actor, id: string) {
+  const [c] = await getDb().select().from(schema.alertChannels).where(and(eq(schema.alertChannels.userId, actor.userId), eq(schema.alertChannels.id, id))).limit(1);
+  if (!c) throw new ApiError(404, "not_found", "No such channel");
+  // A test goes to an address the caller chose, so cap it: a looping agent must not turn this into a mail cannon.
+  const [recent] = await getDb().select({ n: count() }).from(schema.auditLog)
+    .where(and(eq(schema.auditLog.userId, actor.userId), eq(schema.auditLog.action, "alert_channel.tested"), gte(schema.auditLog.createdAt, new Date(Date.now() - 3_600_000))));
+  if ((recent?.n ?? 0) >= TESTS_PER_HOUR) throw new ApiError(429, "too_many_tests", `At most ${TESTS_PER_HOUR} test notices an hour. Try again later.`);
+  const r = await deliverTo(c.kind, decrypt(c.encryptedTarget), {
+    subject: "Spooky Particles: test alert",
+    text: "This is what a quiet-job or failed-deploy alert looks like here. Nothing is wrong.",
+    link: new URL("/app/jobs", appUrl()).toString(),
+    priority: "default",
+  });
+  await getDb().update(schema.alertChannels).set(r.ok ? { lastOkAt: new Date(), lastError: null } : { lastError: (r.reason ?? "failed").slice(0, 120) }).where(eq(schema.alertChannels.id, id));
+  await appendAudit({ actor: actor.label, userId: actor.userId, action: "alert_channel.tested", target: `alert_channel:${id}`, after: { ok: r.ok } });
+  if (!r.ok) throw new ApiError(502, "delivery_failed", `The channel did not accept it: ${r.reason ?? "unknown"}`);
+  return { sent: true };
 }
 
 /**

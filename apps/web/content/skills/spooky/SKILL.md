@@ -16,7 +16,7 @@ You never hold the person's Vercel or GitHub access. Your only credential is an 
 ## Setup
 
 1. Check that `SPOOKY_API_KEY` is set in your environment, or that this computer is already signed in (`sh ~/spookyparticles/scripts/spooky.sh status` answers). Never print the key. Never ask for it in chat.
-2. If neither, follow https://spookyparticles.com/setup.md. Its `sh scripts/spooky.sh start` shows the person a sign-in code; they approve it in their browser and a **read** key is saved on this computer, never in chat. A read key can look. Taking findings or recording service sign-ups needs a **write** key, which the person makes on the Agents page and exports as `SPOOKY_API_KEY` themselves.
+2. If neither, follow https://spookyparticles.com/setup.md. Its `sh scripts/spooky.sh start` shows the person a sign-in code; they approve it in their browser and a **read** key is saved on this computer, never in chat. A read key can look. Taking findings or recording service sign-ups needs a **write** key, which the person makes on the Agents page and exports as `SPOOKY_API_KEY` themselves. A full control key can manage keys, approve another agent's sign-in and schedule account deletion.
 3. Connect the tools. In Claude Code:
 
 ```bash
@@ -24,6 +24,8 @@ claude mcp add --transport http spooky https://spookyparticles.com/api/mcp --hea
 ```
 
 Other agents: an HTTP MCP server at `https://spookyparticles.com/api/mcp` with the header `Authorization: Bearer $SPOOKY_API_KEY`.
+
+Read tools look at account data. Write tools can add, change, test and remove alert channels (`add_alert_channel`, `update_alert_channel`, `test_alert_channel`, `remove_alert_channel`), send a sample alert (`send_test_alert`), delete jobs and expirations (`delete_job`, `delete_expiration`), dismiss and restore checks (`dismiss_check`, `restore_check`), and disconnect accounts (`revoke_connection`). Prefer `retire_job` when you may need the job again. Full control adds `list_api_keys`, `create_api_key`, `revoke_api_key`, `approve_agent_sign_in`, `delete_account`, `cancel_account_deletion` and `account_deletion_status`. Only schedule account deletion when your person asked in plain words. Every change is audited.
 
 ## One finding per run
 
@@ -53,7 +55,7 @@ Each finding belongs to one item of the Spooky Standard, and each item has its o
 - Pull requests only. Never merge. Never push to the default branch. Never turn on auto-merge.
 - One finding per run. If `next_finding` returns the same finding again, you have not reported on it yet.
 - Each finding gets three tries. After that it waits for a person.
-- Never read, print, create or guess a secret value. If a fix needs a new secret, the person creates it.
+- Never print or guess a host secret value. Agent keys made through `create_api_key` are returned once and must be handled as credentials. If a fix needs a new host secret, the person creates it.
 - Never change Vercel settings, DNS, billing or anything outside the repo.
 - After a service sign-up, use `record_service` with the Vercel project name. Never include a key or secret value in the note.
 - If `next_finding` returns nothing, say so and stop. `list_findings` shows what is open, what passed and what could not be checked.

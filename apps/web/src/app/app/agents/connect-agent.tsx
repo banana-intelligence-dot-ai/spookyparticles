@@ -1,7 +1,7 @@
 "use client";
 /**
  * Connecting an agent: the setup prompt to paste, then a key the human makes here. Read only by
- * default; write is a choice on the form, and it still cannot delete or see a secret. A key is
+ * default; write and full control are choices on the form. A key is
  * shown once, then only its prefix. Revoking keeps the row, so the history stays.
  */
 import { useState } from "react";
@@ -27,11 +27,12 @@ export type NewKey = {
   key: string;
   expiresAt?: string | null;
 };
-export type KeyAccess = "read" | "write";
+export type KeyAccess = "read" | "write" | "full";
 
 const ACCESS: { key: KeyAccess; label: string }[] = [
   { key: "read", label: "Read only" },
   { key: "write", label: "Read and write" },
+  { key: "full", label: "Full control" },
 ];
 
 export const SETUP_PROMPT =
@@ -40,9 +41,9 @@ export const SETUP_PROMPT =
 const SCOPE_WORD: Record<string, string> = {
   read: "read only",
   write: "write",
-  approve: "approve",
+  approve: "full control",
 };
-export const scopeWords = (scopes: string[]) => (scopes.includes("write") ? ["read and write", ...scopes.filter((s) => s !== "read" && s !== "write").map((s) => SCOPE_WORD[s] ?? s)] : scopes.map((s) => SCOPE_WORD[s] ?? s)).join(", ");
+export const scopeWords = (scopes: string[]) => scopes.includes("approve") ? "full control" : scopes.includes("write") ? "read and write" : scopes.map((s) => SCOPE_WORD[s] ?? s).join(", ");
 
 /** The two steps: paste the prompt, make the key. Closes itself with Done or Cancel. */
 export function ConnectAgent({
@@ -101,7 +102,7 @@ export function ConnectAgent({
             <div className="mt-3">
               <p className="text-[14px] text-fg-2">
                 Key for <span className="text-fg">{made.name}</span>,{" "}
-                {made.scopes.map((s) => SCOPE_WORD[s] ?? s).join(", ")}:
+                {scopeWords(made.scopes)}:
               </p>
               <div className="mt-2 flex items-center gap-1 rounded-lg border border-line-3 bg-bg-deep/60 py-2 pr-1.5 pl-3">
                 <code className="min-w-0 flex-1 truncate font-mono text-[14px] text-fg">
@@ -132,8 +133,8 @@ export function ConnectAgent({
                 void create();
               }}
             >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <label className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:min-w-56">
                   <span className="text-[12px] text-fg-2">Agent name</span>
                   <input
                     value={name}
@@ -180,9 +181,11 @@ export function ConnectAgent({
                 </div>
               </div>
               <p className="max-w-[62ch] text-[14px] leading-[1.5] text-pretty text-fg-2">
-                {access === "write"
-                  ? "Write lets it add check-in jobs and alert channels, start a sync, and mark a finding. It still cannot delete anything or see a secret, and every change lands in your audit log."
-                  : "Read only sees your map, deploys, costs and jobs. Pick read and write for an agent that should register its own scheduled jobs."}
+                {access === "full"
+                  ? "Full control adds making and revoking agent keys, approving another agent's sign-in, and deleting the account. Give it only to an agent you would hand your own login. Every change lands in your audit log."
+                  : access === "write"
+                    ? "Write lets it add, change and remove check-in jobs, expirations and alert channels, start a sync, mark or dismiss a finding, and disconnect an account. It cannot make keys or delete the account, and every change lands in your audit log."
+                    : "Read only sees your map, deploys, costs and jobs. Pick read and write for an agent that should register its own scheduled jobs."}
               </p>
             </form>
           )}

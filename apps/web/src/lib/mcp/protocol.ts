@@ -2,7 +2,7 @@
 export type Tool = {
   description: string;
   inputSchema: { type: "object"; properties: Record<string, unknown>; required?: string[]; additionalProperties: false };
-  annotations: { readOnlyHint: true } | { readOnlyHint: false; destructiveHint: false; idempotentHint: false; openWorldHint: false };
+  annotations: { readOnlyHint: true } | { readOnlyHint: false; destructiveHint: boolean; idempotentHint: false; openWorldHint: false };
   validate: (input: Record<string, unknown>) => string | null;
   run: (input: Record<string, unknown>) => Promise<object>;
 };

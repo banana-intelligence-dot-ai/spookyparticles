@@ -1,4 +1,4 @@
-/** Agent sign-in, step 2: a signed-in browser reads who is asking (GET) and approves or denies (POST). */
+/** Agent sign-in, step 2: an approver reads who is asking and approves or denies. */
 import { deviceHandlers } from "@/lib/device-auth-db";
 import { api } from "@/lib/http";
 

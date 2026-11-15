@@ -96,7 +96,9 @@ Check-ins, check findings, recorded services and expiration dates need a **write
 
 ## Connect over MCP
 
-If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Twenty-one read tools: \`public_feed\`, \`list_expirations\`, \`whats_broken\`, \`did_my_push_land\`, \`claim_break\`, \`confirm_fix\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_connections\`, \`list_alert_channels\`, \`job_history\`, \`recent_activity\`, \`open_items\`, \`fix_history\`, \`list_agents\`, \`list_mutes\`, \`export_data\` and \`help\`. A write key also gets twenty-one more: \`next_finding\`, \`report_finding\`, \`record_service\`, \`create_job\`, \`update_job\`, \`retire_job\`, \`restore_job\`, \`clear_notice\`, \`restore_notice\`, \`mute\`, \`unmute\`, \`ignore_break\`, \`unignore_break\`, \`set_suggestion_status\`, \`add_expiration\`, \`update_expiration\`, \`set_vendor_scope\`, \`recompute_spend_findings\`, \`read_billing_mail\`, \`set_public_feed\` and \`sync_connection\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
+Read keys can look at account data. Write keys can change and remove Spooky records, including jobs, expirations, alert channels, findings and connections. Full control keys add key management, agent sign-in approval and account deletion. Every change is audited.
+
+If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Twenty-one read tools: \`public_feed\`, \`list_expirations\`, \`whats_broken\`, \`did_my_push_land\`, \`claim_break\`, \`confirm_fix\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_connections\`, \`list_alert_channels\`, \`job_history\`, \`recent_activity\`, \`open_items\`, \`fix_history\`, \`list_agents\`, \`list_mutes\`, \`export_data\` and \`help\`. Write keys get thirty-one more: \`next_finding\`, \`report_finding\`, \`record_service\`, \`create_job\`, \`update_job\`, \`retire_job\`, \`restore_job\`, \`clear_notice\`, \`restore_notice\`, \`mute\`, \`unmute\`, \`ignore_break\`, \`unignore_break\`, \`set_suggestion_status\`, \`add_expiration\`, \`update_expiration\`, \`set_vendor_scope\`, \`recompute_spend_findings\`, \`read_billing_mail\`, \`set_public_feed\`, \`sync_connection\`, \`add_alert_channel\`, \`update_alert_channel\`, \`remove_alert_channel\`, \`test_alert_channel\`, \`send_test_alert\`, \`delete_job\`, \`delete_expiration\`, \`dismiss_check\`, \`restore_check\` and \`revoke_connection\`. Full control keys get seven more: \`list_api_keys\`, \`create_api_key\`, \`revoke_api_key\`, \`approve_agent_sign_in\`, \`delete_account\`, \`cancel_account_deletion\` and \`account_deletion_status\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
 
 \`\`\`bash
 claude mcp add --transport http spooky ${base}/api/mcp --header "Authorization: Bearer $SPOOKY_API_KEY"
@@ -218,12 +220,11 @@ printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -
 2. If a connection needs attention, send ${base}/app/settings and ask the human to follow its instructions.
 3. If agent alerts or the fixer are not on yet, do steps 5 and 6.
 
-## Things only your human may do
+## Things that need your human's own login
 
-- Click any sign-in, consent, install or reconnect link.
-- Approve a sign-in code, and connect, rotate or revoke agents and their keys.
-- Act on a finding: cancel a plan, update a card, renew a domain, change DNS, delete anything, send any email.
-- Approve anything that costs money.
+- Sign in to Vercel or GitHub to connect an account, and click consent or reconnect links.
+- Act outside Spooky: cancel a plan, update a card, renew a domain, change DNS or approve a cost.
+- Make or change host secrets and account credentials. Never ask for those values in chat.
 
 ## What this gives you
 

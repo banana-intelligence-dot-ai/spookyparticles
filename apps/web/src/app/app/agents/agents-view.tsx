@@ -25,7 +25,7 @@ export function AgentsView() {
   useEffect(() => setNow(Date.now()), [agents.data]);
 
   const create: Create = async (name, access, expiresOn) => {
-    const r = await apiPost<{ apiKey?: NewKey } & Partial<NewKey>>("/api/v1/api-keys", { name, scopes: access === "write" ? ["read", "write"] : ["read"], expiresOn });
+    const r = await apiPost<{ apiKey?: NewKey } & Partial<NewKey>>("/api/v1/api-keys", { name, scopes: access === "full" ? ["read", "write", "approve"] : access === "write" ? ["read", "write"] : ["read"], expiresOn });
     if (!r.ok || !r.data) return r.error ?? "That key wasn't made. Try again.";
     await agents.reload();
     return (r.data.apiKey ?? r.data) as NewKey;

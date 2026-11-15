@@ -2,7 +2,7 @@
  * Agent sign-in, shaped like OAuth device authorization (RFC 8628) and `gh auth login`.
  *
  * 1. An agent's setup script calls start: it gets a secret deviceCode and a short userCode.
- * 2. The human opens /link while signed in, checks the code matches the terminal, and approves.
+ * 2. A signed-in person or an approve-scope key checks the code and approves.
  * 3. The script polls token with its deviceCode and, once approved, receives its own read key.
  *
  * Storage is the auth library's `verification` table (no migration): one row per request,
@@ -128,7 +128,7 @@ export function pollTransition(record: DeviceRecord, now: Date): PollOutcome {
   }
 }
 
-/** The human's decision. Only a pending request can be decided, and only once. */
+/** An authorized caller's decision. Only a pending request can be decided, and only once. */
 export function decideTransition(record: DeviceRecord, userId: string, approve: boolean, now: Date): DeviceRecord | null {
   if (record.status !== "pending") return null;
   return { ...record, status: approve ? "approved" : "denied", userId, decidedAt: now.toISOString() };
@@ -204,10 +204,8 @@ async function readJson(req: Request): Promise<Record<string, unknown>> {
 export function createDeviceHandlers(deps: DeviceDeps) {
   const now = deps.now ?? (() => new Date());
 
-  async function requireSession(req: Request): Promise<Actor> {
-    const actor = await deps.requireActor(req, "approve");
-    if (actor.via !== "session") throw new ApiError(403, "session_required", "Approve an agent from a signed-in browser.");
-    return actor;
+  async function requireApprover(req: Request): Promise<Actor> {
+    return deps.requireActor(req, "approve");
   }
 
   /** A pending-or-decided request by its user code, or a 404. */
@@ -224,7 +222,24 @@ export function createDeviceHandlers(deps: DeviceDeps) {
     return { identifier, row, record };
   }
 
+  async function decide(actor: Actor, userCode: unknown, approve: boolean): Promise<{ status: DeviceStatus }> {
+    // Approving hands out a read key, and a key can only grant what it holds.
+    if (actor.via === "api_key" && !actor.scopes.includes("read")) throw new ApiError(403, "scope_exceeds_caller", "A key can only make keys with the access it has itself");
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const at = now();
+      const { identifier, row, record } = await findByUserCode(userCode, at);
+      const next = decideTransition(record, actor.userId, approve, at);
+      if (!next) throw new ApiError(409, "already_decided", "This code was already approved or denied.");
+      if (await deps.store.compareAndSet(identifier, row.value, JSON.stringify(next), at)) {
+        await deps.audit({ actor: actor.label, userId: actor.userId, action: approve ? "device.approved" : "device.denied", target: `device:${record.userCode}`, after: { client: record.client, machine: record.machine } });
+        return { status: next.status };
+      }
+    }
+    throw new ApiError(409, "busy", "That didn't save. Try again.");
+  }
+
   return {
+    decide,
     async start(req: Request): Promise<Response> {
       if (!deps.allowStart(clientIp(req))) {
         throw new ApiError(429, "rate_limited", "Too many sign-in starts from this network. Wait a few minutes.");
@@ -305,9 +320,9 @@ export function createDeviceHandlers(deps: DeviceDeps) {
       }
     },
 
-    /** The approve page's read: which agent and machine are asking. Session only. */
+    /** Look up which agent and machine are asking. */
     async lookup(req: Request): Promise<Response> {
-      await requireSession(req);
+      await requireApprover(req);
       const at = now();
       const { row, record } = await findByUserCode(new URL(req.url).searchParams.get("userCode"), at);
       return json({
@@ -321,32 +336,14 @@ export function createDeviceHandlers(deps: DeviceDeps) {
     },
 
     async approve(req: Request): Promise<Response> {
-      // Approving mints a key, so only Spooky's own page may ask. Browsers mark a request from
-      // another site; the session cookie's SameSite rule is the first wall, this is the second.
+      // Browsers mark a request from another site; keep this wall for session and key callers.
       const site = req.headers.get("sec-fetch-site");
       if (site && site !== "same-origin") throw new ApiError(403, "cross_site", "Approve from the Spooky Particles page.");
-      const actor = await requireSession(req);
+      const actor = await requireApprover(req);
       const body = await readJson(req);
       if (typeof body.approve !== "boolean") throw new ApiError(400, "invalid_request", "approve must be true or false.");
       const approve = body.approve;
-      // A poll may rewrite the row between our read and write; re-read and try again.
-      for (let attempt = 0; attempt < 4; attempt++) {
-        const at = now();
-        const { identifier, row, record } = await findByUserCode(body.userCode, at);
-        const next = decideTransition(record, actor.userId, approve, at);
-        if (!next) throw new ApiError(409, "already_decided", "This code was already approved or denied.");
-        if (await deps.store.compareAndSet(identifier, row.value, JSON.stringify(next), at)) {
-          await deps.audit({
-            actor: actor.label,
-            userId: actor.userId,
-            action: approve ? "device.approved" : "device.denied",
-            target: `device:${record.userCode}`,
-            after: { client: record.client, machine: record.machine },
-          });
-          return json({ status: next.status });
-        }
-      }
-      throw new ApiError(409, "busy", "That didn't save. Try again.");
+      return json(await decide(actor, body.userCode, approve));
     },
   };
 }

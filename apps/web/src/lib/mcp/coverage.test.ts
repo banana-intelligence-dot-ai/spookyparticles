@@ -28,6 +28,6 @@ it("accounts for every REST write route and offers every mapped tool", () => {
   const actor: Actor = { userId: "test", via: "api_key", scopes: ["read", "write", "approve"], label: "test" };
   const offered = toolsFor(actor);
   const missingTools = Object.entries(WRITE_ROUTE_TOOLS).flatMap(([route, entry]) => "tools" in entry ? entry.tools.filter((name) => !offered[name]).map((name) => `${route}: ${name}`) : []);
-  const emptyReasons = Object.entries(WRITE_ROUTE_TOOLS).filter(([, entry]) => "humanOnly" in entry && !entry.humanOnly.trim()).map(([route]) => route);
-  expect({ missing, stale, missingTools, emptyReasons }, `MCP write route coverage: missing routes ${missing.join(", ")}; stale keys ${stale.join(", ")}; unavailable tools ${missingTools.join(", ")}; empty human-only reasons ${emptyReasons.join(", ")}`).toEqual({ missing: [], stale: [], missingTools: [], emptyReasons: [] });
+  const emptyReasons = Object.entries(WRITE_ROUTE_TOOLS).filter(([, entry]) => "noTool" in entry && !entry.noTool.trim()).map(([route]) => route);
+  expect({ missing, stale, missingTools, emptyReasons }, `MCP write route coverage: missing routes ${missing.join(", ")}; stale keys ${stale.join(", ")}; unavailable tools ${missingTools.join(", ")}; empty no-tool reasons ${emptyReasons.join(", ")}`).toEqual({ missing: [], stale: [], missingTools: [], emptyReasons: [] });
 });

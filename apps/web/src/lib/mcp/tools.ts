@@ -1,12 +1,18 @@
-import { listChannels } from "@/lib/alerts/channels";
+import { addChannel, cleanChannelProject, listChannels, removeChannel, testChannel, updateChannelProject, type ChannelKind } from "@/lib/alerts/channels";
+import { sendTestAlert } from "@/lib/alerts/test-alert";
+import { cancelDeletion, deletionStatus, scheduleDeletion } from "@/lib/account-deletion";
+import { createApiKey, listApiKeys, revokeApiKey } from "@/lib/api-keys";
 import { createJobFromBody } from "@/lib/checkin-create";
 import { updateJobFromBody } from "@/lib/checkin-update";
-import { jobIssue, listJobs, updateJob, type JobView } from "@/lib/checkins";
+import { deleteJob, jobIssue, listJobs, updateJob, type JobView } from "@/lib/checkins";
 import { activityReport } from "@/lib/activity-report";
-import { getConnection } from "@/lib/connections";
+import { getConnection, revokeConnection } from "@/lib/connections";
+import { setCheckDismissed } from "@/lib/checks/dismiss";
+import { deviceHandlers } from "@/lib/device-auth-db";
 import { listConnectionsFor } from "@/lib/connections-read";
 import { addTrackedExpiration } from "@/lib/expirations/add";
 import { updateTrackedExpiration } from "@/lib/expirations/update";
+import { removeTrackedExpiration } from "@/lib/expirations/remove";
 import { buildExport } from "@/lib/export";
 import { recomputeFindings, setVendorScope } from "@/lib/findings";
 import { startReadingFor } from "@/lib/reading";
@@ -80,6 +86,8 @@ async function viaApi<T extends object>(run: () => Promise<T>): Promise<T> {
 function tool(def: Omit<Tool, "annotations">): Tool {
   return { ...def, annotations: { readOnlyHint: true } };
 }
+const write = (def: Omit<Tool, "annotations">): Tool => ({ ...def, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } });
+const destructive = (def: Omit<Tool, "annotations">): Tool => ({ ...def, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } });
 
 /** Binds the read tools to the same user that the REST actor resolves. A key with the write scope also gets the two handoff tools. */
 export function toolsFor(actor: Actor): ToolRegistry {
@@ -234,13 +242,13 @@ export function toolsFor(actor: Actor): ToolRegistry {
       run: async () => listServices(userId),
     }),
     list_connections: tool({
-      description: "List the accounts connected to Spooky (GitHub, Vercel, mail inboxes): provider, status, last sync and reading progress. No tokens. Connecting or revoking an account is done in the web app.",
+      description: "List connected GitHub, Vercel and mail accounts: provider, status, last sync and reading progress. No tokens. Use revoke_connection to disconnect one; connecting needs the person's login.",
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => ({ connections: await listConnectionsFor(userId) }),
     }),
     list_alert_channels: tool({
-      description: "List where alerts go (ntfy, Slack, Teams, email): kind, a masked label, project filter, whether it is on and its last delivery result. Addresses and webhook URLs are never returned.",
+      description: "List alert channels, including GitHub jobs: kind, masked label, project filter and last delivery result. Addresses and webhook URLs are never returned.",
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => ({ channels: (await listChannels(userId)).map((c) => ({ ...c, lastError: scrubUrls(c.lastError) })) }),
@@ -293,7 +301,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
       },
     }),
     list_agents: tool({
-      description: "Every agent key on this account and what it did: the projects it asked about, the breaks it holds now, how many were fixed after it heard, and broken projects no agent asked about. Keys are never returned; your person connects or revokes an agent in the web app.",
+      description: "Every agent key and what it did: projects asked about, breaks held and fixes confirmed. Keys are never returned. Full control can make or revoke keys.",
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => agentsFor(userId),
@@ -329,9 +337,8 @@ export function toolsFor(actor: Actor): ToolRegistry {
       },
     }),
   };
-  if (!actor.scopes.includes("write")) return read;
-  const write = (def: Omit<Tool, "annotations">): Tool => ({ ...def, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } });
-  return {
+  if (!actor.scopes.includes("write")) return actor.scopes.includes("approve") ? { ...read, ...approveTools(actor) } : read;
+  const writes: ToolRegistry = {
     ...read,
     next_finding: write({
       description: "Take the next open finding from the project check, most serious first, or the one your person handed you by finding_id. One at a time. Follow its instructions: open a pull request and never merge it, or give your person the exact steps. Then call report_finding.",
@@ -607,6 +614,151 @@ export function toolsFor(actor: Actor): ToolRegistry {
         const run = await startSync(c, actor.label);
         return { started: true, syncRunId: run.syncRunId };
       }),
+    }),
+    add_alert_channel: write({
+      description: "Add where alerts go. The target is stored encrypted and never shown again; remove_alert_channel removes it.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        kind: { type: "string", enum: ["ntfy", "slack", "teams", "email", "github"] },
+        target: { type: "string", minLength: 1, description: "Topic, webhook URL, email or GitHub owner/repo" },
+        project: { type: "string", maxLength: 120, description: "Optional project filter" },
+      }, required: ["kind", "target"] },
+      validate: (input) => validate(input, ["kind", "target"], ["kind", "target", "project"])
+        ?? (!["ntfy", "slack", "teams", "email", "github"].includes(input.kind as string) ? "Choose a valid kind" : null)
+        ?? (input.project !== undefined && (typeof input.project !== "string" || input.project.length > 120) ? "project must be text up to 120 characters" : null),
+      run: async (input) => viaApi(async () => {
+        const kind = input.kind as ChannelKind;
+        const target = input.target as string;
+        const r = await addChannel(userId, kind, target, cleanChannelProject(input.project) ?? (kind === "github" ? target.trim() : null), actor.label);
+        if (!r.ok) throw new ApiError(400, "target", r.reason);
+        return { channel: r.channel };
+      }),
+    }),
+    update_alert_channel: write({
+      description: "Change an alert channel's project filter; set null for all projects. Change it again to undo.",
+      inputSchema: { type: "object", additionalProperties: false, properties: { channel_id: { type: "string", minLength: 36, maxLength: 36 }, project: { type: ["string", "null"], maxLength: 120 } }, required: ["channel_id", "project"] },
+      validate: (input) => validate(input, ["channel_id"], ["channel_id", "project"])
+        ?? (!Object.hasOwn(input, "project") || input.project !== null && typeof input.project !== "string" ? "project must be text or null" : null)
+        ?? (!UUID.test(input.channel_id as string) ? "channel_id must be a channel ID" : null),
+      run: async (input) => viaApi(async () => {
+        const channel = await updateChannelProject(userId, input.channel_id as string, cleanChannelProject(input.project), actor.label);
+        if (!channel) throw new ApiError(404, "not_found", "No such channel");
+        return { channel };
+      }),
+    }),
+    remove_alert_channel: destructive({
+      description: "Remove an alert destination. Add it again to restore delivery.",
+      inputSchema: idSchema("channel_id", "Channel ID from list_alert_channels"),
+      validate: idInput("channel_id", "channel"),
+      run: async (input) => viaApi(async () => {
+        const id = input.channel_id as string;
+        if (!await removeChannel(userId, id, actor.label)) throw new ApiError(404, "not_found", "No such channel");
+        return { deleted: id };
+      }),
+    }),
+    test_alert_channel: write({
+      description: "Send one test notice to this alert channel. The notice cannot be recalled.",
+      inputSchema: idSchema("channel_id", "Channel ID from list_alert_channels"),
+      validate: idInput("channel_id", "channel"),
+      run: async (input) => viaApi(() => testChannel(actor, input.channel_id as string)),
+    }),
+    send_test_alert: write({
+      description: "Send one sample failed-deploy email to the owner, at most once per hour. It cannot be recalled.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => viaApi(() => sendTestAlert(actor)),
+    }),
+    delete_job: destructive({
+      description: "Delete a watched job. Prefer retire_job, which can be undone.",
+      inputSchema: idSchema("job_id", "Job ID from list_jobs"),
+      validate: idInput("job_id", "job"),
+      run: async (input) => viaApi(async () => {
+        const id = input.job_id as string;
+        if (!await deleteJob(userId, id, actor.label)) throw new ApiError(404, "not_found", "No such job");
+        return { deleted: id };
+      }),
+    }),
+    delete_expiration: destructive({
+      description: "Delete a tracked expiration. Add it again if needed.",
+      inputSchema: idSchema("expiration_id", "Expiration ID from list_expirations"),
+      validate: idInput("expiration_id", "expiration"),
+      run: async (input) => viaApi(() => removeTrackedExpiration(actor, input.expiration_id as string)),
+    }),
+    dismiss_check: write({
+      description: "Dismiss only a finding that does not matter to this project, never one you were asked to fix. restore_check undoes it.",
+      inputSchema: idSchema("finding_id", "Finding ID from list_findings"),
+      validate: idInput("finding_id", "finding"),
+      run: async (input) => viaApi(() => setCheckDismissed(actor, input.finding_id as string, true)),
+    }),
+    restore_check: write({
+      description: "Undo dismiss_check and show the finding again.",
+      inputSchema: idSchema("finding_id", "Finding ID from list_findings"),
+      validate: idInput("finding_id", "finding"),
+      run: async (input) => viaApi(() => setCheckDismissed(actor, input.finding_id as string, false)),
+    }),
+    revoke_connection: destructive({
+      description: "Disconnect an account. Tokens are wiped at once, and for GitHub the Spooky app is uninstalled from that GitHub account. Only the person can connect it again, so ask them first.",
+      inputSchema: idSchema("connection_id", "Connection ID from list_connections"),
+      validate: idInput("connection_id", "connection"),
+      run: async (input) => viaApi(async () => {
+        const c = await getConnection(input.connection_id as string, userId).catch(() => null);
+        if (!c) throw new ApiError(404, "not_found", "Connection not found");
+        return { revoked: c.status === "revoked" ? { id: c.id, provider: c.provider, alreadyRevoked: true } : await revokeConnection(c, actor.label) };
+      }),
+    }),
+  };
+  return actor.scopes.includes("approve") ? { ...writes, ...approveTools(actor) } : writes;
+}
+
+function approveTools(actor: Actor): ToolRegistry {
+  return {
+    list_api_keys: tool({
+      description: "List agent keys with name, prefix, scopes and dates. Never returns the key itself.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => ({ apiKeys: await listApiKeys(actor) }),
+    }),
+    create_api_key: write({
+      description: "Make an agent key and return it once. A key can grant only its own scopes; revoke_api_key stops it.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        name: { type: "string", minLength: 1, maxLength: 80 },
+        scopes: { type: "array", minItems: 1, items: { type: "string", enum: ["read", "write", "approve"] } },
+        expires_on: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Optional YYYY-MM-DD expiry" },
+      }, required: ["name", "scopes"] },
+      validate: (input) => validate(input, ["name"], ["name", "scopes", "expires_on"])
+        ?? (typeof input.name === "string" && input.name.length <= 80 ? null : "name must be up to 80 characters")
+        ?? (!Array.isArray(input.scopes) || !input.scopes.length || input.scopes.some((s) => !["read", "write", "approve"].includes(s)) ? "scopes must be an array of read, write or approve" : null)
+        ?? (input.expires_on !== undefined && (typeof input.expires_on !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input.expires_on)) ? "expires_on must be YYYY-MM-DD" : null),
+      run: async (input) => viaApi(async () => ({ apiKey: await createApiKey(actor, { name: input.name as string, scopes: input.scopes as string[], expiresOn: input.expires_on as string | undefined }) })),
+    }),
+    revoke_api_key: destructive({
+      description: "Revoke an agent key. It stops working at once; the row stays in history.",
+      inputSchema: idSchema("key_id", "Key ID from list_api_keys"),
+      validate: idInput("key_id", "key"),
+      run: async (input) => viaApi(async () => ({ apiKey: await revokeApiKey(actor, input.key_id as string) })),
+    }),
+    approve_agent_sign_in: write({
+      description: "Approve or deny another agent's sign-in code. Only use a code your person or your own process just started. The decision cannot be undone.",
+      inputSchema: { type: "object", additionalProperties: false, properties: { user_code: { type: "string", minLength: 8, maxLength: 9 }, approve: { type: "boolean" } }, required: ["user_code", "approve"] },
+      validate: (input) => validate(input, ["user_code"], ["user_code", "approve"]) ?? (typeof input.approve === "boolean" ? null : "approve must be true or false"),
+      run: async (input) => viaApi(() => deviceHandlers.decide(actor, input.user_code, input.approve as boolean)),
+    }),
+    delete_account: destructive({
+      description: "Schedule account deletion in seven days and revoke every connection now (for GitHub that uninstalls the Spooky app). Only use when your person asked in plain words. cancel_account_deletion stops the purge, but connections stay revoked.",
+      inputSchema: { type: "object", additionalProperties: false, properties: { confirm_email: { type: "string", minLength: 3, maxLength: 200, description: "The account email address" } }, required: ["confirm_email"] },
+      validate: (input) => validate(input, ["confirm_email"], ["confirm_email"]),
+      run: async (input) => viaApi(() => scheduleDeletion(actor, { confirmEmail: input.confirm_email })),
+    }),
+    cancel_account_deletion: write({
+      description: "Cancel a scheduled account deletion. Connections already revoked stay revoked.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => viaApi(() => cancelDeletion(actor)),
+    }),
+    account_deletion_status: tool({
+      description: "Show the newest scheduled account deletion, if any.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => deletionStatus(actor),
     }),
   };
 }

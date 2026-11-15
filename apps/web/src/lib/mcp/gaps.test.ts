@@ -88,6 +88,16 @@ const WRITES: [string, Record<string, unknown>][] = [
   ["mute", { project: "me/app", kind: "deploy", reason: "retired" }],
   ["unmute", { project: "me/app", kind: "deploy" }],
   ["set_public_feed", { on: false }],
+  ["add_alert_channel", { kind: "email", target: "owner@example.com" }],
+  ["update_alert_channel", { channel_id: ID, project: null }],
+  ["remove_alert_channel", { channel_id: ID }],
+  ["test_alert_channel", { channel_id: ID }],
+  ["send_test_alert", {}],
+  ["delete_job", { job_id: ID }],
+  ["delete_expiration", { expiration_id: ID }],
+  ["dismiss_check", { finding_id: ID }],
+  ["restore_check", { finding_id: ID }],
+  ["revoke_connection", { connection_id: ID }],
 ];
 
 it("read tools are available to read keys and write tools are hidden from them", () => {
@@ -102,9 +112,33 @@ it.each(WRITES)("%s is refused for a read-only key", async (name, args) => {
   for (const fn of Object.values(m)) expect(fn).not.toHaveBeenCalled();
 });
 
-it("never offers destructive, key, connect, secret or test-alert tools", () => {
-  const names = Object.keys(toolsFor(actor(["read", "write", "approve"])));
-  expect(names.filter((n) => /delete|remove|revoke|api_key|connect_|test_alert|add_alert|dismiss_check/.test(n))).toEqual([]);
+const APPROVE = ["list_api_keys", "create_api_key", "revoke_api_key", "approve_agent_sign_in", "delete_account", "cancel_account_deletion", "account_deletion_status"];
+
+it("read keys see no write or approve tools", () => {
+  const read = toolsFor(actor(["read"]));
+  for (const name of [...WRITES.map(([name]) => name), ...APPROVE]) expect(read[name]).toBeUndefined();
+});
+
+it("read and write keys see no approve tools", () => {
+  const write = toolsFor(actor(["read", "write"]));
+  for (const name of APPROVE) expect(write[name]).toBeUndefined();
+});
+
+it("full control keys see every approve tool", () => {
+  const full = toolsFor(actor(["read", "write", "approve"]));
+  for (const name of APPROVE) expect(full[name]).toBeDefined();
+});
+
+it("delete, remove and revoke tools carry a destructive hint", () => {
+  const full = toolsFor(actor(["read", "write", "approve"]));
+  for (const [name, value] of Object.entries(full)) {
+    if (/^(delete|remove|revoke)_/.test(name)) expect(value.annotations).toMatchObject({ destructiveHint: true });
+  }
+});
+
+it("tool schemas and descriptions contain no database secret or bypass instruction", () => {
+  const full = toolsFor(actor(["read", "write", "approve"]));
+  for (const value of Object.values(full)) expect(JSON.stringify({ description: value.description, inputSchema: value.inputSchema })).not.toMatch(/DATABASE_URL|bypass/i);
 });
 
 it("list_connections reads for the calling user only", async () => {
