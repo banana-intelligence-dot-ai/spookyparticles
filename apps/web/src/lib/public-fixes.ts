@@ -26,7 +26,7 @@ export function onByDefault(createdAt: Date): boolean {
 
 /** Plain words per kind. Nothing from the host or the project goes in. */
 const WHAT: Record<CatchKind, string> = {
-  deploy: "Production deploy failed",
+  deploy: "Deploy failed",
   job: "Scheduled job went quiet",
   site: "Site stopped answering",
   server_errors: "Site threw server errors",
@@ -51,7 +51,9 @@ export function publicFixes(catches: Catch[]): PublicFix[] {
       const at = new Date(Math.floor(fixedMs / 60_000) * 60_000).toISOString();
       return { at, what: WHAT[c.kind], minutes: Math.max(1, Math.round((fixedMs - Date.parse(c.caughtAt)) / 60_000)) };
     })
-    .filter((f) => Number.isFinite(f.minutes) && f.minutes > 0);
+    .filter((f) => Number.isFinite(f.minutes) && f.minutes > 0)
+    // One commit that fixes two projects from the same repo is one fix to a reader.
+    .filter((f, i, all) => all.findIndex((g) => g.at === f.at && g.what === f.what && g.minutes === f.minutes) === i);
 }
 
 /** Merge every account's rows, newest first. Totals count every row; the list keeps the newest 50. */

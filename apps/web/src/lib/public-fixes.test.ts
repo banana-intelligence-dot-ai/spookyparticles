@@ -21,7 +21,7 @@ const base: Catch = {
 describe("publicFixes", () => {
   it("keeps only a time, a kind and minutes", () => {
     const [row] = publicFixes([base]);
-    expect(row).toEqual({ at: "2026-11-14T10:09:00.000Z", what: "Production deploy failed", minutes: 10 });
+    expect(row).toEqual({ at: "2026-11-14T10:09:00.000Z", what: "Deploy failed", minutes: 10 });
     const text = JSON.stringify(publicFixes([base]));
     for (const leak of ["secret", "pay", "abc1234", "nate", "Claude", "TypeError"]) expect(text).not.toContain(leak);
   });
@@ -35,6 +35,10 @@ describe("publicFixes", () => {
   it("skips fixes with no code change, like a job that came back while an agent looked", () => {
     const job = { ...base, kind: "job" as const, fixedBy: null, confirmedAt: "2026-11-14T10:10:00.000Z" };
     expect(publicFixes([job])).toEqual([]);
+  });
+
+  it("shows one commit that fixed two projects as one fix", () => {
+    expect(publicFixes([base, { ...base, id: "c2", project: "secret-app-twin" }])).toHaveLength(1);
   });
 
   it("counts a PR fix as an agent's", () => {
