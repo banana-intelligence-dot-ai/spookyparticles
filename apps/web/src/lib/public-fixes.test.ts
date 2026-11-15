@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Catch } from "./catches";
-import { buildFeed, FEED_OFF, FEED_ON, optedIn, publicFixes } from "./public-fixes";
+import { buildFeed, FEED_OFF, FEED_ON, inFeed, publicFixes } from "./public-fixes";
 
 const base: Catch = {
   id: "c1",
@@ -57,15 +57,22 @@ describe("buildFeed", () => {
   });
 });
 
-describe("optedIn", () => {
+describe("inFeed", () => {
+  const before = new Date("2026-11-10T00:00:00.000Z");
+  const after = new Date("2026-11-16T00:00:00.000Z");
+
   it("uses each account's latest choice", () => {
-    expect(
-      optedIn([
-        { userId: "a", name: FEED_ON },
-        { userId: "b", name: FEED_ON },
-        { userId: "b", name: FEED_OFF },
-        { userId: null, name: FEED_ON },
-      ]),
-    ).toEqual(["a"]);
+    const users = [{ id: "a", createdAt: before }, { id: "b", createdAt: after }];
+    const rows = [
+      { userId: "a", name: FEED_ON },
+      { userId: "b", name: FEED_ON },
+      { userId: "b", name: FEED_OFF },
+      { userId: null, name: FEED_ON },
+    ];
+    expect(inFeed(users, rows)).toEqual(["a"]);
+  });
+
+  it("starts new accounts on and older accounts off", () => {
+    expect(inFeed([{ id: "old", createdAt: before }, { id: "new", createdAt: after }], [])).toEqual(["new"]);
   });
 });

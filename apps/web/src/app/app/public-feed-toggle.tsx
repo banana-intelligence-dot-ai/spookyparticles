@@ -1,7 +1,7 @@
 "use client";
 /**
- * The opt-in for the homepage fix feed. Off until the owner turns it on. Shows exactly what a
- * shared row looks like, so nobody guesses what leaves the account.
+ * The homepage fix feed switch. On for new accounts, off for accounts from before the policy said
+ * so. Shows exactly what a shared row looks like, so nobody guesses what leaves the account.
  */
 import { useState } from "react";
 import { apiPost, useApi } from "@/components/use-api";
@@ -28,7 +28,7 @@ export function PublicFeedToggle() {
         <p id="feed-label" className="text-[14px] text-fg">Show my agents&apos; fixes on the homepage</p>
         <p className="mt-1 text-[13px] leading-[1.55] text-pretty text-fg-2">
           Anonymous. Each row is only a time, the kind of break and how long the fix took, like{" "}
-          <span className="font-mono text-fg">Nov 14 · 10:09 · Production deploy failed · 10 min</span>. Never a project, repo, name or error.
+          <span className="font-mono text-fg">Nov 14 · 10:09 · Production deploy failed · 10 min</span>. Never a project, repo, name or error. Turn it off any time.
         </p>
         {error ? <p className="mt-2 text-[13px] text-red">{error}</p> : null}
       </div>

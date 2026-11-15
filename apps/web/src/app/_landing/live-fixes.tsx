@@ -1,7 +1,7 @@
 "use client";
 /**
  * The live fix feed: a counter in the top bar and the history below the pair. Reads the public,
- * anonymized feed (accounts that opted in) and refreshes every minute. Until it loads, or while it
+ * anonymized feed and refreshes every minute. Until it loads, or while it
  * is empty, the section shows the hand-checked fixes passed in, so the page never claims a number
  * it does not have.
  */
@@ -108,7 +108,7 @@ export function LiveFixes({ fallback, fallbackTitle }: { fallback: readonly Fall
               );
             })}
           </ul>
-          <p className="mt-4 font-mono text-[12px] leading-[1.6] text-fg-3">Last {feed.windowDays} days. Anonymous: only a time, the kind of break and how long the fix took, from accounts that chose to share.</p>
+          <p className="mt-4 font-mono text-[12px] leading-[1.6] text-fg-3">Last {feed.windowDays} days. Anonymous: only a time, the kind of break and how long the fix took. Any account can turn this off.</p>
         </>
       ) : (
         <ul className="mt-5 border-t border-line-1">

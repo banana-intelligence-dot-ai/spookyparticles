@@ -1,10 +1,11 @@
 /**
- * The public fix feed on the homepage: fixes agents made, anonymized, from accounts that turned
- * the feed on. Off by default. Each row is only a time, a kind of break and how long the fix took:
- * never a project, repo, person, error text or commit. The choice is kept as events (latest wins)
- * and every change is audited.
+ * The public fix feed on the homepage: fixes agents made, anonymized. Each row is only a time, a
+ * kind of break and how long the fix took: never a project, repo, person, error text or commit.
+ * On by default for accounts created on or after the privacy policy that says so (section 6);
+ * accounts from before it stay off until the owner turns it on, as section 14 promises. Anyone can
+ * turn it off. The choice is kept as events (latest wins) and every change is audited.
  */
-import { asc, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { appendAudit } from "./audit";
 import type { Catch, CatchKind } from "./catches";
@@ -15,6 +16,13 @@ export const FEED_OFF = "public_feed.off";
 const MAX_ROWS = 50;
 const MAX_ACCOUNTS = 200;
 export const FEED_WINDOW_DAYS = 30;
+/** Midnight Pacific on the day the policy line took effect. Accounts created from here on start on. */
+export const DEFAULT_ON_FROM = new Date("2026-11-15T08:00:00Z");
+
+/** Whether an account with no choice of its own is in the feed. */
+export function onByDefault(createdAt: Date): boolean {
+  return createdAt.getTime() >= DEFAULT_ON_FROM.getTime();
+}
 
 /** Plain words per kind. Nothing from the host or the project goes in. */
 const WHAT: Record<CatchKind, string> = {
@@ -59,11 +67,17 @@ export function buildFeed(lists: PublicFix[][], now: Date): PublicFeed {
   };
 }
 
-/** Accounts whose latest choice is on. Rows must be oldest first. */
-export function optedIn(rows: { userId: string | null; name: string }[]): string[] {
+/** Each account's latest choice. Rows must be oldest first. */
+function latestChoices(rows: { userId: string | null; name: string }[]): Map<string, boolean> {
   const latest = new Map<string, boolean>();
   for (const r of rows) if (r.userId) latest.set(r.userId, r.name === FEED_ON);
-  return [...latest].filter(([, on]) => on).map(([id]) => id);
+  return latest;
+}
+
+/** Accounts in the feed: their own latest choice, else the default for when they joined. */
+export function inFeed(users: { id: string; createdAt: Date }[], rows: { userId: string | null; name: string }[]): string[] {
+  const latest = latestChoices(rows);
+  return users.filter((u) => latest.get(u.id) ?? onByDefault(u.createdAt)).map((u) => u.id);
 }
 
 async function choices() {
@@ -74,8 +88,14 @@ async function choices() {
     .orderBy(asc(schema.events.createdAt));
 }
 
+async function accounts(userId?: string) {
+  const q = getDb().select({ id: schema.user.id, createdAt: schema.user.createdAt }).from(schema.user);
+  return userId ? q.where(eq(schema.user.id, userId)) : q.orderBy(asc(schema.user.createdAt));
+}
+
 export async function publicFeedEnabled(userId: string): Promise<boolean> {
-  return optedIn(await choices()).includes(userId);
+  const [users, rows] = await Promise.all([accounts(userId), choices()]);
+  return inFeed(users, rows).includes(userId);
 }
 
 export async function setPublicFeed(actor: { userId: string; label: string }, on: boolean): Promise<boolean> {
@@ -89,7 +109,8 @@ export async function setPublicFeed(actor: { userId: string; label: string }, on
 /** The whole feed. Reads each opted-in account the same way its Today page does. */
 export async function publicFeed(): Promise<PublicFeed> {
   const { catchesFor } = await import("./catches");
-  const users = optedIn(await choices()).slice(0, MAX_ACCOUNTS);
+  const [all, rows] = await Promise.all([accounts(), choices()]);
+  const users = inFeed(all, rows).slice(0, MAX_ACCOUNTS);
   const lists = await Promise.all(
     users.map((u) =>
       catchesFor(u)
