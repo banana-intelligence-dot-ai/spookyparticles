@@ -1,0 +1,34 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.banana-intelligence-dot-ai/spookyparticles",
+  "title": "Spooky Particles",
+  "description": "Checks Vercel deploys, sites and cron jobs; sends the cause of a break to your coding agent to fix.",
+  "websiteUrl": "https://spookyparticles.com",
+  "repository": {
+    "url": "https://github.com/banana-intelligence-dot-ai/spookyparticles",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://spookyparticles.com/api/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer API key made at https://spookyparticles.com/app/connections. A read key runs read tools; a write key adds write tools.",
+          "isRequired": true,
+          "isSecret": true,
+          "value": "Bearer {api_key}",
+          "variables": {
+            "api_key": {
+              "description": "Your Spooky Particles API key",
+              "isRequired": true,
+              "isSecret": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -57,6 +57,16 @@ The MCP server reads your key from the `SPOOKY_API_KEY` environment variable. Ma
 
 The `spooky` skill ([skills/spooky](skills/spooky/SKILL.md), also served at [spookyparticles.com/skill.md](https://spookyparticles.com/skill.md)) works through Spooky's findings one at a time and points to the skill for each item.
 
+## MCP server
+
+Remote, streamable HTTP at `https://spookyparticles.com/api/mcp`, with `Authorization: Bearer <your key>`. Make a key at [spookyparticles.com/app/connections](https://spookyparticles.com/app/connections). A read key runs the read tools; a write key adds the write tools. Nothing deletes. Listed in the official MCP Registry as `io.github.banana-intelligence-dot-ai/spookyparticles`.
+
+```bash
+claude mcp add --transport http spooky https://spookyparticles.com/api/mcp --header "Authorization: Bearer $SPOOKY_API_KEY"
+```
+
+Full tool list and setup for agents: [spookyparticles.com/setup.md](https://spookyparticles.com/setup.md).
+
 ## How it is built
 
 Next.js (App Router) on Vercel, Neon Postgres through Drizzle, Better Auth, Vercel Workflow for long syncs. Every capability is an `/api/v1` endpoint first; the web app, the MCP server and agents all use the same API.
