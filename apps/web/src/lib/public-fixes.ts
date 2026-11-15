@@ -9,7 +9,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { appendAudit } from "./audit";
 import type { Catch, CatchKind } from "./catches";
-import { fixedByAgent, medianFixMinutes } from "./fix-stats";
+import { medianFixMinutes, provenAgentFix } from "./fix-stats";
 
 export const FEED_ON = "public_feed.on";
 export const FEED_OFF = "public_feed.off";
@@ -42,10 +42,10 @@ export type PublicFeed = {
   checkedAt: string;
 };
 
-/** One account's catches, reduced to anonymous rows: fixed, by an agent, with both times known. */
+/** One account's catches, reduced to anonymous rows: fixed by a code change an agent was on, with both times known. */
 export function publicFixes(catches: Catch[]): PublicFix[] {
   return catches
-    .filter((c) => c.status === "fixed" && c.fixedAt && fixedByAgent(c))
+    .filter((c) => c.status === "fixed" && c.fixedAt && provenAgentFix(c))
     .map((c) => {
       const fixedMs = Date.parse(c.fixedAt as string);
       const at = new Date(Math.floor(fixedMs / 60_000) * 60_000).toISOString();

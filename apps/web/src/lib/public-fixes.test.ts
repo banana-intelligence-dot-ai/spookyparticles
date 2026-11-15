@@ -32,6 +32,11 @@ describe("publicFixes", () => {
     expect(publicFixes([human, open])).toEqual([]);
   });
 
+  it("skips fixes with no code change, like a job that came back while an agent looked", () => {
+    const job = { ...base, kind: "job" as const, fixedBy: null, confirmedAt: "2026-11-14T10:10:00.000Z" };
+    expect(publicFixes([job])).toEqual([]);
+  });
+
   it("counts a PR fix as an agent's", () => {
     expect(publicFixes([{ ...base, heardAt: null, fixedBy: { kind: "pr", url: "https://github.com/x/y/pull/1" } }])).toHaveLength(1);
   });

@@ -96,7 +96,7 @@ Check-ins, check findings, recorded services and expiration dates need a **write
 
 ## Connect over MCP
 
-If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Fifteen read tools: \`whats_broken\`, \`did_my_push_land\`, \`claim_break\`, \`confirm_fix\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_expirations\`, \`list_connections\`, \`list_alert_channels\`, \`job_history\`, \`recent_activity\`, \`help\`. A write key also gets eleven more: \`next_finding\`, \`report_finding\`, \`record_service\`, \`create_job\`, \`retire_job\`, \`restore_job\`, \`ignore_break\`, \`unignore_break\`, \`set_suggestion_status\`, \`add_expiration\` and \`sync_connection\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
+If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Sixteen read tools: \`whats_broken\`, \`did_my_push_land\`, \`claim_break\`, \`confirm_fix\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_expirations\`, \`list_connections\`, \`list_alert_channels\`, \`job_history\`, \`recent_activity\`, \`public_feed\`, \`help\`. A write key also gets twelve more: \`next_finding\`, \`report_finding\`, \`record_service\`, \`create_job\`, \`retire_job\`, \`restore_job\`, \`ignore_break\`, \`unignore_break\`, \`set_suggestion_status\`, \`add_expiration\`, \`sync_connection\` and \`set_public_feed\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
 
 \`\`\`bash
 claude mcp add --transport http spooky ${base}/api/mcp --header "Authorization: Bearer $SPOOKY_API_KEY"

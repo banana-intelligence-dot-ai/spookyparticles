@@ -14,6 +14,8 @@ const m = vi.hoisted(() => ({
   addTrackedExpiration: vi.fn(),
   getConnection: vi.fn(),
   startSync: vi.fn(),
+  publicFeedEnabled: vi.fn(),
+  setPublicFeed: vi.fn(),
 }));
 
 vi.mock("@/lib/connections-read", () => ({ listConnectionsFor: m.listConnectionsFor }));
@@ -26,6 +28,7 @@ vi.mock("@/lib/ignores", async (orig) => ({ ...(await orig<typeof import("@/lib/
 vi.mock("@/lib/findings-status", () => ({ setFindingStatus: m.setFindingStatus }));
 vi.mock("@/lib/expirations/add", () => ({ addTrackedExpiration: m.addTrackedExpiration }));
 vi.mock("@/lib/connections", async (orig) => ({ ...(await orig<typeof import("@/lib/connections")>()), getConnection: m.getConnection }));
+vi.mock("@/lib/public-fixes", () => ({ publicFeedEnabled: m.publicFeedEnabled, setPublicFeed: m.setPublicFeed }));
 vi.mock("@/lib/sync", async (orig) => ({ ...(await orig<typeof import("@/lib/sync")>()), startSync: m.startSync }));
 
 import { handleMessage } from "./protocol";
@@ -43,7 +46,7 @@ const text = (res: unknown) => JSON.stringify(res);
 
 beforeEach(() => { vi.clearAllMocks(); });
 
-const READS = ["list_connections", "list_alert_channels", "job_history", "recent_activity"];
+const READS = ["public_feed", "list_connections", "list_alert_channels", "job_history", "recent_activity"];
 const WRITES: [string, Record<string, unknown>][] = [
   ["create_job", { name: "Nightly backup", periodMinutes: 1440 }],
   ["retire_job", { job_id: ID }],
@@ -53,6 +56,7 @@ const WRITES: [string, Record<string, unknown>][] = [
   ["set_suggestion_status", { finding_id: ID, status: "dismissed" }],
   ["add_expiration", { kind: "api_key", name: "STRIPE_KEY_PROD", expiresOn: "2027-01-01" }],
   ["sync_connection", { connection_id: ID }],
+  ["set_public_feed", { on: false }],
 ];
 
 it("read tools are available to read keys and write tools are hidden from them", () => {
@@ -156,4 +160,14 @@ it("sync_connection looks the connection up by the caller's user id", async () =
   expect(out).not.toContain("TOKEN");
   m.getConnection.mockResolvedValue(null);
   expect(text(await call(["read", "write"], "sync_connection", { connection_id: ID }))).toContain("Connection not found");
+});
+
+it("public feed: read for the calling user, set through the audited store", async () => {
+  m.publicFeedEnabled.mockResolvedValue(true);
+  expect(text(await call(["read"], "public_feed"))).toContain('\\"on\\":true');
+  expect(m.publicFeedEnabled).toHaveBeenCalledWith("user-1");
+  m.setPublicFeed.mockResolvedValue(false);
+  await call(["read", "write"], "set_public_feed", { on: false });
+  expect(m.setPublicFeed).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", label: "api_key:k1" }), false);
+  expect(await call(["read", "write"], "set_public_feed", { on: "yes" })).toMatchObject({ error: expect.anything() });
 });

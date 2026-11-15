@@ -23,6 +23,7 @@ import { helpFor } from "@/lib/help/ask";
 import { HELP_MAX_CHARS } from "@/lib/help/input";
 import { ApiError } from "@/lib/http";
 import { listServices, recordService } from "@/lib/services/store";
+import { publicFeedEnabled, setPublicFeed } from "@/lib/public-fixes";
 import { ToolError, type Tool, type ToolRegistry } from "./protocol";
 
 const empty = { type: "object" as const, properties: {}, additionalProperties: false as const };
@@ -77,6 +78,12 @@ export function toolsFor(actor: Actor): ToolRegistry {
   /** An agent asking about its project is how Today knows that session hears about it. */
   const heard = (project: string) => Promise.all([actor.apiKeyId ? recordInboxRead(userId, actor.apiKeyId, project) : null, recordDeploys(userId)]);
   const read: ToolRegistry = {
+    public_feed: tool({
+      description: "Whether this account's agent fixes show on the spookyparticles.com homepage feed. Rows there are anonymous: a time, the kind of break and minutes to fix. set_public_feed changes it.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => ({ on: await publicFeedEnabled(userId) }),
+    }),
     list_expirations: tool({
       description: "List every known expiry date, including Vercel runtimes, domains, tracked credentials and Spooky agent keys, soonest first, plus domains whose date is unknown.",
       inputSchema: empty,
@@ -408,6 +415,12 @@ export function toolsFor(actor: Actor): ToolRegistry {
       }, required: ["kind", "name", "expiresOn"] },
       validate: (input) => validate(input, ["kind", "name", "expiresOn"], ["kind", "name", "expiresOn", "provider", "project"]),
       run: async (input) => viaApi(async () => ({ expiration: await addTrackedExpiration(actor, input) })),
+    }),
+    set_public_feed: write({
+      description: "Turn this account's anonymous rows on the spookyparticles.com homepage fix feed on or off. Only ask your person first if they have not said. Audited; set it back any time.",
+      inputSchema: { type: "object", additionalProperties: false, properties: { on: { type: "boolean", description: "true to show, false to hide" } }, required: ["on"] },
+      validate: (input) => validate(input, [], ["on"]) ?? (typeof input.on !== "boolean" ? "on must be true or false" : null),
+      run: async (input) => viaApi(async () => ({ on: await setPublicFeed(actor, input.on as boolean) })),
     }),
     sync_connection: write({
       description: "Start a re-read of one connected account. Returns at once; check list_connections for progress. Fails if a sync is already running or the connection is not active.",

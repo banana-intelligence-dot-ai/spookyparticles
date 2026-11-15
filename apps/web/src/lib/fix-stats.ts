@@ -6,6 +6,16 @@ export function fixedByAgent(c: Pick<Catch, "heardAt" | "confirmedAt" | "fixedBy
   return Boolean(c.heardAt || c.confirmedAt || c.fixedBy?.kind === "pr");
 }
 
+/**
+ * The stricter rule for anything shown in public: a code change landed (a commit or PR) and an agent
+ * was on it (it heard about the break first, or opened the PR). A job that came back on its own
+ * after an agent merely looked does not count.
+ */
+export function provenAgentFix(c: Pick<Catch, "heardAt" | "fixedBy">): boolean {
+  if (!c.fixedBy) return false;
+  return c.fixedBy.kind === "pr" || Boolean(c.heardAt);
+}
+
 /** Median minutes from caught to fixed, over fixes that have both times. Null when there are none. */
 export function medianFixMinutes(fixed: Pick<Catch, "caughtAt" | "fixedAt">[]): number | null {
   const d = fixed
