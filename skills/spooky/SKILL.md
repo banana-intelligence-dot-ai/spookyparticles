@@ -1,6 +1,6 @@
 ---
 name: spooky
-description: Ask Spooky Particles what is wrong with a person's Vercel projects, fix one finding as a pull request, and report back. Use when asked to check on deploys, schedules or project health, or to work through Spooky's findings.
+description: Check on and set up Spooky Particles for a person's Vercel projects. Use when asked how Spooky or their projects are doing, what is broken, to set up or reconnect Spooky, or to work through Spooky's findings one pull request at a time.
 ---
 
 # Spooky Particles
@@ -13,7 +13,16 @@ The Check page also lists known Vercel Node.js runtime deprecations and Vercel d
 
 You never hold the person's Vercel or GitHub access. Your only credential is an agent key.
 
-## Setup
+## Check status
+
+When your person asks how Spooky or their projects are doing:
+
+1. Run `sh ~/spookyparticles/scripts/spooky.sh status`. It says whether GitHub and Vercel are connected and gives the next step. If the script is missing or says "Not signed in", go to **Finish setup**.
+2. Call `whats_broken`, or run `sh ~/spookyparticles/scripts/spooky.sh problems`. This is what is failing right now.
+3. Call `open_items`. It lists what is open, who has it and the next step.
+4. Tell your person in five lines or fewer: what is connected, what is failing now, and what is waiting on them. Lead with anything failing.
+
+## Finish setup
 
 1. Check that `SPOOKY_API_KEY` is set in your environment, or that this computer is already signed in (`sh ~/spookyparticles/scripts/spooky.sh status` answers). Never print the key. Never ask for it in chat.
 2. If neither, follow https://spookyparticles.com/setup.md. Its `sh scripts/spooky.sh start` shows the person a sign-in code; they approve it in their browser and a **read** key is saved on this computer, never in chat. A read key can look. Taking findings or recording service sign-ups needs a **write** key, which the person makes on the Agents page and exports as `SPOOKY_API_KEY` themselves. A full control key can manage keys, approve another agent's sign-in and schedule account deletion.

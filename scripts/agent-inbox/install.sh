@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck disable=SC2329 # the merge functions run through write_merged and show.
 
-# Installs the Spooky agent inbox for Claude Code, Cursor and OpenAI Codex CLI.
+# Installs the Spooky agent inbox and the spooky skill for Claude Code, Cursor and OpenAI Codex CLI.
 # Usage: install.sh [--agent claude|cursor|codex|all] [--dry-run]
 #        install.sh --fixer [--dry-run]   (only copies the fixer and writes an example config)
 # No key value is ever written to an agent config. MCP entries refer to $SPOOKY_API_KEY by name.
@@ -287,8 +287,27 @@ show() {
   "$@"
 }
 
+# install_skill <agent home>: copies the spooky skill (status, setup, one finding per run) into
+# <agent home>/skills/spooky. A different SKILL.md already there is kept once as SKILL.md.bak-spooky.
+skill_source="$script_dir/../../skills/spooky/SKILL.md"
+install_skill() {
+  skill_target="$1/skills/spooky/SKILL.md"
+  [ -r "$skill_source" ] || { printf 'Skipped the spooky skill: %s is missing. Update the clone and run again.\n' "$skill_source" >&2; return 0; }
+  if [ "$dry_run" = true ]; then printf 'Would copy the spooky skill to %s.\n' "$skill_target"; return 0; fi
+  mkdir -p "$1/skills/spooky" || return 1
+  if [ -f "$skill_target" ] && ! cmp -s "$skill_source" "$skill_target" && [ ! -e "$skill_target.bak-spooky" ]; then
+    cp "$skill_target" "$skill_target.bak-spooky" || return 1
+  fi
+  cp "$skill_source" "$skill_target" || return 1
+  chmod 644 "$skill_target" || return 1
+  printf 'Installed the spooky skill at %s.\n' "$skill_target"
+}
+
 if [ "$dry_run" = true ]; then
   [ "$want_claude" = true ] && show "$HOME/.claude/settings.json" merge_claude "$HOME/.claude/settings.json"
+  [ "$want_claude" = true ] && install_skill "$HOME/.claude"
+  [ "$want_cursor" = true ] && install_skill "$HOME/.cursor"
+  [ "$want_codex" = true ] && install_skill "$HOME/.codex"
   if [ "$want_cursor" = true ]; then
     show "$HOME/.cursor/mcp.json" merge_cursor_mcp "$HOME/.cursor/mcp.json"
     show "$HOME/.cursor/hooks.json" merge_cursor_hooks "$HOME/.cursor/hooks.json"
@@ -321,6 +340,7 @@ if [ "$want_claude" = true ]; then
   else
     printf 'Claude Code: failed, nothing changed.\n' >&2; status=1
   fi
+  install_skill "$HOME/.claude" || { printf 'Claude Code: the spooky skill was not installed.\n' >&2; status=1; }
 fi
 
 if [ "$want_cursor" = true ]; then
@@ -333,6 +353,7 @@ if [ "$want_cursor" = true ]; then
   else
     printf 'Cursor: failed, check the files above.\n' >&2; status=1
   fi
+  install_skill "$HOME/.cursor" || { printf 'Cursor: the spooky skill was not installed.\n' >&2; status=1; }
 fi
 
 if [ "$want_codex" = true ]; then
@@ -345,6 +366,7 @@ if [ "$want_codex" = true ]; then
   else
     printf 'Codex: failed, check the files above.\n' >&2; status=1
   fi
+  install_skill "$HOME/.codex" || { printf 'Codex: the spooky skill was not installed.\n' >&2; status=1; }
 fi
 
 printf 'Not signed in yet? Run: sh scripts/agent-inbox/spooky-fixer.sh --sign-in\n'

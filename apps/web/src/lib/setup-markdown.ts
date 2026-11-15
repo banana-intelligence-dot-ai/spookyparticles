@@ -57,7 +57,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
    - If it says this Spooky has no agent sign-in, ask them to make a key under ${base}/app/agents → **Connect an agent** → **Make key** and export it as \`SPOOKY_API_KEY\` themselves.
 
 4. Show your human what it printed, with the source of each number. If it lists anything still on another host, offer to walk them through moving one: \`GET ${base}/api/v1/elsewhere\` (load the key as in **Your own calls**) gives each project's Vercel import link and the matching migration guide.
-5. Turn on agent alerts, so Claude Code, Cursor and Codex hear about a break when a session starts:
+5. Turn on agent alerts, so Claude Code, Cursor and Codex hear about a break when a session starts. This also installs the \`spooky\` skill for each of them, so your human can ask any later session how Spooky is doing or to finish setup:
 
    \`\`\`bash
    sh scripts/spooky.sh alerts

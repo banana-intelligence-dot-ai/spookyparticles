@@ -25,6 +25,14 @@ grep -q 'Be nice.' "$HOME/.codex/AGENTS.md"
 grep -q '"other"' "$HOME/.cursor/mcp.json"
 grep -q 'model = "m"' "$HOME/.codex/config.toml"
 [ "$(grep -c 'mcp_servers.spooky' "$HOME/.codex/config.toml")" = 1 ]
+for a in .claude .cursor .codex; do
+  cmp -s "$here/../../skills/spooky/SKILL.md" "$HOME/$a/skills/spooky/SKILL.md" || { echo "skill not installed: $a"; exit 1; }
+done
+[ ! -e "$HOME/.claude/skills/spooky/SKILL.md.bak-spooky" ] || { echo "skill backup made on an unchanged re-run"; exit 1; }
+printf 'mine\n' > "$HOME/.claude/skills/spooky/SKILL.md"
+sh "$here/install.sh" --agent claude >/dev/null
+grep -q '^mine$' "$HOME/.claude/skills/spooky/SKILL.md.bak-spooky" || { echo "edited skill not backed up"; exit 1; }
+cmp -s "$here/../../skills/spooky/SKILL.md" "$HOME/.claude/skills/spooky/SKILL.md" || { echo "skill not refreshed"; exit 1; }
 
 # --- Fixer: fake curl, claude and codex on PATH; nothing leaves this machine ---------------
 

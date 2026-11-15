@@ -29,6 +29,8 @@ Add `--dry-run` to print the merged files without changing anything.
 
 Every file is saved first as `<file>.bak-spooky`. A re-run keeps the first backup. Existing entries are kept, and nothing is added twice. The key itself is never written to an agent config.
 
+Each agent also gets the `spooky` skill at `skills/spooky/SKILL.md` inside its folder (for example `~/.claude/skills/spooky/SKILL.md`): check status, finish setup, and work one finding at a time. A re-run refreshes it; a copy you edited is kept once as `SKILL.md.bak-spooky`.
+
 - **Claude Code**: adds SessionStart and UserPromptSubmit hooks to `~/.claude/settings.json`. At session start it prints what is broken. Before later prompts it speaks only when the open problems changed.
 - **Cursor**: adds a `spooky` MCP server to `~/.cursor/mcp.json` with the header `Bearer ${env:SPOOKY_API_KEY}`, and a `sessionStart` hook to `~/.cursor/hooks.json` that adds the incident text to the session. Cursor reads `SPOOKY_API_KEY` from the environment it was started with, so start Cursor from a shell that has it. The hook reads the key file and does not need the environment.
 - **Codex CLI**: adds a `[mcp_servers.spooky]` table with `bearer_token_env_var = "SPOOKY_API_KEY"` to `~/.codex/config.toml`, only if that table is missing, and a short marked block to `~/.codex/AGENTS.md`. The block tells Codex to call `whats_broken` at the start and `confirm_fix` before it says fixed. Re-runs replace the block. Codex reads `SPOOKY_API_KEY` from the shell that starts it. Codex hooks need a manual trust step, so the installer does not use them.
