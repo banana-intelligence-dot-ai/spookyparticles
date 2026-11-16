@@ -1,7 +1,7 @@
 "use client";
 /**
- * First run on Now: GitHub and Vercel until each has finished a first sync. After the first one
- * syncs, only the step that is left shows. Gmail is not a
+ * First run on Now: GitHub and Vercel until each has finished a first sync, then the coding agent
+ * until one is connected. After the first source syncs, only the source step that is left shows. Gmail is not a
  * setup step; an inbox is an optional extra in Settings. A connection
  * that stops later becomes a row in the open list. Reads the same /api/v1/connections data
  * as Settings.
@@ -145,7 +145,7 @@ const GITHUB_NOTICE: Record<string, string> = {
   confirm: "Add the GitHub account that made the install to finish. Signing in to it only proves the install is yours; the install then links on its own.",
 };
 
-export function Onboarding({ connections, params, now }: { connections: Connection[]; params: URLSearchParams; now: number }) {
+export function Onboarding({ connections, params, now, agents = null }: { connections: Connection[]; params: URLSearchParams; now: number; agents?: number | null }) {
   const [linking, setLinking] = useState(false);
   const gh = live(connections, "github");
   const vc = live(connections, "vercel");
@@ -157,6 +157,9 @@ export function Onboarding({ connections, params, now }: { connections: Connecti
   // Once one source has synced, the card shrinks to the step that is left; the synced one lives in Settings.
   const showGithub = !(synced === 1 && ghState === "done");
   const showVercel = !(synced === 1 && vcState === "done");
+  // The agent is the point of the product, so it is a step of its own until one is connected.
+  const showAgent = agents === 0;
+  const sources = [gh.some(isSynced), vc.some(isSynced)].filter(Boolean).length;
   // After any first sync, steps drop their per-account rows to one line; the accounts live in Settings.
   const compact = [...gh, ...vc].some(isSynced);
   const brief = (list: Connection[], full: string): ReactNode => {
@@ -184,7 +187,7 @@ export function Onboarding({ connections, params, now }: { connections: Connecti
 
   return (
     <section aria-labelledby="setup-title" className="mb-12">
-      <SectionTitle id="setup-title" count={`${[gh.some(isSynced), vc.some(isSynced)].filter(Boolean).length} of 2 synced`}>
+      <SectionTitle id="setup-title" count={showAgent ? `${sources} of 3 done` : `${sources} of 2 synced`}>
         Setup
       </SectionTitle>
 
@@ -226,6 +229,19 @@ export function Onboarding({ connections, params, now }: { connections: Connecti
               action={
                 <Link href={VERCEL_START} className={vcActive ? buttonStyles.ghost : ghActive ? buttonStyles.primary : buttonStyles.secondary}>
                   {vcActive ? "Add another" : "Connect Vercel"}
+                </Link>
+              }
+            />
+          ) : null}
+          {showAgent ? (
+            <Step
+              state="todo"
+              title="Your coding agent"
+              note="Claude Code, Codex or Cursor. Breaks go to it first, with the cause."
+              now={now}
+              action={
+                <Link href="/app/agents" className={sources ? buttonStyles.primary : buttonStyles.secondary}>
+                  Connect an agent
                 </Link>
               }
             />

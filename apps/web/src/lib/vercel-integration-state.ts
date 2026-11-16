@@ -12,15 +12,6 @@ export const pendingCookieOptions = {
   maxAge: PENDING_MS / 1000,
 };
 
-export function safeVercelNext(value: string | null | undefined): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "vercel.com" || url.hostname.endsWith(".vercel.com")) && !url.username && !url.password
-      ? url.toString() : null;
-  } catch { return null; }
-}
-
 /** Carry Vercel's one-use code through sign-in without putting it in a URL. */
 export function createPendingInstall(query: string, now = Date.now()): string {
   return encrypt(JSON.stringify({ q: query, e: now + PENDING_MS })).ciphertext;

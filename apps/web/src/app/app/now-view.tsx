@@ -134,10 +134,10 @@ export function NowScreen({
     set(d.item.id, e ? { busy: false, error: e } : { busy: false, stage: "stopped" });
   };
 
-  const setup = ready && !onboardingComplete(connections);
   const s = report?.summary;
+  const setup = ready && (!onboardingComplete(connections) || s?.agents === 0);
   const empty = Boolean(s && !s.watching && !s.notWatched);
-  const onboarding = <Onboarding connections={connections} params={params} now={now} />;
+  const onboarding = <Onboarding connections={connections} params={params} now={now} agents={s ? s.agents : null} />;
   const lead = s ? nowLead(s) : null;
   const held = Object.values(done);
   const [first, ...queue] = (report?.onYou ?? []).filter((i) => !done[i.id]);

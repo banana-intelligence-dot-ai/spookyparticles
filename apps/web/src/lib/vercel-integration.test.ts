@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createOAuthState, verifyOAuthState } from "./oauth-state";
 import { buildVercelExchangeRequest, parseVercelExchangeResponse } from "./providers/vercel-oauth";
 import { INTEGRATION_READS_REQUEST_HISTORY, integrationScopes, pastedAccountId, retireCoveredTokens, retireDecision, tokenRetirementEvidence, upgradeTarget } from "./vercel-integration";
-import { createPendingInstall, safeVercelNext, verifyPendingInstall } from "./vercel-integration-state";
+import { createPendingInstall, verifyPendingInstall } from "./vercel-integration-state";
 
 beforeAll(() => { process.env.SP_MASTER_KEY = randomBytes(32).toString("base64"); });
 
@@ -39,12 +39,6 @@ describe("Vercel code exchange", () => {
     expect(parseVercelExchangeResponse({ ...fixture, team_id: null }).team_id).toBeNull();
     expect(() => parseVercelExchangeResponse({ ...fixture, access_token: "" })).toThrow();
   });
-});
-
-it("allows only https URLs on Vercel", () => {
-  expect(safeVercelNext("https://vercel.com/integrations/test?done=1")).toBe("https://vercel.com/integrations/test?done=1");
-  expect(safeVercelNext("https://foo.vercel.com/path")).toBe("https://foo.vercel.com/path");
-  for (const bad of ["http://vercel.com", "https://vercel.com.evil.test", "https://evil.test", "javascript:alert(1)", "//vercel.com", "https://user@vercel.com"]) expect(safeVercelNext(bad)).toBeNull();
 });
 
 it("upgrades only an existing integration and keeps pasted tokens separate", () => {

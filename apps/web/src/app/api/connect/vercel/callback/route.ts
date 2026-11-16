@@ -7,7 +7,7 @@ import { vercelGet } from "@/lib/providers/vercel";
 import { exchangeVercelCode } from "@/lib/providers/vercel-oauth";
 import { startSync } from "@/lib/sync";
 import { installDisplayName, retireCoveredTokens, saveVercelIntegration } from "@/lib/vercel-integration";
-import { createPendingInstall, PENDING_COOKIE, pendingCookieOptions, safeVercelNext, verifyPendingInstall } from "@/lib/vercel-integration-state";
+import { createPendingInstall, PENDING_COOKIE, pendingCookieOptions, verifyPendingInstall } from "@/lib/vercel-integration-state";
 
 function cookie(req: Request, name: string) {
   const raw = req.headers.get("cookie")?.split(/;\s*/).find((part) => part.startsWith(`${name}=`));
@@ -90,10 +90,10 @@ export async function GET(req: Request) {
     await track(userId, "consent_granted", { provider: "vercel", connection_id: row.id, via: "integration" });
     try { await startSync(row, `user:${userId}`); }
     catch (err) { console.error("[vercel install] first sync failed", row.id, (err as Error).message); }
-    const vercelNext = safeVercelNext(params.get("next"));
-    const destination = new URL(vercelNext ?? "/app/settings?connected=vercel", appUrl());
-    // Our own page shows the notice; Vercel's page gets its URL untouched.
-    if (replaced && !vercelNext) destination.searchParams.set("replaced", "1");
+    // Every install starts from our own button (state is required above), so the person comes
+    // back here, not to Vercel's integration page, which would strand a first run there.
+    const destination = new URL("/app/settings?connected=vercel", appUrl());
+    if (replaced) destination.searchParams.set("replaced", "1");
     return clear(NextResponse.redirect(destination));
   } catch (err) {
     console.error("[vercel install] callback failed", (err as Error).message);
