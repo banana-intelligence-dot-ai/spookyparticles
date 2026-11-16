@@ -30,6 +30,18 @@ export function validPrUrl(value: unknown, repo: string | null): value is string
   return !!match && match[2] !== "." && match[2] !== ".." && (!repo || `${match[1]}/${match[2]}`.toLowerCase() === repo.toLowerCase());
 }
 
+/** Re-check a finding hourly, not daily, while an agent's pull request for it waits, so a merge clears the card soon after. */
+export const PR_RECHECK_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+export function recheckDue(checkedAt: Date | null, prWaiting: boolean, now: Date): boolean {
+  if (!checkedAt) return true;
+  return now.getTime() - checkedAt.getTime() >= (prWaiting ? PR_RECHECK_MS : DAY_MS);
+}
+/** Check ids with a pull request reported in the last week. */
+export function waitingOnPr(attempts: Pick<Attempt, "checkId" | "outcome" | "reportedAt">[], now: Date): Set<string> {
+  return new Set(attempts.filter((a) => a.outcome === "pr_opened" && a.reportedAt && now.getTime() - a.reportedAt.getTime() < WAIT_FOR).map((a) => a.checkId));
+}
+
 export const currentAttempts = (finding: Finding, attempts: Attempt[]) =>
   attempts.filter((a) => a.checkId === finding.id && finding.firstOpenAt && a.takenAt >= finding.firstOpenAt)
     .sort((a, b) => a.takenAt.getTime() - b.takenAt.getTime());

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanNote, handoffSummary, prLabel, queue, validPrUrl, type Attempt, type Finding } from "./handoff";
+import { cleanNote, handoffSummary, prLabel, queue, recheckDue, validPrUrl, waitingOnPr, type Attempt, type Finding } from "./handoff";
 import { missingTable } from "./store";
 
 const now = new Date("2026-11-10T12:00:00Z");
@@ -77,5 +77,25 @@ describe("untrusted report input", () => {
   it("removes invisible and direction-changing characters from a note", () => {
     expect(cleanNote("fixed\u202e gnp.exe\u200b\n ok ")).toBe("fixed gnp.exe ok");
     expect(cleanNote("\u200b\u200f")).toBeNull();
+  });
+});
+
+describe("re-checking while a pull request waits", () => {
+  const hours = (n: number) => new Date(now.getTime() - n * 3_600_000);
+  it("reads hourly while a PR waits, daily otherwise", () => {
+    expect(recheckDue(hours(0.5), true, now)).toBe(false);
+    expect(recheckDue(hours(1), true, now)).toBe(true);
+    expect(recheckDue(hours(5), false, now)).toBe(false);
+    expect(recheckDue(hours(24), false, now)).toBe(true);
+    expect(recheckDue(null, false, now)).toBe(true);
+  });
+  it("counts only PRs reported in the last week", () => {
+    const ids = waitingOnPr([
+      { checkId: "a", outcome: "pr_opened", reportedAt: hours(2) },
+      { checkId: "b", outcome: "pr_opened", reportedAt: hours(24 * 8) },
+      { checkId: "c", outcome: "told_person", reportedAt: hours(2) },
+      { checkId: "d", outcome: "pr_opened", reportedAt: null },
+    ], now);
+    expect([...ids]).toEqual(["a"]);
   });
 });

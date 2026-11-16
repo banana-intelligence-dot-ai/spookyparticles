@@ -10,6 +10,8 @@ vi.mock("./alerts/channels", () => ({ matchesProject: (a: string, b: string) => 
 vi.mock("@/lib/audit", () => ({ appendAudit: vi.fn() }));
 vi.mock("@/lib/analytics/server", () => ({ track: vi.fn() }));
 vi.mock("@/lib/env", () => ({ appUrl: () => "https://spooky.example" }));
+// The real module loads the incident and listening code; these tests are about the pager.
+vi.mock("./agent-first", () => ({ shouldDeferToAgent: vi.fn().mockResolvedValue(false) }));
 
 const job = { id: "job-1", userId: "user-1", name: "Daily check", project: "owner/repo", missCount: 1 };
 const notice = { subject: "Daily check: quiet", text: "Daily check is down", priority: "high" as const, key: "job_quiet:job-1:1" };

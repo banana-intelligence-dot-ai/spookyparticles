@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { getInstallationToken } from "@/lib/connections";
 import { gh } from "@/lib/github-sync";
@@ -7,7 +7,8 @@ import { expirations, spookyKeyExpirations, trackedExpirations } from "@/lib/exp
 import { notifyExpiration } from "@/lib/alerts/expiration";
 import { scanPublicSite } from "./public-scan";
 import { DEPENDENCY_FILES, depsRule, type Decision } from "./rules";
-import { readChecks, saveCheck } from "./store";
+import { missingTable, readChecks, saveCheck } from "./store";
+import { recheckDue, waitingOnPr } from "./handoff";
 import { readNodes } from "@/lib/node-reads";
 
 const DAY = 86_400_000;
@@ -58,13 +59,18 @@ export async function sweepChecks(now = new Date()): Promise<{ scanned: number; 
     };
     await saveCheck(p.userId, p.id, "secret_in_public_code", decision, now);
   }
+  // A check whose pull request is waiting is read hourly, so a merge clears it within the hour.
+  const prAttempts = await db.select({ checkId: schema.checkAttempts.checkId, outcome: schema.checkAttempts.outcome, reportedAt: schema.checkAttempts.reportedAt })
+    .from(schema.checkAttempts).where(and(eq(schema.checkAttempts.outcome, "pr_opened"), gte(schema.checkAttempts.reportedAt, new Date(now.getTime() - 7 * DAY))))
+    .catch((err) => { if (missingTable(err, "check_attempts")) return []; throw err; });
+  const prWaiting = waitingOnPr(prAttempts, now);
   let repoCount = 0;
   const repoById = new Map(repos.map((r) => [r.id, r]));
   const accountById = new Map(accounts.map((a) => [a.id, a]));
   const repoDecisions = new Map<string, Decision>();
   for (const p of projects.filter((x) => x.externalKey.startsWith("vercel:project:"))) {
     const old = prior(p, "deps_not_updated");
-    if (old && now.getTime() - old.checkedAt.getTime() < DAY) continue;
+    if (old && !recheckDue(old.checkedAt, prWaiting.has(old.id), now)) continue;
     const edge = links.find((e) => e.toNodeId === p.id && e.kind === "hosted_on");
     const repo = edge ? repoById.get(edge.fromNodeId) : null;
     let decision: Decision;
