@@ -123,6 +123,7 @@ cat > "$HOME/bin/claude" <<'EOF'
 #!/bin/sh
 echo "agent claude $PWD" >> "$FAKE/calls"
 printf '%s\n' "$@" > "$FAKE/claude-args"
+echo "${SPOOKY_API_KEY:-unset}" > "$FAKE/claude-key"
 echo "leak $SPOOKY_API_KEY sp_abcdefgh123 https://x.example/api/ping/tok123"
 echo "what broke"; echo "no change"; echo "fixed"; echo "Lesson: nightly fails when the feed is empty"
 EOF
@@ -242,6 +243,15 @@ grep -qx -- '--permission-mode' "$FAKE/claude-args" || fail "claude run without 
 grep -qx -- '--allowedTools' "$FAKE/claude-args" || fail "claude run without an allowlist"
 grep -q 'Bash(python3 -m pytest:\*)' "$FAKE/claude-args" || fail "python repos cannot run their tests"
 grep -q 'Do not run the claim or confirm commands' "$FAKE/claude-args" || fail "agent told to call Spooky itself"
+[ "$(cat "$FAKE/claude-key")" = unset ] || fail "agent was given the Spooky key"
+if grep -qx -- '--settings' "$FAKE/claude-args"; then
+  settings=$(grep -A1 -x -- '--settings' "$FAKE/claude-args" | tail -1)
+  grep -q '"autoAllowBashIfSandboxed": true' "$settings" || fail "sandbox does not allow the repo's commands"
+  grep -q '"failIfUnavailable": true' "$settings" || fail "sandbox may fall back to no sandbox"
+  grep -q '"\*\*/.env"' "$settings" || fail "sandbox can read nested .env files"
+  grep -q "$HOME/.zshrc" "$settings" || fail "sandbox can read the shell profile"
+  grep -q '"git push \*"' "$settings" || fail "sandbox blocks the push a fix ships with"
+elif [ "$(uname -s)" = Darwin ]; then fail "claude ran without the sandbox on macOS"; fi
 [ "$(count push)" -ge 1 ] || fail "push not sent when a topic is set"
 
 # The same problem is never run twice.

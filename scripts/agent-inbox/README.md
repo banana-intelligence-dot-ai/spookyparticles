@@ -74,6 +74,7 @@ The fixer skips any folder with uncommitted changes, so it never mixes into your
 It runs for 12 hours and then stops. Options:
 
 - `--agent codex` uses Codex instead. Codex stays inside its own sandbox, so it can edit the project but not push. Add `--model` to pick a model.
+- Claude runs inside Claude Code's sandbox (on macOS, or on Linux with `bwrap` and `socat` installed). It can run whatever the repo's tests and checks need, but it cannot read `.env` files, shell profiles or saved logins, and it reaches only package registries. Commits, pushes and pull requests run outside the sandbox so a fix can ship. Without a sandbox it may run only a fixed list of build and test commands. The fixer never hands it your Spooky key.
 - Claude runs on your Claude login. If `ANTHROPIC_API_KEY` is set in the shell, the fixer ignores it. Add `--use-api-key` to use the key instead.
 - If Claude cannot sign in, the fixer stops with code 3 and the run does not count. Sign in to Claude once by hand, then start it again.
 - `--interval 300` sets the seconds between checks. `--hours 12` or `--until 2026-11-13T06:00:00Z` sets when it stops.

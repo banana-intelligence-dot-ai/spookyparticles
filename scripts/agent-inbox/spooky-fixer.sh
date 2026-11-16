@@ -658,7 +658,7 @@ You are fixing a production problem in this repository. Spooky Particles found i
 5. Do not run the claim or confirm commands in the incident, and do not try to reach Spooky. The fixer that started you has claimed this problem and asks Spooky to check production as soon as you finish.
 6. Add one dated line to .spooky/lessons.md (create it if needed): what broke, the real cause, and what fixed it or why you stopped. Write it for the next agent that fixes this repo. Keep the file under 60 lines by merging repeats. Commit it with your fix; if you changed nothing else, commit it alone only if the repo's rules allow.
 
-Never read or print .env files, keys or tokens. One fix per run.
+Never read or print .env files, keys or tokens. One fix per run. Run git commit, git push and gh pr create each as its own command, never chained with && or ; to anything else: only then can they reach your signing key and the network.
 
 End with four short lines: what broke, what you did (commit hash or "no change"), whether it is deployed, committed only, or not changed, and "Lesson: " followed by the line you added.
 
@@ -666,7 +666,47 @@ Incident:
 EOF
 }
 
-claude_tools="Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(npm test:*),Bash(npm run:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(bun:*),Bash(make:*),Bash(pytest:*),Bash(python3 -m pytest:*),Bash(python -m pytest:*),Bash(python3 -m unittest:*),Bash(python -m unittest:*),Bash(uv run:*),Bash(poetry run:*),Bash(cargo:*),Bash(go:*),Bash(ls:*),Bash(grep:*),Bash(sed:*),Bash(curl:*),Bash(sleep:*)"
+# Claude runs inside Claude Code's OS sandbox when this computer has one (macOS always; Linux with
+# bubblewrap and socat). Inside it every shell command is allowed, so a repo's own tests, linters
+# and env-prefixed scripts run. It cannot read .env files, shell profiles or saved logins, and it
+# reaches only package registries. git commit (signing keys), git push and gh pr create run outside it, so a fix can ship
+# the way the project's CLAUDE.md or AGENTS.md allows. Without a sandbox, the list below is all
+# the agent may run.
+sandbox_available() {
+  case $(uname -s) in
+    Darwin) return 0 ;;
+    Linux) command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1 ;;
+    *) return 1 ;;
+  esac
+}
+json_str() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+write_sandbox_settings() {
+  deny='"./.env", "./.env.*", "**/.env", "**/.env.*"'
+  for f in .zshrc .zshenv .zprofile .bashrc .bash_profile .profile .netrc .ssh .aws .docker .config/gh .config/spooky; do
+    deny="$deny, $(json_str "$HOME/$f")"
+  done
+  cat > "$1" <<EOF
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "failIfUnavailable": true,
+    "excludedCommands": ["git commit *", "git push *", "gh pr create *"],
+    "network": { "allowedDomains": ["registry.npmjs.org", "registry.yarnpkg.com", "pypi.org", "files.pythonhosted.org", "crates.io", "index.crates.io", "static.crates.io", "proxy.golang.org", "sum.golang.org", "rubygems.org"] },
+    "filesystem": { "denyRead": [$deny] }
+  },
+  "permissions": { "deny": ["Read(./.env*)", "Read(**/.env*)", "Bash(security:*)"] }
+}
+EOF
+}
+
+claude_tools="Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(gh pr create:*),Bash(npm test:*),Bash(npm run:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(bun:*),Bash(make:*),Bash(pytest:*),Bash(python3 -m pytest:*),Bash(python -m pytest:*),Bash(python3 -m unittest:*),Bash(python -m unittest:*),Bash(uv run:*),Bash(poetry run:*),Bash(cargo:*),Bash(go:*),Bash(ls:*),Bash(grep:*),Bash(sed:*),Bash(curl:*),Bash(sleep:*)"
+sandbox=false
+sandbox_settings="$state_dir/claude-sandbox.json"
+if [ "$agent" = claude ] && sandbox_available; then
+  write_sandbox_settings "$sandbox_settings" && sandbox=true
+fi
 
 # sync_repo <repo>: fetch origin, switch to its default branch and fast-forward it. Fails rather
 # than merge or discard: local commits that are not on origin stop the run.
@@ -692,9 +732,12 @@ run_agent() {
       cd "$repo" || exit 1
       if [ "$agent" = claude ]; then
         # Your Claude login, not a stray ANTHROPIC_API_KEY in the shell, unless --use-api-key.
-        if [ "$use_api_key" = true ]; then set -- claude; else set -- env -u ANTHROPIC_API_KEY claude; fi
-        set -- "$@" -p "$prompt" --permission-mode acceptEdits --max-turns "$max_turns" \
-          --allowedTools "$claude_tools" --disallowedTools "Read(./.env*),Read(**/.env*)"
+        # The Spooky keys stay with the fixer: it claims and confirms, the agent never needs them.
+        if [ "$use_api_key" = true ]; then set -- env -u SPOOKY_API_KEY -u SPOOKY_WRITE_KEY claude
+        else set -- env -u ANTHROPIC_API_KEY -u SPOOKY_API_KEY -u SPOOKY_WRITE_KEY claude; fi
+        set -- "$@" -p "$prompt" --permission-mode acceptEdits --max-turns "$max_turns"
+        if [ "$sandbox" = true ]; then set -- "$@" --settings "$sandbox_settings"; fi
+        set -- "$@" --allowedTools "$claude_tools" --disallowedTools "Read(./.env*),Read(**/.env*)"
         [ -n "$model" ] && set -- "$@" --model "$model"
       else
         # workspace-write is Codex's own sandbox: edits stay in this repo. Never bypass it.
