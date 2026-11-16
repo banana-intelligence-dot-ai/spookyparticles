@@ -24,6 +24,7 @@ const m = vi.hoisted(() => ({
   agentsFor: vi.fn(),
   catchesFor: vi.fn(),
   commitOutcomeFor: vi.fn(),
+  manualInputFor: vi.fn(),
   clearedFor: vi.fn(),
   mutesFor: vi.fn(),
   publicFeedEnabled: vi.fn(),
@@ -50,6 +51,7 @@ vi.mock("@/lib/open-items", async (orig) => ({ ...(await orig<typeof import("@/l
 vi.mock("@/lib/agents", async (orig) => ({ ...(await orig<typeof import("@/lib/agents")>()), agentsFor: m.agentsFor }));
 vi.mock("@/lib/catches", async (orig) => ({ ...(await orig<typeof import("@/lib/catches")>()), catchesFor: m.catchesFor }));
 vi.mock("@/lib/commit-outcome", () => ({ commitOutcomeFor: m.commitOutcomeFor }));
+vi.mock("@/lib/manual-input", async (orig) => ({ ...(await orig<typeof import("@/lib/manual-input")>()), manualInputFor: m.manualInputFor }));
 vi.mock("@/lib/findings-status", () => ({ setFindingStatus: m.setFindingStatus }));
 vi.mock("@/lib/expirations/add", () => ({ addTrackedExpiration: m.addTrackedExpiration }));
 vi.mock("@/lib/connections", async (orig) => ({ ...(await orig<typeof import("@/lib/connections")>()), getConnection: m.getConnection }));
@@ -70,7 +72,7 @@ const text = (res: unknown) => JSON.stringify(res);
 
 beforeEach(() => { vi.clearAllMocks(); });
 
-const READS = ["public_feed", "commit_outcome", "list_connections", "list_alert_channels", "job_history", "recent_activity", "open_items", "fix_history", "list_agents", "list_mutes"];
+const READS = ["public_feed", "commit_outcome", "manual_input", "list_connections", "list_alert_channels", "job_history", "recent_activity", "open_items", "fix_history", "list_agents", "list_mutes"];
 const WRITES: [string, Record<string, unknown>][] = [
   ["create_job", { name: "Nightly backup", periodMinutes: 1440 }],
   ["retire_job", { job_id: ID }],
@@ -107,7 +109,7 @@ const WRITES: [string, Record<string, unknown>][] = [
 it("read tools are available to read keys and write tools are hidden from them", () => {
   const read = toolsFor(actor(["read"]));
   const write = toolsFor(actor(["read", "write"]));
-  expect(Object.keys(read)).toHaveLength(23);
+  expect(Object.keys(read)).toHaveLength(24);
   for (const name of READS) { expect(read[name]).toBeDefined(); expect(read[name].annotations.readOnlyHint).toBe(true); }
   for (const [name] of WRITES) { expect(read[name]).toBeUndefined(); expect(write[name].annotations.readOnlyHint).toBe(false); }
 });
@@ -320,4 +322,12 @@ it("export_data is available to read keys and uses the audited builder", async (
   expect(out).toContain("tooLarge");
   expect(out).toContain("30000");
   expect(out).not.toContain("large");
+});
+
+it("manual_input reads only the caller's account and keeps the window in range", async () => {
+  m.manualInputFor.mockResolvedValue({ days: 90, humanSteps: 0, avoidableHumanSteps: 0, agentSteps: 0, spookySteps: 0, humanShare: null, automateNext: [], setupHumanSteps: 3 });
+  await call(["read"], "manual_input", {});
+  expect(m.manualInputFor).toHaveBeenCalledWith("user-1", 7);
+  await call(["read"], "manual_input", { days: 400 });
+  expect(m.manualInputFor).toHaveBeenLastCalledWith("user-1", 90);
 });

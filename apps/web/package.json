@@ -10,6 +10,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:ro": "node --import tsx scripts/db-ro.ts",
+    "db:ro-role": "node --env-file-if-exists=.env.local --import tsx scripts/db-readonly-role.ts",
     "revoke:all": "node --env-file-if-exists=.env.local --import tsx scripts/mass-revoke.ts",
     "prebuild": "npm --prefix ../../packages/tier0 run build"
   },

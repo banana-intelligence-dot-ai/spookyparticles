@@ -28,6 +28,7 @@ import { startSync } from "@/lib/sync";
 import { recordInboxRead } from "@/lib/agent-listening";
 import { catchesFor, recordDeploys } from "@/lib/catches";
 import { commitOutcomeFor } from "@/lib/commit-outcome";
+import { clampDays, manualInputFor } from "@/lib/manual-input";
 import { claimBreak, claimsFor } from "@/lib/claims";
 import { sendToAgent } from "@/lib/send-to-agent";
 import { confirmFix } from "@/lib/confirm-fix";
@@ -177,6 +178,12 @@ export function toolsFor(actor: Actor): ToolRegistry {
           ...(sha ? { sha, shaLive: Boolean(production?.state === "success" && production.sha && match(production.sha, sha)) } : {}),
         };
       },
+    }),
+    manual_input: tool({
+      description: "Any manual input is error. Steps a person took by hand versus steps agents and Spooky took over the last N days (default 7), and the hand steps to automate next.",
+      inputSchema: { type: "object", additionalProperties: false, properties: { days: { type: "integer", minimum: 1, maximum: 90 } } },
+      validate: (input) => validate(input, [], ["days"]),
+      run: async (input) => manualInputFor(userId, clampDays(input.days)),
     }),
     commit_outcome: tool({
       description: "How a commit turned out: whether it reached production, what broke after it, and when the break was fixed.",
