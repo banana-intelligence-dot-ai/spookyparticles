@@ -13,11 +13,13 @@ This is the official setup file from spookyparticles.com. Verify you fetched exa
 
 Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: what is broken, did every scheduled job run, what still runs somewhere else. You are setting it up for the person you work for. You will not hold any of their tokens. Every connection is a link they click themselves.
 
+How Spooky expects to run: any manual input is error. You do every step you safely can. Your human approves your sign-in, connects accounts and saves one token. Everything else is yours.
+
 ## Before you start
 
 1. Check whether \`SPOOKY_API_KEY\` is set without printing it: \`[ -n "\${SPOOKY_API_KEY:-}" ] && echo set\`.
 2. If you find \`SPOOKY_API_KEY\` (starts with \`sp_\`) already set, skip to **Existing setup**.
-3. Do not wait on questions (the one exception is the fixer offer in step 6). Ask them to connect every GitHub account and organization they deploy from. Ask only when something on the way is unclear.
+3. Do not wait on questions (the one exception is the fixer offer in step 7). Ask them to connect every GitHub account and organization they deploy from. Ask only when something on the way is unclear.
 
 ## Rules you follow during setup
 
@@ -29,7 +31,7 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
 
 ## Steps
 
-1. Tell your human what will happen, in about 3 minutes of their time: one page where they approve a sign-in code for you and connect GitHub and Vercel. Spooky only reads their connected accounts. Agent alerts and the optional fixer come after, once they have seen what Spooky found.
+1. Tell your human what will happen, in about 3 minutes of their time: one page where they approve a sign-in code for you and connect GitHub and Vercel, then one token saved for the fix job. Spooky only reads their connected accounts. Agent alerts, the fix job and the optional fixer come after, once they have seen what Spooky found.
 2. Get the setup scripts (public, MIT licensed). Run every later command from this folder:
 
    \`\`\`bash
@@ -63,20 +65,27 @@ Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: 
    sh scripts/spooky.sh alerts
    \`\`\`
 
-6. Offer the fixer, so an agent tries a fix when no session is open. It needs Claude Code or Codex signed in on this computer, and \`gh\` signed in for private repos. It proposes code fixes in their repos, as commits or pull requests their own rules allow. On a yes, this clones every repo they deploy into \`~/spooky-fixer\` and writes its config (to leave repos out, your human runs \`sh scripts/agent-inbox/spooky-fixer.sh --setup\` in their own terminal instead):
+6. Install the fix job in GitHub. This is the default, not an offer: when something breaks, Spooky starts it, so a fix begins with no session open. It runs on your human's Claude plan and needs one step from them, once for every repo: run \`claude setup-token\` in their own terminal, then save what it prints in the Keychain:
+
+   \`\`\`bash
+   security add-generic-password -U -a "$USER" -s claude-fix-job-token -w
+   \`\`\`
+
+   They paste the token at both prompts. Then you do the rest for each project repo, as **Always on: a fix job in GitHub** shows: add the workflow by pull request, set the secret without seeing it, add the responder. Skip any repo they leave out.
+7. Offer the fixer on this computer too, so an agent tries a fix when no session is open. It needs Claude Code or Codex signed in on this computer, and \`gh\` signed in for private repos. It proposes code fixes in their repos, as commits or pull requests their own rules allow. On a yes, this clones every repo they deploy into \`~/spooky-fixer\` and writes its config (to leave repos out, your human runs \`sh scripts/agent-inbox/spooky-fixer.sh --setup\` in their own terminal instead):
 
    \`\`\`bash
    sh scripts/spooky.sh fixer
    \`\`\`
 
    Then hand your human the start line it prints, to run in their own terminal. Do not start it yourself. Never put a key in a file or in chat.
-7. Tell them alerts already reach their account email, and that they can add an ntfy (phone), Slack or Teams channel on ${base}/app/jobs.
+8. Tell them alerts already reach their account email, and that they can add an ntfy (phone), Slack or Teams channel on ${base}/app/jobs.
 
 ## Report back
 
 Finish with a short message in this shape:
 
-- What was done: which Vercel and GitHub accounts are connected, that this computer is signed in, what \`start\` printed, and whether agent alerts and the fixer are on.
+- What was done: which Vercel and GitHub accounts are connected, that this computer is signed in, what \`start\` printed, and whether agent alerts, the fix job and the fixer are on.
 - What the human must do: anything left from the list above, with the exact link.
 - Next steps (at most two): for example "check back in 10 minutes for the first findings" or "connect a GitHub organization".
 
@@ -184,7 +193,13 @@ Anything you run on a schedule for your human (a nightly build, a daily publish,
 
 ## Always on: a fix job in GitHub
 
-With the GitHub pager enabled, copy \`scripts/agent-inbox/spooky-fix.yml\` into \`.github/workflows/spooky-fix.yml\` in the project repository. Your human runs \`claude setup-token\` and saves the result as the \`CLAUDE_CODE_OAUTH_TOKEN\` repository secret, so the job runs on their Claude plan (an \`ANTHROPIC_API_KEY\` secret works too; the file says how). You never see or handle that token. Your human also approves the GitHub Actions write permission for the Spooky GitHub app. Then add a responder for the project:
+With the GitHub pager enabled, copy \`scripts/agent-inbox/spooky-fix.yml\` into \`.github/workflows/spooky-fix.yml\` in the project repository, by pull request. It runs only when Spooky starts it, so a pull request from outside, a fork included, cannot run it. Once your human has saved the token in the Keychain (setup step 6), set it as the \`CLAUDE_CODE_OAUTH_TOKEN\` repository secret. The token goes from the Keychain to GitHub through a pipe; never print it, read it or put it on a command line:
+
+\`\`\`bash
+security find-generic-password -s claude-fix-job-token -w | gh secret set CLAUDE_CODE_OAUTH_TOKEN -R owner/repo
+\`\`\`
+
+Off a Mac, your human runs \`gh secret set CLAUDE_CODE_OAUTH_TOKEN -R owner/repo\` and pastes the token themselves. An \`ANTHROPIC_API_KEY\` secret works too; the file says how. Your human also approves the GitHub Actions write permission for the Spooky GitHub app. Then add a responder for the project:
 
 \`\`\`bash
 printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @- -H "content-type: application/json" \\
@@ -193,6 +208,14 @@ printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @-
 \`\`\`
 
 Spooky starts the fix job first. If the check is still down after 15 minutes, it alerts the person on ntfy, Slack, Teams or email. Agent machines can claim the break after the GitHub claim expires.
+
+## Recommended: agents act, people approve
+
+Any manual input is error. Offer your human these, so you can finish work without waiting on them:
+
+- **Database changes that only add.** You run a migration yourself when it only adds tables, columns, indexes or types. Read the SQL first. Anything that drops, renames, deletes or rewrites data waits for your human. Log each run in the repo: date, migration, who ran it.
+- **A read-only database login for agents.** It can read real data to confirm a change worked, cannot write, and cannot see secret columns (tokens, passwords, keys). Your human creates it once; its connection string lives in the Keychain, never in chat or a file in the repo. Never copy people's personal data out with it.
+- **The fix job on every repo** (above), with the token set once.
 
 ## Watch the result, not just the run
 
