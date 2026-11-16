@@ -96,6 +96,7 @@ const WRITES: [string, Record<string, unknown>][] = [
   ["test_alert_channel", { channel_id: ID }],
   ["send_test_alert", {}],
   ["send_to_agent", { project: "me/app", what: "Deploy failed" }],
+  ["decline_merge", { finding_id: ID, note: "A check failed" }],
   ["delete_job", { job_id: ID }],
   ["delete_expiration", { expiration_id: ID }],
   ["dismiss_check", { finding_id: ID }],
@@ -124,7 +125,7 @@ it.each(WRITES)("%s is refused for a read-only key", async (name, args) => {
   for (const fn of Object.values(m)) expect(fn).not.toHaveBeenCalled();
 });
 
-const APPROVE = ["list_api_keys", "create_api_key", "revoke_api_key", "approve_agent_sign_in", "delete_account", "cancel_account_deletion", "account_deletion_status"];
+const APPROVE = ["allow_merge", "withdraw_merge", "list_api_keys", "create_api_key", "revoke_api_key", "approve_agent_sign_in", "delete_account", "cancel_account_deletion", "account_deletion_status"];
 
 it("read keys see no write or approve tools", () => {
   const read = toolsFor(actor(["read"]));

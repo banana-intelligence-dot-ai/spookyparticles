@@ -17,6 +17,8 @@ export type CheckSpec = {
   severity: "exposed" | "gap";
   fix: { text: string; steps?: string[]; docUrl: string; settingPath?: string };
   agent: { handoff: "pull_request" | "person"; instructions: string; personAfter?: string };
+  /** Low risk: the person may let their agent merge its own pull request, if it changes only these files. */
+  agentMerge?: { files: string[] };
 };
 
 /** One source of words for the API, the page and the agent tools. Every sentence here must be true for every project it is shown on. */
@@ -69,6 +71,7 @@ export const CHECK_CATALOG: Record<CheckKey, CheckSpec> = {
     severity: "gap",
     fix: { text: "Add a file named .github/dependabot.yml with these lines. They are for an npm project; change the ecosystem if yours differs.", steps: dependabot, docUrl: "https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuring-dependabot-version-updates" },
     agent: { handoff: "pull_request", instructions: "Add .github/dependabot.yml using the lines in the fix. Adjust the package ecosystem and directories to match the repo. Open a pull request." },
+    agentMerge: { files: [".github/dependabot.yml", ".github/dependabot.yaml"] },
   },
 };
 

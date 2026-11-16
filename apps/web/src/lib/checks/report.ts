@@ -2,6 +2,7 @@ import type { schema } from "@/db";
 import { CHECK_CATALOG, wordsFor } from "./catalog";
 import { CHECK_KEYS, type CheckKey } from "./rules";
 import { MAX_ATTEMPTS, handoffSummary, type Attempt } from "./handoff";
+import { mergeState, type MergeEvent } from "./merge";
 
 type Node = typeof schema.nodes.$inferSelect;
 type Row = typeof schema.projectChecks.$inferSelect;
@@ -20,7 +21,7 @@ export function linkedRepo(node: Pick<Node, "attributes">): string | null {
   return a.repo_provider === "github" && typeof a.repo === "string" && /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9_.-]{1,100}$/.test(a.repo) ? a.repo : null;
 }
 
-export function checkReport(nodes: Node[], rows: Row[], ready: boolean, attempts: Attempt[] = [], now = new Date()) {
+export function checkReport(nodes: Node[], rows: Row[], ready: boolean, attempts: Attempt[] = [], now = new Date(), mergeEvents: MergeEvent[] = []) {
   const projects = nodes.filter((n) => n.kind === "project" && n.externalKey.startsWith("vercel:project:")).map((node) => {
     const a = node.attributes;
     const team = typeof a.scope_slug === "string" && /^[a-z0-9][a-z0-9-]*$/.test(a.scope_slug) && a.scope_slug !== "scoped" ? a.scope_slug : null;
@@ -38,7 +39,7 @@ export function checkReport(nodes: Node[], rows: Row[], ready: boolean, attempts
         fix: { text: words.fixText, ...(spec.fix.steps ? { steps: spec.fix.steps } : {}), docUrl: spec.fix.docUrl, ...(settingUrl ? { settingUrl } : {}) }, evidence: row?.evidence ?? {},
         agent: { handoff: spec.agent.handoff, instructions: spec.agent.instructions, ...(spec.agent.personAfter ? { personAfter: spec.agent.personAfter } : {}) },
         firstOpenAt: row?.firstOpenAt ?? null, fixedAt: row?.fixedAt ?? null, dismissedAt: row?.dismissedAt ?? null, checkedAt: row?.checkedAt ?? null,
-        handoff: row ? handoffSummary(row, attempts, now) : { attempts: 0, max: MAX_ATTEMPTS, capped: false, inProgress: false, last: null } };
+        handoff: row ? { ...handoffSummary(row, attempts, now), merge: mergeState(row, attempts, mergeEvents, now) } : { attempts: 0, max: MAX_ATTEMPTS, capped: false, inProgress: false, last: null, merge: null } };
     });
     return { nodeId: node.id, name: node.name, repo: linkedRepo(node), productionUrl, checks };
   }).sort((a, b) => worst(a.checks) - worst(b.checks) || a.name.localeCompare(b.name));

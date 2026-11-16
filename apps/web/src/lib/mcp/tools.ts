@@ -36,7 +36,7 @@ import { projectPageFor, projectsFor } from "@/lib/projects";
 import { resyncHostsQuietlyFor } from "@/lib/sync";
 import type { Actor } from "@/lib/actor";
 import { sameProject } from "@/lib/break-guide";
-import { findingsReport, reportAttempt, takeNext } from "@/lib/checks/handoff-store";
+import { allowMerge, declineAgentMerge, findingsReport, reportAttempt, takeNext } from "@/lib/checks/handoff-store";
 import { expirationsFor } from "@/lib/expirations/store";
 import { helpFor } from "@/lib/help/ask";
 import { HELP_MAX_CHARS } from "@/lib/help/input";
@@ -365,7 +365,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
   const writes: ToolRegistry = {
     ...read,
     next_finding: write({
-      description: "Take the next open finding from the project check, most serious first, or the one your person handed you by finding_id. One at a time. Follow its instructions: open a pull request and never merge it, or give your person the exact steps. Then call report_finding.",
+      description: "Take the next open finding from the project check, most serious first, or the one your person handed you by finding_id. One at a time. Follow its instructions: open a pull request and never merge it, or give your person the exact steps. Then call report_finding. If merges is not empty, your person let you merge those pull requests: follow each one's rules exactly, merge with your own GitHub login, or call decline_merge with the reason.",
       inputSchema: { type: "object", additionalProperties: false, properties: { finding_id: { type: "string", description: "Optional: the finding your person handed you" } } },
       validate: (input) => {
         const basic = validate(input, [], ["finding_id"]);
@@ -723,6 +723,12 @@ export function toolsFor(actor: Actor): ToolRegistry {
       validate: idInput("expiration_id", "expiration"),
       run: async (input) => viaApi(() => removeTrackedExpiration(actor, input.expiration_id as string)),
     }),
+    decline_merge: write({
+      description: "You did not merge a pull request your person let you merge (from merges in next_finding), because one of its rules did not hold. Say which in one line. Your person sees it.",
+      inputSchema: { type: "object", additionalProperties: false, properties: { finding_id: { type: "string", description: "Finding ID from merges in next_finding" }, note: { type: "string", description: "Why you did not merge, in one line" } }, required: ["finding_id", "note"] },
+      validate: (input) => validate(input, ["finding_id", "note"], ["finding_id", "note"]) ?? (UUID.test(input.finding_id as string) ? null : "finding_id must be a finding ID"),
+      run: async (input) => viaApi(() => declineAgentMerge(actor, input.finding_id as string, input.note)),
+    }),
     dismiss_check: write({
       description: "Dismiss only a finding that does not matter to this project, never one you were asked to fix. restore_check undoes it.",
       inputSchema: idSchema("finding_id", "Finding ID from list_findings"),
@@ -751,6 +757,18 @@ export function toolsFor(actor: Actor): ToolRegistry {
 
 function approveTools(actor: Actor): ToolRegistry {
   return {
+    allow_merge: write({
+      description: "Your person's yes: let their agent merge the pull request it opened for a low-risk finding, after every check on it passes. Only when your person says so in their own words. withdraw_merge takes it back. Spooky never merges. Audited.",
+      inputSchema: idSchema("finding_id", "Finding ID from list_findings"),
+      validate: idInput("finding_id", "finding"),
+      run: async (input) => viaApi(() => allowMerge(actor, input.finding_id as string, true)),
+    }),
+    withdraw_merge: write({
+      description: "Take back the person's yes for an agent to merge a finding's pull request. Audited.",
+      inputSchema: idSchema("finding_id", "Finding ID from list_findings"),
+      validate: idInput("finding_id", "finding"),
+      run: async (input) => viaApi(() => allowMerge(actor, input.finding_id as string, false)),
+    }),
     list_api_keys: tool({
       description: "List agent keys with name, prefix, scopes and dates. Never returns the key itself.",
       inputSchema: empty,

@@ -4,7 +4,7 @@ import { CHECK_KEYS, type CheckKey } from "./rules";
 
 export const MAX_ATTEMPTS = 3;
 export const OPEN_FOR = 2 * 60 * 60 * 1000;
-const WAIT_FOR = 7 * 24 * 60 * 60 * 1000;
+export const WAIT_FOR = 7 * 24 * 60 * 60 * 1000;
 export type Outcome = "pr_opened" | "told_person" | "could_not_fix" | "not_a_problem";
 export type Attempt = Pick<typeof schema.checkAttempts.$inferSelect, "id" | "checkId" | "takenAt" | "outcome" | "prUrl" | "note" | "reportedAt">;
 export type Finding = Pick<typeof schema.projectChecks.$inferSelect, "id" | "state" | "dismissedAt" | "firstOpenAt"> & { check?: string };

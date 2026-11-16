@@ -38,8 +38,9 @@ export type Check = {
   fixedAt: string | null;
   dismissedAt: string | null;
   checkedAt: string | null;
-  handoff?: { attempts: number; max: number; capped: boolean; inProgress: boolean; last: { outcome: string | null; prUrl: string | null; note: string | null; at: string | null } | null };
+  handoff?: { attempts: number; max: number; capped: boolean; inProgress: boolean; last: { outcome: string | null; prUrl: string | null; note: string | null; at: string | null } | null; merge?: MergeState | null };
 };
+type MergeState = { canAllow: boolean; allowed: boolean; declined: string | null; prUrl: string | null };
 export type CheckProject = { nodeId: string; name: string; repo?: string | null; productionUrl: string | null; checks: Check[] };
 export type CheckReport = { ready: boolean; summary: { projects: number; open: number; fixed: number; unknown: number }; projects: CheckProject[] };
 type ServicesReport = {
@@ -78,7 +79,7 @@ export function handoffWords(h: Check["handoff"], now: number): { text: string; 
 }
 
 /** Sits after what we found and before what to do, in the ink of an instruction: it changes what the person does next. The note is the agent's own words, so it is quoted. A waiting pull request takes the one primary button, right under the line that names it. */
-function HandoffLine({ handoff, now }: { handoff: Check["handoff"]; now: number }) {
+function HandoffLine({ id, handoff, now }: { id: string | null; handoff: Check["handoff"]; now: number }) {
   const w = handoffWords(handoff, now);
   if (!w) return null;
   return (
@@ -89,11 +90,46 @@ function HandoffLine({ handoff, now }: { handoff: Check["handoff"]; now: number 
       </p>
       {w.note ? <p className="mt-1">“{w.note}”</p> : null}
       {w.pr ? (
-        <a href={w.pr.href} target="_blank" rel="noreferrer" className={`${buttonStyles.repair} mt-3`}>
-          Review pull request
-        </a>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <a href={w.pr.href} target="_blank" rel="noreferrer" className={buttonStyles.repair}>
+            Review pull request
+          </a>
+          {id && handoff?.merge?.canAllow ? <MergeControl id={id} initial={handoff.merge} /> : null}
+        </div>
       ) : null}
     </div>
+  );
+}
+
+/** "Let my agent merge this": only on a low-risk finding's waiting pull request. Spooky records the yes; the person's own agent merges once every check passes. */
+function MergeControl({ id, initial }: { id: string; initial: MergeState }) {
+  const [state, setState] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const set = async (allow: boolean) => {
+    setBusy(true);
+    const r = await apiSend<{ allowed: boolean }>(allow ? "POST" : "DELETE", `/api/v1/checks/${id}/merge`);
+    setBusy(false);
+    if (r.ok) {
+      setError(null);
+      setState({ ...state, allowed: allow, declined: null });
+    } else setError(r.error ?? "That didn't save. Try again.");
+  };
+  return (
+    <>
+      {state.allowed ? (
+        <button type="button" disabled={busy} onClick={() => void set(false)} className={`${buttonStyles.ghost} disabled:opacity-60`}>
+          Take it back
+        </button>
+      ) : (
+        <button type="button" disabled={busy} onClick={() => void set(true)} className={`${buttonStyles.ghost} text-fg disabled:opacity-60`}>
+          {busy ? "Saving…" : "Let my agent merge this"}
+        </button>
+      )}
+      <p role="status" className="basis-full text-[13px] leading-[1.45] text-fg-2">
+        {error ? <span className="text-red">{error}</span> : state.allowed ? "Your agent merges it once every check on it passes. Spooky never merges." : state.declined ? `Your agent did not merge it: “${state.declined}”` : null}
+      </p>
+    </>
   );
 }
 
@@ -194,7 +230,7 @@ function OpenRow({ c, project, busy, now, onDismiss }: { c: Check; project: Chec
         <p className="max-w-[60ch] text-pretty">{c.why}</p>
         <Evidence evidence={c.evidence} />
         {c.limit ? <p className="mt-3 max-w-[60ch] text-[12px] text-pretty text-fg-3">{c.limit}</p> : null}
-        <HandoffLine handoff={c.handoff} now={now} />
+        <HandoffLine id={c.id} handoff={c.handoff} now={now} />
         {canHandOff(c, Boolean(pr)) ? (
           <div className="mt-4 flex flex-col gap-1">
             <RoutingLine {...routingStatus("check", null, now)} />

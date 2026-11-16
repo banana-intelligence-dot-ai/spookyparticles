@@ -67,10 +67,10 @@ const attempt = (checkId: string, minutesAgo: number, outcome: Attempt["outcome"
 const example = (check: string) => exampleRows.find((r) => r.check === check)!.id;
 const ATTEMPTS = [
   attempt(example("secret_in_public_code"), 15, null),
-  attempt(example("cron_unguarded"), 30, "pr_opened", { prUrl: "https://github.com/you/agent-examples/pull/123" }),
+  attempt(example("cron_unguarded"), 30, "not_a_problem", { note: "These routes only read public data and change nothing." }),
   attempt(example("previews_open"), 60, "told_person"),
   attempt(example("secret_not_sensitive"), 90, "could_not_fix", { note: "Only you can turn on Sensitive. I listed the two variables in the pull request." }),
-  attempt(example("deps_not_updated"), 120, "not_a_problem", { note: "The repo already runs Renovate from a shared config in another repo." }),
+  attempt(example("deps_not_updated"), 120, "pr_opened", { prUrl: "https://github.com/you/agent-examples/pull/123" }),
   attempt(ROWS.find((r) => r.nodeId === "g")!.id, 120, "could_not_fix"),
   attempt(ROWS.find((r) => r.nodeId === "g")!.id, 180, "could_not_fix"),
   attempt(ROWS.find((r) => r.nodeId === "g")!.id, 240, "could_not_fix"),

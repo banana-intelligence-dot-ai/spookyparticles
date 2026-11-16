@@ -8,6 +8,7 @@ import { muteFor, mutesFor } from "@/lib/mutes";
 import { CHECK_CATALOG } from "./catalog";
 import { cleanNote, inProgress, MAX_ATTEMPTS, OPEN_FOR, queue, validPrUrl, type Outcome } from "./handoff";
 import { checkReport, linkedRepo } from "./report";
+import { declineMerge, grantedMerges, readMergeEvents, setMergeAllowed } from "./merge";
 import { readChecks, missingTable } from "./store";
 import { CHECK_KEYS, type CheckKey } from "./rules";
 
@@ -22,11 +23,25 @@ export async function readAttempts(userId: string) {
 
 async function context(userId: string) {
   const db = getDb();
-  const [checks, nodes, attempts] = await Promise.all([
-    readChecks(userId), db.select().from(schema.nodes).where(eq(schema.nodes.userId, userId)), readAttempts(userId),
+  const [checks, nodes, attempts, merges] = await Promise.all([
+    readChecks(userId), db.select().from(schema.nodes).where(eq(schema.nodes.userId, userId)), readAttempts(userId), readMergeEvents(userId),
   ]);
-  return { checks, nodes, attempts, report: checkReport(nodes, checks.rows, checks.ready, attempts) };
+  return { checks, nodes, attempts, merges, report: checkReport(nodes, checks.rows, checks.ready, attempts, new Date(), merges) };
 }
+
+/** The open findings with their project names, for the merge rules. */
+function namedFindings(report: Awaited<ReturnType<typeof context>>["report"], rows: Awaited<ReturnType<typeof context>>["checks"]["rows"]) {
+  return report.projects.flatMap((p) => p.checks.filter((c) => c.id).map((c) => ({ ...rows.find((r) => r.id === c.id)!, project: p.repo ?? p.name })));
+}
+
+async function loadForMerge(userId: string, findingId: string) {
+  const { checks, attempts, merges, report } = await context(userId);
+  const finding = namedFindings(report, checks.rows).find((f) => f.id === findingId);
+  return finding ? { finding, attempts, events: merges } : null;
+}
+
+export const allowMerge = (actor: Actor, findingId: string, allow: boolean) => setMergeAllowed(actor, findingId, allow, loadForMerge);
+export const declineAgentMerge = (actor: Actor, findingId: string, note: unknown) => declineMerge(actor, findingId, note, loadForMerge);
 
 export async function findingsReport(userId: string) { return (await context(userId)).report; }
 
@@ -36,8 +51,10 @@ export async function findingsReport(userId: string) { return (await context(use
  * dismissed, waiting on a pull request, or out of tries); another finding in progress does not block it.
  */
 export async function takeNext(actor: Actor, retried = false, only: string | null = null) {
-  const { checks, attempts, report } = await context(actor.userId);
-  if (!checks.ready) return { finding: null, attempt: null, counts: { open: 0, waitingOnPerson: 0, needsPerson: 0, inProgress: 0 }, ready: false };
+  const { checks, attempts, merges: mergeEvents, report } = await context(actor.userId);
+  // Pull requests the person let this agent merge come first, with the rules for merging them.
+  const merges = checks.ready ? grantedMerges(namedFindings(report, checks.rows), attempts, mergeEvents, new Date()) : [];
+  if (!checks.ready) return { finding: null, attempt: null, counts: { open: 0, waitingOnPerson: 0, needsPerson: 0, inProgress: 0 }, ready: false, merges };
   // Muted projects and cleared suggestions are not handed out. One the person hands over by name still is.
   const [mutes, cleared] = await Promise.all([mutesFor(actor.userId), ignoredKeys(actor.userId)]);
   const ordered = report.projects.filter((p) => !muteFor(mutes, p.repo ?? p.name, "check")).flatMap((p) => p.checks).filter((c) => c.id && (only ? c.id === only : !cleared.has(c.id))).map((c) => checks.rows.find((r) => r.id === c.id)!);
@@ -45,7 +62,7 @@ export async function takeNext(actor: Actor, retried = false, only: string | nul
   const { active, eligible, counts } = queue(ordered, attempts);
   const row = ordered.find((r) => r.id === (active?.checkId ?? eligible[0]?.id));
   if (only && !row) throw new ApiError(409, "not_available", "This finding is not open to an agent now: it was fixed or dismissed, a pull request for it is waiting, or it used its three tries. Tell your person.");
-  if (!row) return { finding: null, attempt: null, counts };
+  if (!row) return { finding: null, attempt: null, counts, merges };
   const project = report.projects.find((p) => p.checks.some((c) => c.id === row.id))!;
   const check = project.checks.find((c) => c.id === row.id)!;
   const key = row.check as CheckKey;
@@ -53,13 +70,13 @@ export async function takeNext(actor: Actor, retried = false, only: string | nul
   const finding = { id: row.id, project: project.name, repo: project.repo, productionUrl: project.productionUrl,
     check: key, title: check.title, severity: check.severity, why: check.why, limit: check.limit ?? null,
     fix: check.fix, evidence: check.evidence, ...spec.agent };
-  if (active) return { finding, attempt: { id: active.id, number: attempts.filter((a) => a.checkId === row.id && row.firstOpenAt && a.takenAt >= row.firstOpenAt).length, max: MAX_ATTEMPTS, expiresAt: new Date(active.takenAt.getTime() + OPEN_FOR) }, counts };
+  if (active) return { finding, attempt: { id: active.id, number: attempts.filter((a) => a.checkId === row.id && row.firstOpenAt && a.takenAt >= row.firstOpenAt).length, max: MAX_ATTEMPTS, expiresAt: new Date(active.takenAt.getTime() + OPEN_FOR) }, counts, merges };
   try {
     const [attempt] = await getDb().insert(schema.checkAttempts).values({ userId: actor.userId, checkId: row.id, actor: actor.label }).returning();
     await appendAudit({ userId: actor.userId, actor: actor.label, action: "check.taken", target: `project_check:${row.id}` });
-    return { finding, attempt: { id: attempt.id, number: attempts.filter((a) => a.checkId === row.id && row.firstOpenAt && a.takenAt >= row.firstOpenAt).length + 1, max: MAX_ATTEMPTS, expiresAt: new Date(attempt.takenAt.getTime() + OPEN_FOR) }, counts: { ...counts, inProgress: 1 } };
+    return { finding, attempt: { id: attempt.id, number: attempts.filter((a) => a.checkId === row.id && row.firstOpenAt && a.takenAt >= row.firstOpenAt).length + 1, max: MAX_ATTEMPTS, expiresAt: new Date(attempt.takenAt.getTime() + OPEN_FOR) }, counts: { ...counts, inProgress: 1 }, merges };
   } catch (err) {
-    if (missingTable(err, "check_attempts")) return { finding: null, attempt: null, counts, ready: false };
+    if (missingTable(err, "check_attempts")) return { finding: null, attempt: null, counts, ready: false, merges };
     if ((err as { code?: string; cause?: { code?: string } }).code === "23514" || (err as { cause?: { code?: string } }).cause?.code === "23514") {
       if (!retried) return takeNext(actor, true, only);
       throw new ApiError(409, "finding_changed", "This finding changed. Ask for the next finding again");
