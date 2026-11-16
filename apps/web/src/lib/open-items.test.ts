@@ -27,6 +27,14 @@ describe("buildOpenItems", () => {
     expect(withoutAgent.onYou[0].who).toBe("No agent is connected, so this one is on you.");
   });
 
+  it("offers Send to my agent now only for an open, unclaimed, routed break", () => {
+    expect(buildOpenItems(input({ catches: [caught("d1", "deploy")] })).withAgents[0].sendable).toBe(true);
+    const claimed = buildOpenItems(input({ catches: [caught("d1", "deploy")], claims: [{ project: "me/app", agent: "a GitHub job", apiKeyId: null, at: at(2) }] }));
+    expect(claimed.withAgents[0]).toMatchObject({ sendable: false, who: expect.stringMatching(/A GitHub job took it/) });
+    expect(buildOpenItems(input({ catches: [caught("c", "check")] })).onYou[0].sendable).toBe(false);
+    expect(buildOpenItems(input({ catches: [caught("s", "site")] })).onYou[0].sendable).toBe(false);
+  });
+
   it("keeps site, server error, and check notices on you", () => {
     const report = buildOpenItems(input({ catches: [caught("s", "site"), caught("e", "server_errors"), caught("c", "check")] }));
     expect(report.onYou.map((item) => item.kind)).toEqual(["site_down", "server_errors", "check"]);

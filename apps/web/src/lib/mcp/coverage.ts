@@ -33,6 +33,7 @@ export const WRITE_ROUTE_TOOLS: Record<string, { tools: string[] } | { noTool: s
   "POST help": { tools: ["help"] },
   "POST incidents/claim": { tools: ["claim_break"] },
   "POST incidents/confirm": { tools: ["confirm_fix"] },
+  "POST incidents/send": { tools: ["send_to_agent"] },
   "POST incidents/ignore": { tools: ["ignore_break"] },
   "DELETE incidents/ignore": { tools: ["unignore_break"] },
   "POST mutes": { tools: ["mute"] },

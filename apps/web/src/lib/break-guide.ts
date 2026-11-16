@@ -92,7 +92,7 @@ export function routingStatus(kind: BreakKind, claim: ClaimLike | null, now: num
   if (kind === "check") return { sent: false, text: "Not sent to your agent: suggestions wait for you." };
   if (kind === "site_down" || kind === "server_errors") return { sent: false, text: "You were alerted. Your agents are not told about this kind yet." };
   if (!claim) return { sent: true, text: "Sent to your agents. Nobody has picked it up yet." };
-  const who = !claim.apiKeyId ? "You claimed it from the web app" : claim.agent && /fixer/i.test(claim.agent) ? "Your fixer claimed it" : claim.agent ? `${claim.agent} claimed it` : "An agent claimed it";
+  const who = claim.agent === "a GitHub job" ? "A GitHub job took it" : !claim.apiKeyId ? "You claimed it from the web app" : claim.agent && /fixer/i.test(claim.agent) ? "Your fixer claimed it" : claim.agent ? `${claim.agent} claimed it` : "An agent claimed it";
   return { sent: true, text: `Sent to your agents. ${who} ${sinceWords(claim.at, now)}.` };
 }
 

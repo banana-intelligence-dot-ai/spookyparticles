@@ -46,7 +46,7 @@ const CHANNELS: Channel[] = [
   { id: "c2", kind: "slack", label: "#ops", project: "octocat/ledger-api", enabled: true, lastOkAt: day(3), lastError: null },
 ];
 const OK = async () => null;
-const NOW_ACTIONS: NowActions = { clear: OK, restore: OK, stop: OK, resume: OK };
+const NOW_ACTIONS: NowActions = { clear: OK, restore: OK, stop: OK, resume: OK, send: async () => ({ ok: true, message: "Sent. Your GitHub fix job is on it." }) };
 const IDENTITIES = [
   { provider: "github", accountId: "583231", since: day(30) },
   { provider: "google", accountId: "104857600000000000001", since: day(12) },

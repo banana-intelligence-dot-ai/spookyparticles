@@ -29,6 +29,7 @@ import { recordInboxRead } from "@/lib/agent-listening";
 import { catchesFor, recordDeploys } from "@/lib/catches";
 import { commitOutcomeFor } from "@/lib/commit-outcome";
 import { claimBreak, claimsFor } from "@/lib/claims";
+import { sendToAgent } from "@/lib/send-to-agent";
 import { confirmFix } from "@/lib/confirm-fix";
 import { incidentsFor, watchedJobs } from "@/lib/incidents";
 import { projectPageFor, projectsFor } from "@/lib/projects";
@@ -689,6 +690,16 @@ export function toolsFor(actor: Actor): ToolRegistry {
       inputSchema: idSchema("channel_id", "Channel ID from list_alert_channels"),
       validate: idInput("channel_id", "channel"),
       run: async (input) => viaApi(() => testChannel(actor, input.channel_id as string)),
+    }),
+    send_to_agent: write({
+      description: "Start the project's GitHub fix job now (the spooky-fix workflow in its repo), instead of waiting for the pager. The job claims the break for 15 minutes. Refused when an agent already holds it. If the project has no GitHub responder, the message says how to add one. Audited.",
+      inputSchema: { type: "object", additionalProperties: false, properties: {
+        project: { type: "string", description: "GitHub owner/repo or Vercel project name" },
+        what: { type: "string", description: "What broke, in one line (up to 300 characters)" },
+        job_id: { type: "string", description: "Job ID from list_jobs, when the break is a watched job" },
+      }, required: ["project", "what"] },
+      validate: (input) => validate(input, ["project", "what"], ["project", "what", "job_id"]) ?? (input.job_id !== undefined && (typeof input.job_id !== "string" || !UUID.test(input.job_id)) ? "job_id must be a job ID" : null),
+      run: async (input) => viaApi(() => sendToAgent(actor, { project: input.project as string, what: input.what as string, jobId: (input.job_id as string | undefined) ?? null })),
     }),
     send_test_alert: write({
       description: "Send one sample failed-deploy email to the owner, at most once per hour. It cannot be recalled.",

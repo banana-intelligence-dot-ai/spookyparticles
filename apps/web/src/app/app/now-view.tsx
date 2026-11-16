@@ -21,11 +21,14 @@ import { Pair, pairLength } from "./pair";
 import { ago, projectHref } from "./project-model";
 
 /** What the page can change. Each resolves to an error message, or null when it worked. */
+export type Sent = { ok: boolean; message: string };
+
 export type NowActions = {
   clear: (item: OpenItem) => Promise<string | null>;
   restore: (item: OpenItem) => Promise<string | null>;
   stop: (prevent: Prevent) => Promise<string | null>;
   resume: (prevent: Prevent) => Promise<string | null>;
+  send: (i: OpenItem) => Promise<Sent>;
 };
 
 const err = (r: { ok: boolean; error?: string }) => (r.ok ? null : (r.error ?? "That didn't save. Try again."));
@@ -56,6 +59,11 @@ export function NowView() {
     restore: async (i) => after(await apiSend("DELETE", "/api/v1/notices/clear", { keys: i.clearKeys, project: i.project ?? "", what: i.title })),
     stop: async (p) => after(await apiSend("POST", "/api/v1/mutes", { project: p.project, kind: p.kind ?? "all", reason: "Asked after a clear" })),
     resume: async (p) => after(await apiSend("DELETE", "/api/v1/mutes", { project: p.project, kind: p.kind ?? "all" })),
+    send: async (i) => {
+      const r = await apiSend<{ sent: boolean; message: string }>("POST", "/api/v1/incidents/send", { project: i.project ?? "", what: i.title, jobId: i.jobId });
+      await reload();
+      return r.data ? { ok: r.data.sent, message: r.data.message } : { ok: false, message: r.error ?? "That didn't send. Try again." };
+    },
   };
 
   return (
@@ -151,7 +159,7 @@ export function NowScreen({
   const [first, ...queue] = (report?.onYou ?? []).filter((i) => !done[i.id]);
   const theirs = (report?.withAgents ?? []).filter((i) => !done[i.id]);
   const row = (i: OpenItem) => (
-    <QueueRow key={i.id} item={i} now={now} open={openId === i.id} onToggle={() => setOpenId((v) => (v === i.id ? null : i.id))} error={failed[i.id] ?? null} onClear={() => void clear(i)} />
+    <QueueRow key={i.id} item={i} now={now} open={openId === i.id} onToggle={() => setOpenId((v) => (v === i.id ? null : i.id))} error={failed[i.id] ?? null} onClear={() => void clear(i)} onSend={() => actions.send(i)} />
   );
 
   return (
@@ -172,7 +180,7 @@ export function NowScreen({
           ) : null}
 
           {first ? (
-            <LeadItem item={first} now={now} count={lead.headline} agents={lead.sub} error={failed[first.id] ?? null} onClear={() => void clear(first)} />
+            <LeadItem item={first} now={now} count={lead.headline} agents={lead.sub} error={failed[first.id] ?? null} onClear={() => void clear(first)} onSend={() => actions.send(first)} />
           ) : (
             <Calm headline={lead.headline} sub={lead.sub} last={report.recentFixes[0] ?? null} now={now} />
           )}
@@ -261,8 +269,13 @@ const link = "underline decoration-line-3 underline-offset-4 hover:decoration-fg
 const DASH = "pair-open bg-[repeating-linear-gradient(to_right,var(--fg-3)_0_4px,transparent_4px_8px)]";
 
 /** What the owner can do with one item: open it, hand it to an agent, clear it. `lead` makes the first one a button. */
-function Actions({ item, lead = false, error, onClear }: { item: OpenItem; lead?: boolean; error: string | null; onClear: () => void }) {
+function Actions({ item, lead = false, error, onClear, onSend }: { item: OpenItem; lead?: boolean; error: string | null; onClear: () => void; onSend: () => Promise<Sent> }) {
   const go = lead ? buttonStyles.primary : `${agentButton} text-fg ${link}`;
+  const [send, setSend] = useState<"idle" | "sending" | Sent>("idle");
+  const sendNow = async () => {
+    setSend("sending");
+    setSend(await onSend());
+  };
   return (
     <>
       <div className={`flex flex-wrap items-center gap-x-1 gap-y-2 ${lead ? "" : "-ml-3"}`}>
@@ -277,6 +290,11 @@ function Actions({ item, lead = false, error, onClear }: { item: OpenItem; lead?
             </Link>
           )
         ) : null}
+        {item.sendable ? (
+          <button type="button" onClick={() => void sendNow()} disabled={send === "sending"} className={`${agentButton} text-fg ${link} disabled:opacity-60`}>
+            {send === "sending" ? "Sending…" : "Send to my agent now"}
+          </button>
+        ) : null}
         {item.prompt ? <CopyForAgent prompt={item.prompt} /> : null}
         {item.clearKeys.length ? (
           <button type="button" onClick={onClear} className={`${agentButton} text-fg-2 hover:text-fg`}>
@@ -284,13 +302,18 @@ function Actions({ item, lead = false, error, onClear }: { item: OpenItem; lead?
           </button>
         ) : null}
       </div>
+      {typeof send === "object" ? (
+        <p role="status" className={`mt-1 max-w-[60ch] text-[13px] leading-[1.45] ${send.ok ? "text-fg-2" : "text-red"}`}>
+          {send.message}
+        </p>
+      ) : null}
       {error ? <p className="mt-1 text-[13px] text-red">{error}</p> : null}
     </>
   );
 }
 
 /** The first thing on the owner, as the page: one particle waiting for its pair, what happened, the one next step. */
-function LeadItem({ item, now, count, agents, error, onClear }: { item: OpenItem; now: number; count: string; agents: string; error: string | null; onClear: () => void }) {
+function LeadItem({ item, now, count, agents, error, onClear, onSend }: { item: OpenItem; now: number; count: string; agents: string; error: string | null; onClear: () => void; onSend: () => Promise<Sent> }) {
   const ms = item.since ? now - Date.parse(item.since) : null;
   const red = toneOf(item) === "red";
   return (
@@ -322,7 +345,7 @@ function LeadItem({ item, now, count, agents, error, onClear }: { item: OpenItem
       <p className="mt-6 max-w-[58ch] text-[16px] leading-[1.55] text-pretty text-fg-2">{item.happened}</p>
       <p className="mt-1.5 max-w-[58ch] text-[16px] leading-[1.55] text-pretty text-fg">{item.todo}</p>
       <div className="mt-7">
-        <Actions item={item} lead error={error} onClear={onClear} />
+        <Actions item={item} lead error={error} onClear={onClear} onSend={onSend} />
       </div>
     </section>
   );
@@ -351,7 +374,7 @@ function Calm({ headline, sub, last, now }: { headline: string; sub: string; las
 }
 
 /** One item in a queue: a line to scan, and the rest on demand. */
-function QueueRow({ item, now, open, onToggle, error, onClear }: { item: OpenItem; now: number; open: boolean; onToggle: () => void; error: string | null; onClear: () => void }) {
+function QueueRow({ item, now, open, onToggle, error, onClear, onSend }: { item: OpenItem; now: number; open: boolean; onToggle: () => void; error: string | null; onClear: () => void; onSend: () => Promise<Sent> }) {
   const ms = item.since ? now - Date.parse(item.since) : null;
   const tone = toneOf(item);
   return (
@@ -388,7 +411,7 @@ function QueueRow({ item, now, open, onToggle, error, onClear }: { item: OpenIte
             <p className="mt-1 max-w-[64ch] text-[14px] leading-[1.55] text-pretty text-fg-2">{item.who}</p>
           )}
           <div className="mt-2">
-            <Actions item={item} error={error} onClear={onClear} />
+            <Actions item={item} error={error} onClear={onClear} onSend={onSend} />
           </div>
         </div>
       ) : error ? (

@@ -33,8 +33,10 @@ function httpReason(status: number): string {
   return `http ${status}`;
 }
 
-/** Dispatch through the connected installation. No token enters a result, event, or log. */
-export async function pageGithub(userId: string, job: PagerJob, what: string): Promise<PageResult> {
+const JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Dispatch through the connected installation. No token enters a result, event, or log. `actor` is who asked (the pager, or a person or key sending by hand). */
+export async function pageGithub(userId: string, job: PagerJob, what: string, actor = "system:pager"): Promise<PageResult> {
   const db = getDb();
   let channel: typeof schema.alertChannels.$inferSelect | undefined;
   let repo = "";
@@ -77,7 +79,8 @@ export async function pageGithub(userId: string, job: PagerJob, what: string): P
             if (result.ok) {
               const at = new Date();
               await db.insert(schema.events).values({ userId, name: CLAIMED, properties: { project: job.project?.trim().toLowerCase(), apiKeyId: null, via: "github", ms: FIFTEEN_MINUTES }, createdAt: at });
-              await db.insert(schema.events).values({ userId, name: "pager.paged", properties: { jobId: job.id, project: job.project, alertKey: job.alertKey ?? "", at: at.toISOString() }, createdAt: at });
+              // Only a watched job has a fifteen-minute escalation; a deploy break has no job row.
+              if (JOB_ID.test(job.id)) await db.insert(schema.events).values({ userId, name: "pager.paged", properties: { jobId: job.id, project: job.project, alertKey: job.alertKey ?? "", at: at.toISOString() }, createdAt: at });
             }
           }
         }
@@ -88,7 +91,7 @@ export async function pageGithub(userId: string, job: PagerJob, what: string): P
   }
   if (channel) {
     await db.update(schema.alertChannels).set(result.ok ? { lastOkAt: new Date(), lastError: null } : { lastError: (result.reason ?? "failed").slice(0, 120) }).where(eq(schema.alertChannels.id, channel.id));
-    await appendAudit({ actor: "system:pager", userId, action: "pager.github_dispatched", target: `checkin_job:${job.id}`, after: { repo, ok: result.ok, reason: result.reason ?? null } });
+    await appendAudit({ actor, userId, action: "pager.github_dispatched", target: JOB_ID.test(job.id) ? `checkin_job:${job.id}` : job.id.slice(0, 160), after: { repo, ok: result.ok, reason: result.reason ?? null } });
   }
   return result;
 }

@@ -56,6 +56,8 @@ export type OpenItem = {
   link: OpenLink | null;
   /** The question to ask after a clear, so the same notice does not come back. */
   prevent: Prevent | null;
+  /** A break the project's GitHub fix job can take now: routed, not waiting, nobody on it. */
+  sendable: boolean;
 };
 export type RecentFix = { id: string; kind: CatchKind; project: string | null; what: string; caughtAt: string; fixedAt: string; took: string; by: string | null; byAgent: boolean };
 export type OpenReport = {
@@ -139,6 +141,7 @@ export function buildOpenItems(input: OpenInput): OpenReport {
       jobId: c.jobId ?? null,
       link: c.jobId ? { label: "Open the job", href: `/app/jobs#job-${c.jobId}`, external: false } : c.project ? { label: "Open the project", href: projectHref(c.project), external: false } : null,
       prevent: preventFor(c.project, c.kind, input.projects, now),
+      sendable: routed && !waiting && !claim && Boolean(c.project),
     });
   }
 
@@ -164,6 +167,7 @@ export function buildOpenItems(input: OpenInput): OpenReport {
       jobId: null,
       link: { label: plural(list.length, "Open the suggestion", "Open the suggestions").replace(/^\d+ /, ""), href: "/app/check", external: false },
       prevent: preventFor(c.project, "check", input.projects, now),
+      sendable: false,
     });
   }
 
@@ -189,6 +193,7 @@ export function buildOpenItems(input: OpenInput): OpenReport {
       jobId: j.id,
       link: { label: "Open the job", href: `/app/jobs#job-${j.id}`, external: false },
       prevent: preventFor(j.project, "job", input.projects, now),
+      sendable: false,
     });
   }
 
@@ -216,6 +221,7 @@ export function buildOpenItems(input: OpenInput): OpenReport {
       jobId: null,
       link: { label: "Open the project", href: projectHref(p.name), external: false },
       prevent: preventFor(p.name, "deploy", input.projects, now),
+      sendable: false,
     });
   }
 
@@ -240,6 +246,7 @@ export function buildOpenItems(input: OpenInput): OpenReport {
       jobId: null,
       link: { label: "Open Settings", href: "/app/settings#accounts", external: false },
       prevent: null,
+      sendable: false,
     });
   }
 

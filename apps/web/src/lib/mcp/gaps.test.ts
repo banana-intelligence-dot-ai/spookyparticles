@@ -95,6 +95,7 @@ const WRITES: [string, Record<string, unknown>][] = [
   ["remove_alert_channel", { channel_id: ID }],
   ["test_alert_channel", { channel_id: ID }],
   ["send_test_alert", {}],
+  ["send_to_agent", { project: "me/app", what: "Deploy failed" }],
   ["delete_job", { job_id: ID }],
   ["delete_expiration", { expiration_id: ID }],
   ["dismiss_check", { finding_id: ID }],
