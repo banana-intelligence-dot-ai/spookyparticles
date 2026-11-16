@@ -18,7 +18,7 @@ import { wordsFor } from "./checks/catalog";
 import { CHECK_KEYS, type CheckKey } from "./checks/rules";
 import { linkedRepo } from "./checks/report";
 import { INBOX_READ } from "./agent-listening";
-import { matchesIncidentProject } from "./incidents";
+import { jobReachesSession, matchesIncidentProject } from "./incidents";
 import { medianFixMinutes } from "./fix-stats";
 import { breakKey, ignoredKeys } from "./ignores";
 import { muteFor, mutesFor, type Mute } from "./mutes";
@@ -226,10 +226,10 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
     .filter((e) => e.name === INBOX_READ && str(e.properties.project))
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   for (const c of out) {
-    if (!c.project) continue;
+    // A break with no project goes to every session, so any session's read counts.
     const from = Date.parse(c.caughtAt);
     const until = c.fixedAt ? Date.parse(c.fixedAt) : Infinity;
-    const read = reads.find((r) => r.createdAt.getTime() >= from && r.createdAt.getTime() <= until && matchesIncidentProject(c.project, r.properties.project as string));
+    const read = reads.find((r) => r.createdAt.getTime() >= from && r.createdAt.getTime() <= until && jobReachesSession(c.project, String(r.properties.project ?? "")));
     if (!read) continue;
     c.heardAt = read.createdAt.toISOString();
     const keyId = str(read.properties.apiKeyId);
@@ -242,8 +242,8 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
     .filter((e) => e.name === FIX_CONFIRMED && e.properties.verdict === "fixed" && str(e.properties.project))
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   for (const c of out) {
-    if (!c.project || !c.fixedAt) continue;
-    const hit = confirms.find((e) => e.createdAt.getTime() >= Date.parse(c.caughtAt) && matchesIncidentProject(c.project, e.properties.project as string));
+    if (!c.fixedAt) continue;
+    const hit = confirms.find((e) => e.createdAt.getTime() >= Date.parse(c.caughtAt) && jobReachesSession(c.project, String(e.properties.project ?? "")));
     if (hit) c.confirmedAt = hit.createdAt.toISOString();
   }
 

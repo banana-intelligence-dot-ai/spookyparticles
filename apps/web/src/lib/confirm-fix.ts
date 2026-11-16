@@ -17,7 +17,7 @@ import { and, eq, gte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Actor } from "./actor";
 import { FIX_CONFIRMED, recordDeploys } from "./catches";
-import { incidentsFor, matchesIncidentProject, type Incident } from "./incidents";
+import { incidentsFor, jobReachesSession, matchesIncidentProject, type Incident } from "./incidents";
 import { listJobs } from "./checkins";
 import { startSync } from "./sync";
 
@@ -109,7 +109,7 @@ export async function confirmFix(actor: Actor, project: string, nowMs = Date.now
   const building = mine
     .filter((d) => BUILDING_STATES.includes(d.status ?? "") && (d.at?.getTime() ?? 0) >= nowMs - BUILD_WINDOW_MS)
     .map((d) => ({ name: d.name, at: d.at?.toISOString() ?? null }));
-  const known = mine.length > 0 || jobs.some((j) => matchesIncidentProject(j.project, name));
+  const known = mine.length > 0 || jobs.some((j) => jobReachesSession(j.project, name));
   const answer = fixVerdict({ project: name, known, incidents: report.incidents, building, readAt: readAt && Date.parse(readAt) > 0 ? readAt : null, now: nowMs });
 
   if (answer.verdict !== "checking" && answer.verdict !== "unknown_project") {

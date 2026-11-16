@@ -98,6 +98,15 @@ describe("buildCatches", () => {
     expect(r.catches[0]).toMatchObject({ heardAt: "2026-11-10T08:04:00.000Z", agent: "macbook" });
   });
 
+  it("counts any session's read for a job with no project, since it goes to every session", () => {
+    const r = buildCatches(base({
+      alerts: [alert("job_failed", "job_failed:j1:a", "10T08:00:00", { jobId: "j1", job: "nightly" })],
+      events: [{ name: INBOX_READ, properties: { project: "scratch", apiKeyId: "k1" }, createdAt: t("10T08:01:00") }],
+      keyNames: new Map([["k1", "macbook"]]),
+    }), NOW);
+    expect(r.catches[0]).toMatchObject({ heardAt: "2026-11-10T08:01:00.000Z", agent: "macbook" });
+  });
+
   it("drops catches fixed before the 30-day window", () => {
     const r = buildCatches(base({ alerts: [
       alert("job_failed", "job_failed:j1:a", "01T08:00:00", { jobId: "j1", job: "old" }),
