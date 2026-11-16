@@ -12,6 +12,7 @@
  * - agent reads (agent.inbox_read): the first time a coding session asked about the project after
  *   it broke, and which key asked.
  */
+import { dropNulls, pickAttributes } from "@/lib/node-reads";
 import { and, asc, eq, gt, gte, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { wordsFor } from "./checks/catalog";
@@ -319,7 +320,7 @@ export async function catchesFor(userId: string): Promise<Catches> {
       .where(and(eq(schema.alerts.userId, userId), gte(schema.alerts.createdAt, new Date(since.getTime() - WINDOW_MS)), inArray(schema.alerts.kind, ["deploy_failed", "job_quiet", "job_failed", "job_recovered", "site_down", "site_recovered", "server_errors", "server_errors_recovered"]))),
     db.select({ name: schema.events.name, properties: schema.events.properties, createdAt: schema.events.createdAt }).from(schema.events)
       .where(and(eq(schema.events.userId, userId), inArray(schema.events.name, [CAUGHT, FIXED, INBOX_READ, FIX_CONFIRMED]), gte(schema.events.createdAt, new Date(since.getTime() - WINDOW_MS)))),
-    db.select({ check: schema.projectChecks, node: schema.nodes }).from(schema.projectChecks).innerJoin(schema.nodes, eq(schema.nodes.id, schema.projectChecks.nodeId))
+    db.select({ check: schema.projectChecks, name: schema.nodes.name, attributes: pickAttributes(["repo_provider", "repo"]) }).from(schema.projectChecks).innerJoin(schema.nodes, eq(schema.nodes.id, schema.projectChecks.nodeId))
       .where(and(eq(schema.projectChecks.userId, userId), gte(schema.projectChecks.checkedAt, since))),
     db.select({ checkId: schema.checkAttempts.checkId, outcome: schema.checkAttempts.outcome, prUrl: schema.checkAttempts.prUrl, takenAt: schema.checkAttempts.takenAt }).from(schema.checkAttempts)
       .where(and(eq(schema.checkAttempts.userId, userId), gte(schema.checkAttempts.takenAt, new Date(since.getTime() - WINDOW_MS)))),
@@ -335,7 +336,7 @@ export async function catchesFor(userId: string): Promise<Catches> {
   ]);
   const keyIds = [...new Set(events.map((e) => str(e.properties.apiKeyId)).filter((x): x is string => Boolean(x)))];
   const keys = keyIds.length ? await db.select({ id: schema.apiKeys.id, name: schema.apiKeys.name }).from(schema.apiKeys).where(and(eq(schema.apiKeys.userId, userId), inArray(schema.apiKeys.id, keyIds))) : [];
-  const checks: CheckRow[] = checkRows.map(({ check: c, node }) => ({ id: c.id, check: c.check, state: c.state, evidence: c.evidence, firstOpenAt: c.firstOpenAt, fixedAt: c.fixedAt, dismissedAt: c.dismissedAt, project: linkedRepo(node) ?? node.name }));
+  const checks: CheckRow[] = checkRows.map(({ check: c, name, attributes }) => ({ id: c.id, check: c.check, state: c.state, evidence: c.evidence, firstOpenAt: c.firstOpenAt, fixedAt: c.fixedAt, dismissedAt: c.dismissedAt, project: linkedRepo({ attributes: dropNulls(attributes) }) ?? name }));
   return buildCatches({ alerts, events, checks, attempts, keyNames: new Map(keys.map((k) => [k.id, k.name])), jobs, retiredNodes, ignored, mutes }, now);
 }
 

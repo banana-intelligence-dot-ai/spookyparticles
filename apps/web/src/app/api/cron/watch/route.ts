@@ -56,7 +56,8 @@ export async function GET(req: Request) {
   };
   try { errors = await sweepServerErrors(); } catch (err) { note("error rate sweep", err); }
   try { uptime = await sweepUptime(); } catch (err) { note("uptime sweep", err); }
-  try { checks = await sweepChecks(); } catch (err) { note("check sweep", err); }
+  // Its work is dated in days (expiry notices, weekly scans, daily dependency reads), so once an hour is enough.
+  if (new Date().getUTCMinutes() < 5) { try { checks = await sweepChecks(); } catch (err) { note("check sweep", err); } }
   try { await resyncHostsQuietly(rows); } catch (err) { note("host resync", err); }
   // Mail, once a day per inbox: only what arrived since the last read.
   let mail: Awaited<ReturnType<typeof rereadMailDaily>> | null = null;

@@ -11,8 +11,9 @@ import type { VercelScope } from "@/lib/providers/vercel";
 import { queryErrorRate } from "@/lib/providers/vercel-query";
 import { nextErrorRate, nextUptime, type ErrorRateState, type UptimeState } from "@/lib/vercel-health";
 import { historyChoice } from "@/lib/vercel-watch";
+import { readNodes, type SlimNode } from "@/lib/node-reads";
 
-type ProjectNode = typeof schema.nodes.$inferSelect;
+type ProjectNode = SlimNode;
 const unreadableUntil = new Map<string, number>();
 const attrs = (p: ProjectNode) => p.attributes as Record<string, unknown>;
 const priorError = (p: ProjectNode): ErrorRateState | null => {
@@ -47,8 +48,9 @@ async function save(p: ProjectNode, field: "errorRate" | "uptime", state: ErrorR
 export async function sweepServerErrors(nowMs = Date.now()): Promise<{ queried: number; alerts: number; unavailable: number }> {
   const db = getDb();
   const [projects, connections, jobs] = await Promise.all([
-    db.select().from(schema.nodes).where(eq(schema.nodes.kind, "project")),
-    db.select().from(schema.connections).where(and(eq(schema.connections.provider, "vercel"), eq(schema.connections.status, "active"))),
+    readNodes("project", ["connection_id", "scope_id", "scope_kind", "errorRate"]),
+    db.select({ id: schema.connections.id, userId: schema.connections.userId, scopes: schema.connections.scopes, status: schema.connections.status, encryptedAccessToken: schema.connections.encryptedAccessToken })
+      .from(schema.connections).where(and(eq(schema.connections.provider, "vercel"), eq(schema.connections.status, "active"))),
     db.select({ userId: schema.checkinJobs.userId, vercelProjectId: schema.checkinJobs.vercelProjectId, vercelConnectionId: schema.checkinJobs.vercelConnectionId, evidenceState: schema.checkinJobs.evidenceState }).from(schema.checkinJobs).where(eq(schema.checkinJobs.source, "vercel")),
   ]);
   let queried = 0, alerts = 0, unavailable = 0;
@@ -119,8 +121,8 @@ export async function checkSite(startUrl: string, knownHosts: Set<string>): Prom
 export async function sweepUptime(nowMs = Date.now()): Promise<{ checked: number; alerts: number }> {
   const db = getDb();
   const [projects, domains, links] = await Promise.all([
-    db.select().from(schema.nodes).where(eq(schema.nodes.kind, "project")),
-    db.select().from(schema.nodes).where(eq(schema.nodes.kind, "domain")),
+    readNodes("project", ["production_url", "uptime"]),
+    readNodes("domain", ["redirect_to"]),
     db.select({ fromNodeId: schema.edges.fromNodeId, toNodeId: schema.edges.toNodeId }).from(schema.edges).where(eq(schema.edges.kind, "points_to")),
   ]);
   const candidates = siteTargets(projects, domains, links).filter((x): x is { p: ProjectNode; url: string; knownHosts: Set<string> } => Boolean(x.url))
@@ -145,7 +147,7 @@ export async function sweepUptime(nowMs = Date.now()): Promise<{ checked: number
 }
 
 /** Shared production address and host allow-list for uptime and public scans. */
-export function siteTargets(projects: ProjectNode[], domains: ProjectNode[], links: { fromNodeId: string; toNodeId: string }[]) {
+export function siteTargets<P extends ProjectNode>(projects: P[], domains: ProjectNode[], links: { fromNodeId: string; toNodeId: string }[]) {
   const domainById = new Map(domains.map((d) => [d.id, d]));
   return projects.filter((p) => p.externalKey.startsWith("vercel:project:")).map((p) => {
     const a = attrs(p);

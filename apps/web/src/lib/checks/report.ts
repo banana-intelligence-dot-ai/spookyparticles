@@ -15,7 +15,7 @@ const worst = (checks: { state: string; dismissedAt: Date | null }[]) => {
  * "owner/name" of the GitHub repo a project deploys from, or null. The Vercel sync stores it as
  * attributes.repo (a string) with attributes.repo_provider beside it; anything else is not a repo we can name.
  */
-export function linkedRepo(node: Node): string | null {
+export function linkedRepo(node: Pick<Node, "attributes">): string | null {
   const a = node.attributes;
   return a.repo_provider === "github" && typeof a.repo === "string" && /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9_.-]{1,100}$/.test(a.repo) ? a.repo : null;
 }

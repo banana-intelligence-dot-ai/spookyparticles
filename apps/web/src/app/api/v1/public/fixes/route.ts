@@ -8,6 +8,6 @@ import { publicFeed } from "@/lib/public-fixes";
 
 export const GET = api(async () => {
   return json(await publicFeed(), {
-    headers: { "cache-control": "public, max-age=60, s-maxage=120, stale-while-revalidate=600" },
+    headers: { "cache-control": "public, max-age=60, s-maxage=600, stale-while-revalidate=1800" },
   });
 });

@@ -8,6 +8,7 @@ import { notifyExpiration } from "@/lib/alerts/expiration";
 import { scanPublicSite } from "./public-scan";
 import { DEPENDENCY_FILES, depsRule, type Decision } from "./rules";
 import { readChecks, saveCheck } from "./store";
+import { readNodes } from "@/lib/node-reads";
 
 const DAY = 86_400_000;
 /** Repos read on GitHub per watcher run. Each costs two requests, and the work is spread over runs. */
@@ -15,12 +16,12 @@ const MAX_REPO_READS = 10;
 export async function sweepChecks(now = new Date()): Promise<{ scanned: number; repos: number; ready: boolean }> {
   const db = getDb();
   const [projects, domains, links, repos, accounts, connections, tracked, expiringKeys] = await Promise.all([
-    db.select().from(schema.nodes).where(eq(schema.nodes.kind, "project")),
-    db.select().from(schema.nodes).where(eq(schema.nodes.kind, "domain")),
+    readNodes("project", ["production_deployment_id", "production_url", "repo", "provider", "node_version"]),
+    readNodes("domain", ["provider", "expires_at", "auto_renew", "redirect_to"]),
     db.select({ fromNodeId: schema.edges.fromNodeId, toNodeId: schema.edges.toNodeId, kind: schema.edges.kind }).from(schema.edges),
-    db.select().from(schema.nodes).where(eq(schema.nodes.kind, "repo")),
-    db.select().from(schema.nodes).where(eq(schema.nodes.kind, "provider_account")),
-    db.select().from(schema.connections).where(eq(schema.connections.provider, "github")),
+    readNodes("repo", ["private"]),
+    readNodes("provider_account", ["connection_id"]),
+    db.select({ id: schema.connections.id, userId: schema.connections.userId, status: schema.connections.status }).from(schema.connections).where(eq(schema.connections.provider, "github")),
     db.select({ id: schema.trackedExpirations.id, userId: schema.trackedExpirations.userId, kind: schema.trackedExpirations.kind, name: schema.trackedExpirations.name, provider: schema.trackedExpirations.provider, hint: schema.trackedExpirations.hint, project: schema.trackedExpirations.project, expiresOn: schema.trackedExpirations.expiresOn }).from(schema.trackedExpirations),
     db.select({ id: schema.apiKeys.id, userId: schema.apiKeys.userId, name: schema.apiKeys.name, prefix: schema.apiKeys.prefix, expiresAt: schema.apiKeys.expiresAt }).from(schema.apiKeys).where(and(isNull(schema.apiKeys.revokedAt), isNotNull(schema.apiKeys.expiresAt))),
   ]);
