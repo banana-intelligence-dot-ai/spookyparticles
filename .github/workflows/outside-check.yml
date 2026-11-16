@@ -1,0 +1,71 @@
+# Watches Spooky from outside Spooky. Every 10 minutes it loads the watcher's health page. If it
+# fails twice in a row (two checks, two minutes apart) it opens one issue that mentions the owner,
+# which GitHub emails. No repeats while it stays down. When it answers again, one comment says it
+# is back and the issue closes. Runs only in the public repo, where Actions minutes are free.
+name: Outside check
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Check this URL instead (for a test)"
+        required: false
+      test:
+        description: "Mark the issue as a test"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: outside-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.repository == 'banana-intelligence-dot-ai/spookyparticles'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      URL: ${{ inputs.url || 'https://spookyparticles.com/api/health/watch' }}
+      TEST: ${{ inputs.test && 'true' || 'false' }}
+      LABEL: outside-check
+    steps:
+      - name: Check twice, two minutes apart
+        id: probe
+        run: |
+          check() {
+            code=$(curl -sS -o body.json -w '%{http_code}' --max-time 20 "$URL" || echo 000)
+            [ "$code" = 200 ] && jq -e '.ok == true' body.json >/dev/null 2>&1
+          }
+          if check; then echo "down=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          sleep 120
+          if check; then echo "down=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "down=true" >> "$GITHUB_OUTPUT"
+          { echo "detail<<EOF"; echo "HTTP $code: $(head -c 200 body.json 2>/dev/null | tr -d '\r')"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
+      - name: Open one issue, or close it when back
+        env:
+          DOWN: ${{ steps.probe.outputs.down }}
+          DETAIL: ${{ steps.probe.outputs.detail }}
+        run: |
+          gh label create "$LABEL" -R "$REPO" --color B60205 --description "Spooky's outside health check" --force >/dev/null
+          open=$(gh issue list -R "$REPO" --label "$LABEL" --state open --json number,createdAt -q '.[0] | select(.) | "\(.number) \(.createdAt)"')
+          now=$(date -u +"%Y-%m-%d %H:%M UTC")
+          prefix=""; [ "$TEST" = true ] && prefix="Test: "
+          if [ "$DOWN" = true ] && [ -z "$open" ]; then
+            gh issue create -R "$REPO" --label "$LABEL" \
+              --title "${prefix}spookyparticles.com is not answering its health check" \
+              --body "$(printf '@n8peace %sThe outside check failed twice in a row, two minutes apart, at %s.\n\nChecked: %s\n%s\n\nYou get this once. You will get one more message when it answers again.' "$prefix" "$now" "$URL" "$DETAIL")"
+          elif [ "$DOWN" != true ] && [ -n "$open" ]; then
+            num=${open%% *}; since=${open#* }
+            mins=$(( ( $(date -u +%s) - $(date -u -d "$since" +%s) ) / 60 ))
+            gh issue comment "$num" -R "$REPO" --body "Back at $now. The health check answers again, about $mins min after this issue opened."
+            gh issue close "$num" -R "$REPO"
+          fi
