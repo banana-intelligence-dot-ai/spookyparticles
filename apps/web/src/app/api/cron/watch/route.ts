@@ -17,6 +17,8 @@ import { sweepVercelSchedules } from "@/lib/vercel-watch";
 import { sweepChecks } from "@/lib/checks/sweep";
 import { sendDigests } from "@/lib/alerts/digest";
 import { escalatePages, pagerEnabled } from "@/lib/pager";
+import { forgiveOutages, type Forgiven } from "@/lib/self-outage";
+import { escalateAgentAlerts } from "@/lib/agent-first";
 
 export async function GET(req: Request) {
   await connection();
@@ -37,11 +39,17 @@ export async function GET(req: Request) {
   let errors: Awaited<ReturnType<typeof sweepServerErrors>> | null = null;
   let uptime: Awaited<ReturnType<typeof sweepUptime>> | null = null;
   let checks: Awaited<ReturnType<typeof sweepChecks>> | null = null;
+  let outages: Forgiven[] = [];
   try {
+    // Spooky's own outage first: jobs that went quiet only because their check-ins could not land
+    // get a fresh due time before the sweep below could alert on them.
+    const [hb] = await getDb().select({ lastRunAt: schema.systemHeartbeats.lastRunAt }).from(schema.systemHeartbeats).where(eq(schema.systemHeartbeats.name, "watch")).limit(1);
+    outages = await forgiveOutages(hb?.lastRunAt.getTime() ?? null, Date.now());
     schedules = await sweepVercelSchedules();
     probes = await runDueProbes();
     jobs = await sweepQuietJobs();
     if (pagerEnabled()) await escalatePages();
+    await escalateAgentAlerts();
   } catch (err) {
     ok = false;
     detail = (err as Error).message.slice(0, 200);
@@ -83,5 +91,5 @@ export async function GET(req: Request) {
     // A missing table (migration not applied yet) must not fail the sweep that just ran.
     console.error("[watch] heartbeat not written", (err as Error).message.slice(0, 120));
   }
-  return json({ ok, connections: rows.length, mail, jobs, schedules, probes, errors, uptime, checks, digest, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
+  return json({ ok, connections: rows.length, mail, jobs, outages, schedules, probes, errors, uptime, checks, digest, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
 }

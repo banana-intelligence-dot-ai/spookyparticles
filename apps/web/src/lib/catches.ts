@@ -100,6 +100,8 @@ export type CatchInput = {
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 const JOB_OPENERS = new Set(["job_quiet", "job_failed"]);
+/** An alert Spooky's own outage caused (see self-outage.ts) is not a catch. */
+const real = (a: AlertRow) => !a.payload.falseAlarm;
 
 /**
  * Pure: the job episodes no recovery alert closed, by job id, with when each began. A job can come
@@ -107,7 +109,7 @@ const JOB_OPENERS = new Set(["job_quiet", "job_failed"]);
  */
 export function openJobEpisodes(alerts: AlertRow[]): Map<string, Date> {
   const open = new Map<string, Date>();
-  for (const a of [...alerts].sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())) {
+  for (const a of alerts.filter(real).sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())) {
     const jobId = str(a.payload.jobId);
     if (!jobId) continue;
     if (JOB_OPENERS.has(a.kind) && !open.has(jobId)) open.set(jobId, a.createdAt);
@@ -121,7 +123,7 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
 export function buildCatches(input: CatchInput, now: Date): Catches {
   const since = now.getTime() - WINDOW_MS;
   const out: Catch[] = [];
-  const alerts = [...input.alerts].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const alerts = input.alerts.filter(real).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   const alertAt = (a: AlertRow) => (a.sentAt ?? a.createdAt).toISOString();
 
   // Jobs: the first quiet or failed alert opens an episode; repeats belong to it; "back" closes it.

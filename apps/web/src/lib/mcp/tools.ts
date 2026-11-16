@@ -22,6 +22,7 @@ import { clearInput, clearedFor, ignoreInput, setCleared, setIgnored } from "@/l
 import { MUTE_KINDS, muteInput, mutesFor, setMuted } from "@/lib/mutes";
 import { openItemsFor } from "@/lib/open-items";
 import { publicFeedEnabled, setPublicFeed } from "@/lib/public-fixes";
+import { agentFirstEnabled, setAgentFirst } from "@/lib/agent-first";
 import { runHistoryFor } from "@/lib/run-history";
 import { startSync } from "@/lib/sync";
 import { recordInboxRead } from "@/lib/agent-listening";
@@ -100,6 +101,12 @@ export function toolsFor(actor: Actor): ToolRegistry {
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => ({ on: await publicFeedEnabled(userId) }),
+    }),
+    agent_first: tool({
+      description: "Whether a break goes to the listening coding agent first. When on, the person is emailed only if it is still broken 30 minutes later; when the agent fixes it first, nobody is emailed. set_agent_first changes it.",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => ({ on: await agentFirstEnabled(userId) }),
     }),
     list_expirations: tool({
       description: "List every known expiry date, including Vercel runtimes, domains, tracked credentials and Spooky agent keys, soonest first, plus domains whose date is unknown.",
@@ -603,6 +610,12 @@ export function toolsFor(actor: Actor): ToolRegistry {
       inputSchema: { type: "object", additionalProperties: false, properties: { on: { type: "boolean", description: "true to show, false to hide" } }, required: ["on"] },
       validate: (input) => validate(input, [], ["on"]) ?? (typeof input.on !== "boolean" ? "on must be true or false" : null),
       run: async (input) => viaApi(async () => ({ on: await setPublicFeed(actor, input.on as boolean) })),
+    }),
+    set_agent_first: write({
+      description: "Turn agent first on or off for this account. On: a listening agent hears a break first and the person only if it is still broken after 30 minutes. Off: the person hears every break at once. Ask your person first. Audited.",
+      inputSchema: { type: "object", additionalProperties: false, properties: { on: { type: "boolean", description: "true for agent first, false to email the person at once" } }, required: ["on"] },
+      validate: (input) => validate(input, [], ["on"]) ?? (typeof input.on !== "boolean" ? "on must be true or false" : null),
+      run: async (input) => viaApi(async () => ({ on: await setAgentFirst(actor, input.on as boolean) })),
     }),
     sync_connection: write({
       description: "Start a re-read of one connected account. Returns at once; check list_connections for progress. Fails if a sync is already running or the connection is not active.",

@@ -4,7 +4,7 @@
  * every channel they set up; when it checks in again they hear it recovered. A job can also
  * report a failure outright (/fail) and is then down at once.
  */
-import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { track } from "@/lib/analytics/server";
 import { appendAudit } from "@/lib/audit";
@@ -315,7 +315,15 @@ async function recordPingForJob(cur: typeof schema.checkinJobs.$inferSelect, kin
       firstEpisode: cur.status !== "down",
     });
   } else if (wasDown && cur.status === "down") {
+    // "Back" goes to the person only when they were told it broke. A break the agent heard alone
+    // (or the GitHub fix job took) closes quietly: the row is kept so Today pairs it.
+    const told = await db
+      .select({ id: schema.alerts.id })
+      .from(schema.alerts)
+      .where(and(eq(schema.alerts.userId, cur.userId), inArray(schema.alerts.kind, ["job_quiet", "job_failed"]), sql`${schema.alerts.payload}->>'jobId' = ${cur.id}`, isNotNull(schema.alerts.sentAt), gte(schema.alerts.createdAt, new Date((cur.lastPingAt?.getTime() ?? 0) - 1000))))
+      .limit(1);
     await notifyJob(j, "job_recovered", {
+      silent: told.length === 0,
       subject: `${j.name}: back`,
       text: `${j.name} checked in again at ${now.toUTCString()} after ${cur.missCount} missed ${cur.missCount === 1 ? "check-in" : "check-ins"}.${j.owner ? ` Owner: ${j.owner}.` : ""}`,
       priority: "low",
@@ -393,7 +401,7 @@ export function ago(ms: number): string {
 
 // ---------- Notify ----------
 
-export async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind: "job_quiet" | "job_failed" | "job_recovered", n: { subject: string; text: string; priority: "high" | "default" | "low"; key: string; firstEpisode?: boolean }) {
+export async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind: "job_quiet" | "job_failed" | "job_recovered", n: { subject: string; text: string; priority: "high" | "default" | "low"; key: string; firstEpisode?: boolean; silent?: boolean }) {
   const db = getDb();
   try {
     // Stopped watching this project (or its jobs): no alert, no ping, no GitHub page. The run chart still shows the run.
@@ -407,6 +415,11 @@ export async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind:
       .onConflictDoNothing({ target: [schema.alerts.userId, schema.alerts.key] })
       .returning({ id: schema.alerts.id });
     if (!row) return;
+    const hold = async (why: Record<string, unknown>, action: string) => {
+      await db.update(schema.alerts).set({ payload: sql`${schema.alerts.payload} || ${JSON.stringify(why)}::jsonb` }).where(eq(schema.alerts.id, row.id));
+      await appendAudit({ actor: "system:checkins", userId: j.userId, action, target: `alert:${row.id}`, after: { kind, job: j.name } });
+    };
+    if (n.silent) return hold({ silent: true }, "alert.not_sent_person_never_told");
     let text = n.text;
     if (pagerEnabled() && kind !== "job_recovered" && (kind === "job_quiet" ? j.missCount === 1 : n.firstEpisode === true)) {
       const channels = await db.select().from(schema.alertChannels).where(and(eq(schema.alertChannels.userId, j.userId), eq(schema.alertChannels.kind, "github"), eq(schema.alertChannels.enabled, true)));
@@ -418,6 +431,11 @@ export async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind:
         }
         text += `\nSpooky couldn't start the GitHub fix job: ${page.reason ?? "request failed"}`;
       }
+    }
+    // Agent first: a listening agent hears it now; the person only if it is still broken in 30 min.
+    if (kind !== "job_recovered" && (kind === "job_quiet" ? j.missCount === 1 : n.firstEpisode === true)) {
+      const { shouldDeferToAgent } = await import("./agent-first");
+      if (await shouldDeferToAgent(j.userId, j.project)) return hold({ deferred: "agent", text }, "alert.deferred_to_agent");
     }
     const results: DeliveryResult[] = await deliverToAll(j.userId, { subject: n.subject, text, link, priority: n.priority }, j.project);
     const anyOk = results.some((r) => r.ok);

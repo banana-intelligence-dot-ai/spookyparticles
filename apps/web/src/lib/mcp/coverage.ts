@@ -4,6 +4,7 @@ export const WRITE_ROUTE_TOOLS: Record<string, { tools: string[] } | { noTool: s
   "PATCH alert-channels/[id]": { tools: ["update_alert_channel"] },
   "DELETE alert-channels/[id]": { tools: ["remove_alert_channel"] },
   "POST alert-channels/[id]/test": { tools: ["test_alert_channel"] },
+  "POST agent-first": { tools: ["set_agent_first"] },
   "POST alerts/test": { tools: ["send_test_alert"] },
   "POST api-keys": { tools: ["create_api_key"] },
   "DELETE api-keys/[id]": { tools: ["revoke_api_key"] },
