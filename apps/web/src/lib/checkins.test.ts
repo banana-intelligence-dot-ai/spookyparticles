@@ -97,7 +97,9 @@ describe("check-in state", () => {
   it("reports never-checked-in jobs to agents without treating retired jobs as broken", () => {
     expect(jobIssue({ status: "never_checked_in", lastPingKind: null })).toBe("never_checked_in");
     expect(jobIssue({ status: "down", lastPingKind: "fail" })).toBe("failed");
-    expect(jobIssue({ status: "late", lastPingKind: "ok" })).toBe("quiet");
+    expect(jobIssue({ status: "down", lastPingKind: "ok" })).toBe("quiet");
+    // Inside its grace a job is late, not broken: no alert, not on Now, so not in the agent's inbox either.
+    expect(jobIssue({ status: "late", lastPingKind: "ok" })).toBeNull();
     expect(jobIssue({ status: "retired", lastPingKind: "fail" })).toBeNull();
   });
 });

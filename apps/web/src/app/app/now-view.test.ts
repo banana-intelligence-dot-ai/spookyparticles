@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpenReport } from "@/lib/open-items";
-import { fixedLine, nowLead } from "./now-view";
+import { fixedLine, nowIsEmpty, nowLead } from "./now-view";
 import { pairLength } from "./pair";
 import { isActive, MORE, RAIL_ITEMS } from "./rail";
 
@@ -16,6 +16,17 @@ describe("the Now headline", () => {
   it("is calm when only the agents hold work, and calmer when nothing is open", () => {
     expect(nowLead(summary({ open: 1, withAgents: 1 }))).toEqual({ headline: "Nothing needs you.", sub: "Your agent has 1." });
     expect(nowLead(summary())).toEqual({ headline: "Nothing is open.", sub: "" });
+  });
+});
+
+describe("an empty Now", () => {
+  it("is empty only with nothing watched, open or fixed", () => {
+    expect(nowIsEmpty(summary({ watching: 0 }))).toBe(true);
+    expect(nowIsEmpty(summary())).toBe(false);
+  });
+  it("still shows a job's break before any project is watched", () => {
+    expect(nowIsEmpty(summary({ watching: 0, open: 1, withAgents: 1 }))).toBe(false);
+    expect(nowIsEmpty(summary({ watching: 0, fixed: 1 }))).toBe(false);
   });
 });
 

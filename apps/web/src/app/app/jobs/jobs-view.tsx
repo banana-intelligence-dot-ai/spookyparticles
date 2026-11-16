@@ -189,7 +189,7 @@ function AddJob({ onDone, onClose }: { onDone: (msg: string | null) => void | Pr
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5 text-[14px] text-fg-2 sm:col-span-2">
           Name
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="My Happenings 5pm update" className={INPUT} required />
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="Nightly backup" className={INPUT} required />
         </label>
         <label className="flex flex-col gap-1.5 text-[14px] text-fg-2">
           Runs

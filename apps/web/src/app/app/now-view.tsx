@@ -80,6 +80,14 @@ export function nowLead(s: OpenReport["summary"]): { headline: string; sub: stri
   return { headline: s.withAgents ? "Nothing needs you." : "Nothing is open.", sub: agents };
 }
 
+/**
+ * Pure: true when Now has nothing to show but setup. Open or recently fixed breaks count
+ * even with no project watched yet: a job's break must never hide behind the setup list.
+ */
+export function nowIsEmpty(s: OpenReport["summary"]): boolean {
+  return !s.watching && !s.notWatched && !s.open && !s.fixed;
+}
+
 /** Pure: what got fixed in the window, in one line. */
 export function fixedLine(s: OpenReport["summary"]): string {
   if (!s.fixed) return `Nothing broke in the last ${s.windowDays} days that Spooky saw.`;
@@ -136,7 +144,7 @@ export function NowScreen({
 
   const s = report?.summary;
   const setup = ready && (!onboardingComplete(connections) || s?.agents === 0);
-  const empty = Boolean(s && !s.watching && !s.notWatched);
+  const empty = Boolean(s && nowIsEmpty(s));
   const onboarding = <Onboarding connections={connections} params={params} now={now} agents={s ? s.agents : null} />;
   const lead = s ? nowLead(s) : null;
   const held = Object.values(done);

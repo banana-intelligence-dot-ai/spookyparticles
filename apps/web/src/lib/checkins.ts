@@ -100,9 +100,13 @@ export function sortJobViews<T extends { name: string; status: JobStatus }>(jobs
 
 export type JobIssue = "failed" | "quiet" | "never_checked_in";
 
+/**
+ * What an agent is told about a job. A job inside its grace ("late") is not an issue yet:
+ * no alert goes out and Now does not list it, so the agent hears at the same moment.
+ */
 export function jobIssue(job: Pick<JobView, "status" | "lastPingKind">): JobIssue | null {
   if (job.status === "never_checked_in") return "never_checked_in";
-  if (job.status === "late" || (job.status === "down" && job.lastPingKind !== "fail")) return "quiet";
+  if (job.status === "down" && job.lastPingKind !== "fail") return "quiet";
   if (job.status === "down" && job.lastPingKind === "fail") return "failed";
   return null;
 }

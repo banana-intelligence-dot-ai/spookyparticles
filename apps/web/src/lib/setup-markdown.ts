@@ -158,13 +158,13 @@ Step 6 sets it up. It runs in the foreground for 12 hours, uses their Claude or 
 
 ## Check-ins for scheduled jobs
 
-Anything you run on a schedule for your human (a nightly build, a daily publish, a launchd or cron job) can check in with Spooky Particles each time it runs. If it goes quiet, your human hears on their phone, Slack, Teams or email, within the grace period, and again when it recovers. Creating a job needs a key with the **write** scope; ask your human for one if yours is read-only.
+Anything you run on a schedule for your human (a nightly build, a daily publish, a launchd or cron job) can check in with Spooky Particles each time it runs. If it is still quiet when the grace period ends, your human hears on their phone, Slack, Teams or email, and again when it recovers. Your agent hears at the same moment. Creating a job needs a key with the **write** scope; ask your human for one if yours is read-only.
 
 1. Create the job once. Period is how often it should run, in minutes; grace is how late is still fine:
 
    \`\`\`bash
    printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -H "content-type: application/json" \
-     -d '{"name":"My Happenings 5pm update","periodMinutes":1440,"graceMinutes":30,"project":"n8peace/my-happenings"}' \
+     -d '{"name":"Nightly backup","periodMinutes":1440,"graceMinutes":30,"project":"you/your-repo"}' \
      ${base}/api/v1/checkins | jq '{id: .job.id, pingUrl: .job.pingUrl, curl}'
    \`\`\`
 
