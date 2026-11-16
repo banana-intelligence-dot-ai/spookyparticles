@@ -27,6 +27,7 @@ import { runHistoryFor } from "@/lib/run-history";
 import { startSync } from "@/lib/sync";
 import { recordInboxRead } from "@/lib/agent-listening";
 import { catchesFor, recordDeploys } from "@/lib/catches";
+import { commitOutcomeFor } from "@/lib/commit-outcome";
 import { claimBreak, claimsFor } from "@/lib/claims";
 import { confirmFix } from "@/lib/confirm-fix";
 import { incidentsFor, watchedJobs } from "@/lib/incidents";
@@ -175,6 +176,21 @@ export function toolsFor(actor: Actor): ToolRegistry {
           ...(sha ? { sha, shaLive: Boolean(production?.state === "success" && production.sha && match(production.sha, sha)) } : {}),
         };
       },
+    }),
+    commit_outcome: tool({
+      description: "How a commit turned out: whether it reached production, what broke after it, and when the break was fixed.",
+      inputSchema: {
+        type: "object", additionalProperties: false,
+        properties: {
+          repo: { type: "string", minLength: 3, maxLength: 120, pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+          sha: { type: "string", minLength: 7, maxLength: 40, pattern: "^[a-fA-F0-9]{7,40}$" },
+        },
+        required: ["repo", "sha"],
+      },
+      validate: (input) => validate(input, ["repo", "sha"], ["repo", "sha"])
+        ?? (typeof input.repo === "string" && input.repo.length <= 120 && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input.repo) ? null : "repo must be owner/repo")
+        ?? (typeof input.sha === "string" && /^[a-fA-F0-9]{7,40}$/.test(input.sha) ? null : "sha must be a 7 to 40 character commit hash"),
+      run: async (input) => commitOutcomeFor(userId, input.repo as string, input.sha as string),
     }),
     claim_break: tool({
       description: "Before you start fixing a project's break, claim it so other coding sessions leave it to you. Lasts 30 minutes; call again to renew. If another agent holds it, claimed is false and the message says who; leave it to them unless your person says otherwise.",

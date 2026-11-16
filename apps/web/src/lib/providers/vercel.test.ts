@@ -202,13 +202,15 @@ describe("build log tail and cause", () => {
 describe("commit metadata and the richer production record", () => {
   it("reads the commit from Vercel's git metadata and keeps the first line of the message", () => {
     const d = pickDeployment({ uid: "dpl_c", url: "c.vercel.app", state: "READY", created: 1_700_000_000_000, target: "production", meta: { githubCommitSha: "44c44fa9deadbeef", githubCommitRef: "main", githubCommitMessage: "Fix the thing\n\nLonger body" } });
-    expect(d?.commit).toEqual({ sha: "44c44fa9deadbeef", ref: "main", message: "Fix the thing" });
+    expect(d?.commit).toEqual({ sha: "44c44fa9deadbeef", ref: "main", message: "Fix the thing", agent: null });
+    const agent = pickDeployment({ uid: "dpl_a", meta: { githubCommitSha: "44c44fa9deadbeef", githubCommitMessage: "Ship\n\nGenerated with [Claude Code]\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nhttps://claude.ai/code/session_abc12345" } });
+    expect(agent?.commit?.agent).toEqual({ agent: "Claude Code", model: "Claude Opus 5.5", session: "https://claude.ai/code/session_abc12345" });
     expect(pickDeployment({ uid: "dpl_n", created: 1 })?.commit).toBeNull();
   });
   it("uses the deployments-list record of the production target when both are present", () => {
     const base = { id: "prj", name: "x", accountId: "a", framework: null, nodeVersion: null, live: true, paused: false, createdAt: null, updatedAt: null, repo: null, latest: null };
     const thin = { id: "dpl_p", url: "https://p.vercel.app", state: "READY", target: "production" as const, createdAt: "2026-11-04T07:21:56.000Z", readyAt: null, source: null, errorCode: null, inspectorUrl: null, commit: null };
-    const rich = { ...thin, inspectorUrl: "https://vercel.com/t/x/dpl_p", source: "git", commit: { sha: "abc1234", ref: "main", message: "m" } };
+    const rich = { ...thin, inspectorUrl: "https://vercel.com/t/x/dpl_p", source: "git", commit: { sha: "abc1234", ref: "main", message: "m", agent: null } };
     const r = chooseDeployments({ ...base, production: thin }, [rich]);
     expect(r.production?.inspectorUrl).toBe("https://vercel.com/t/x/dpl_p");
     expect(r.production?.commit?.sha).toBe("abc1234");

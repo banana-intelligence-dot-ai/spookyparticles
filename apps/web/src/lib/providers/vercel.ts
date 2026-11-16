@@ -11,6 +11,7 @@
  */
 
 import { pickSchedules } from "@/lib/vercel-schedules";
+import { agentFromCommit, type CommitAgent } from "@/lib/commit-agent";
 
 export const VERCEL_API = "https://api.vercel.com";
 
@@ -195,7 +196,7 @@ export type VercelDeployment = {
   errorCode: string | null;
   inspectorUrl: string | null;
   /** The commit this deployment built, from Vercel's git metadata, when it deployed from git. */
-  commit: { sha: string; ref: string | null; message: string | null } | null;
+  commit: { sha: string; ref: string | null; message: string | null; agent: CommitAgent | null } | null;
 };
 
 const iso = (ms: unknown): string | null => (typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : null);
@@ -222,7 +223,7 @@ export function pickDeployment(raw: Record<string, unknown> | null | undefined):
     source: str(raw.source),
     errorCode: str(raw.errorCode),
     inspectorUrl: str(raw.inspectorUrl),
-    commit: sha ? { sha, ref: str(meta?.githubCommitRef) ?? str(meta?.gitlabCommitRef) ?? str(meta?.bitbucketCommitRef), message: message ? message.split("\n")[0].slice(0, 120) : null } : null,
+    commit: sha ? { sha, ref: str(meta?.githubCommitRef) ?? str(meta?.gitlabCommitRef) ?? str(meta?.bitbucketCommitRef), message: message ? message.split("\n")[0].slice(0, 120) : null, agent: agentFromCommit(message) } : null,
   };
 }
 

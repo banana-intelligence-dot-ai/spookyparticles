@@ -6,6 +6,7 @@ import { refreshRepoQuietly } from "./github-refresh";
 import { failedDeployments } from "./projects";
 import { resyncHostsQuietlyFor } from "./sync";
 import type { Claim } from "./claims";
+import type { CommitAgent } from "./commit-agent";
 
 const WINDOW_MS = 30 * 86_400_000;
 
@@ -22,7 +23,7 @@ export type DeployIncident = {
   cause: string | null;
   logTail: string[];
   inspectorUrl: string | null;
-  commit: { sha: string; ref: string | null; message: string | null } | null;
+  commit: { sha: string; ref: string | null; message: string | null; agent: CommitAgent | null } | null;
   source: string;
 };
 
@@ -91,7 +92,7 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
         cause: d.cause,
         logTail: d.logTail,
         inspectorUrl: d.inspectorUrl,
-        commit: d.sha ? { sha: d.sha, ref: d.ref ?? null, message: d.message ?? null } : null,
+        commit: d.sha ? { sha: d.sha, ref: d.ref ?? null, message: d.message ?? null, agent: d.agent ?? null } : null,
         source: d.cause ? `${d.provider ?? "host"} build log` : d.provider === "Vercel" ? "Vercel deployments" : "GitHub deployments",
       } satisfies DeployIncident;
     })
@@ -193,6 +194,7 @@ export function formatIncidentsText(
       `Deploy failed: ${oneLine(incident.project) || "Unknown project"}${incident.environment ? ` (${oneLine(incident.environment)}${incident.host ? ` on ${oneLine(incident.host)}` : ""})` : ""}`,
       `When: ${oneLine(incident.at) || "unknown"}`,
       ...(c ? [`Change: ${oneLine(c.sha).slice(0, 7)}${c.message ? ` ${oneLine(c.message).slice(0, 120)}` : ""}${c.ref ? ` (${oneLine(c.ref)})` : ""}. Start there: this commit is the one that failed.`] : []),
+      ...(c?.agent ? [`Shipped by ${c.agent.agent}${c.agent.model ? ` (${c.agent.model})` : ""}.${c.agent.session ? ` Its session: ${c.agent.session}. Read what it meant to do before you change anything.` : ""}`] : []),
       `Build log: ${oneLine(incident.cause) || "No build log line was reported."}`,
       ...(tail.length ? ["Last log lines:", ...tail.map((l) => `  | ${l.slice(0, 240)}`)] : []),
       `Link: ${absoluteUrl(origin, incident.inspectorUrl ?? incident.url)}`,

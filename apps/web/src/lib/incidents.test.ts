@@ -60,6 +60,19 @@ describe("agent inbox text", () => {
     expect(text).toContain('printf \'Authorization: Bearer %s\\n\' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @- "https://spooky.example/api/v1/incidents/confirm?project=owner%2Frepo&format=text"');
   });
 
+  it("puts a known shipping agent and session immediately after the change", () => {
+    const deploy: Incident = {
+      kind: "deploy_failed", key: "d", project: "owner/repo", environment: "production", host: "Vercel",
+      state: "failed", at: "2026-11-11T20:00:00.000Z", url: null, cause: null, logTail: [], inspectorUrl: null,
+      commit: { sha: "abcdef012345", ref: null, message: "Ship", agent: { agent: "Claude Code", model: "Claude Opus 5.5", session: "https://claude.ai/code/session_abc12345" } },
+      source: "Vercel",
+    };
+    const text = formatIncidentsText({ incidents: [deploy] }, "owner/repo", "https://spooky.example");
+    expect(text).toContain("Change: abcdef0 Ship. Start there: this commit is the one that failed.\nShipped by Claude Code (Claude Opus 5.5). Its session: https://claude.ai/code/session_abc12345. Read what it meant to do before you change anything.\nBuild log:");
+    deploy.commit = { sha: "abcdef012345", ref: null, message: "Ship", agent: { agent: "Codex", model: null, session: null } };
+    expect(formatIncidentsText({ incidents: [deploy] }, "owner/repo", "https://spooky.example")).toContain("Shipped by Codex.\nBuild log:");
+  });
+
   it("does not print API keys, ping tokens, or extra incident fields", () => {
     const secret = "sp_secret_token_123456789";
     const pingToken = "pingToken1234567890";

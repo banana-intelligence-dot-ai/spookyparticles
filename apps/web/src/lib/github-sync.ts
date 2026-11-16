@@ -15,6 +15,7 @@ import { GITHUB_API, githubHeaders } from "@/lib/providers/github-app";
 import { providerOf } from "@/lib/hosts";
 import type { ProductionDeployment } from "@/lib/move-home";
 import { recordProductionMove } from "@/lib/move-home-record";
+import { agentFromCommit } from "@/lib/commit-agent";
 
 export type RepoRef = {
   id: number;
@@ -211,6 +212,7 @@ export async function syncActionsWith(t: string, input: { userId: string; repoNo
         }
       }
     }
+    const commitAgent = agentFromCommit(run.head_commit?.message ?? null);
     const depNodeId = await upsertNode({
       userId,
       kind: "deployment",
@@ -232,6 +234,9 @@ export async function syncActionsWith(t: string, input: { userId: string; repoNo
         commit_sha: run.head_sha,
         commit_ref: run.head_branch,
         commit_message: run.head_commit?.message ? run.head_commit.message.split("\n")[0].slice(0, 120) : null,
+        commit_agent: commitAgent?.agent ?? null,
+        commit_agent_model: commitAgent?.model ?? null,
+        commit_session: commitAgent?.session ?? null,
         ...logFacts,
       },
       status: state,

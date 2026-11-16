@@ -63,6 +63,8 @@ export type Catch = {
   nextRunAt?: string | null;
   /** Deploys: the build log line that names the failure, when the host gave one. */
   cause?: string | null;
+  /** Deploys: the commit that failed, when the host supplied it. */
+  commitSha?: string | null;
   /** Jobs: which watched job, so the view can show its last note and offer Retire. */
   jobId?: string | null;
   /** The key that clears this one notice (POST /api/v1/notices/clear). Deploys use the failure's break key. */
@@ -208,6 +210,7 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
       fixedAt: fix ? (str(fix.properties.at) ?? fix.createdAt.toISOString()) : null,
       fixedBy: sha ? { kind: "commit", sha, message: str(fix?.properties.message) } : null,
       cause,
+      commitSha: str(e.properties.sha),
       clearKey: nodeId ? breakKey(nodeId, at) : key,
       ...closed,
     });
@@ -291,7 +294,7 @@ export async function recordDeploys(userId: string, nowMs = Date.now()) {
 
     const fresh = failing
       .filter((d) => d.at && !caught.has(`deploy:${d.id}:${d.at}`))
-      .map((d) => ({ userId, name: CAUGHT, properties: { key: `deploy:${d.id}:${d.at}`, nodeId: d.id, project: d.name.replace(/\s+\(.*\)$/, ""), at: d.at, cause: d.cause, environment: d.environment || null, provider: d.provider } }));
+      .map((d) => ({ userId, name: CAUGHT, properties: { key: `deploy:${d.id}:${d.at}`, nodeId: d.id, project: d.name.replace(/\s+\(.*\)$/, ""), at: d.at, cause: d.cause, environment: d.environment || null, provider: d.provider, sha: d.fullSha } }));
     if (fresh.length) await db.insert(schema.events).values(fresh);
 
     const stillFailing = new Set(failing.map((d) => d.id));
@@ -302,7 +305,8 @@ export async function recordDeploys(userId: string, nowMs = Date.now()) {
       const node = nodes.find((n) => n.id === p.nodeId);
       if (!node?.lastActivityAt || FAILED_STATES.has(node.status ?? "") || node.lastActivityAt.getTime() <= Date.parse(p.at as string)) return [];
       const facts = logFacts(node.attributes as Record<string, unknown>);
-      return [{ userId, name: FIXED, properties: { key, at: node.lastActivityAt.toISOString(), sha: facts.sha, message: facts.message } }];
+      const attrs = node.attributes as Record<string, unknown>;
+      return [{ userId, name: FIXED, properties: { key, at: node.lastActivityAt.toISOString(), sha: str(attrs.commit_sha) ?? str(attrs.sha) ?? facts.sha, message: facts.message } }];
     });
     if (rows.length) await db.insert(schema.events).values(rows);
   } catch (err) {
@@ -312,8 +316,8 @@ export async function recordDeploys(userId: string, nowMs = Date.now()) {
 
 const MUTE_WORDS: Record<CatchKind, string> = { deploy: "failed deploys", job: "job alerts", site: "site-down alerts", server_errors: "server-error alerts", check: "check suggestions" };
 
-export async function catchesFor(userId: string): Promise<Catches> {
-  await recordDeploys(userId);
+export async function catchesFor(userId: string, options: { record?: boolean } = {}): Promise<Catches> {
+  if (options.record !== false) await recordDeploys(userId);
   const db = getDb();
   const now = new Date();
   const since = new Date(now.getTime() - WINDOW_MS);

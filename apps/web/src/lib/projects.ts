@@ -19,6 +19,7 @@ import { sameProject } from "./break-guide";
 import { buildProjectPage, type PageFinding, type ProjectPage } from "./project-page";
 import type { SpendReport, Subscription, VendorScope } from "./spend";
 import type { UptimeState } from "./vercel-health";
+import { storedAgent, type CommitAgent } from "./commit-agent";
 
 export { providerFromCreator, providerFromUrl, providerOf } from "./hosts";
 
@@ -42,6 +43,7 @@ export type DeploymentView = {
   sha?: string | null;
   ref?: string | null;
   message?: string | null;
+  agent?: CommitAgent | null;
   /** This failure's identity, for ignoring it; and whether the owner ignored it. */
   key?: string;
   ignored?: boolean;
@@ -130,7 +132,7 @@ function noticeAt(r: LoadedReceipt): string | null {
 
 const NOTICE_KINDS: ReceiptKind[] = ["deployment", "incident_alert", "deprecation_notice", "account_security", "payment_failed", "renewal_notice", "trial_notice", "domain_or_dns", "plan_change"];
 /** The failure facts a host sync stored on a deployment node, when it did. */
-export function logFacts(a: Record<string, unknown>): { cause: string | null; logTail: string[]; inspectorUrl: string | null; sha: string | null; ref: string | null; message: string | null } {
+export function logFacts(a: Record<string, unknown>): { cause: string | null; logTail: string[]; inspectorUrl: string | null; sha: string | null; ref: string | null; message: string | null; agent: CommitAgent | null } {
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
   return {
     cause: str(a.cause),
@@ -139,6 +141,7 @@ export function logFacts(a: Record<string, unknown>): { cause: string | null; lo
     sha: str(a.commit_sha)?.slice(0, 7) ?? (str(a.sha)?.slice(0, 7) ?? null),
     ref: str(a.commit_ref) ?? str(a.ref),
     message: str(a.commit_message),
+    agent: storedAgent(a),
   };
 }
 
@@ -513,7 +516,7 @@ export async function failedDeployments(userId: string, nowMs = Date.now()) {
     const at = d.lastActivityAt?.toISOString() ?? null;
     const key = breakKey(d.id, at);
     if (ignored.has(key)) return [];
-    return [{ id: d.id, key, name: d.name, environment, label: environment.replace(/\s+/g, " ").trim(), url, state: d.status, at, provider: providerOf(url, creator), ...logFacts(a) }];
+    return [{ id: d.id, key, name: d.name, environment, label: environment.replace(/\s+/g, " ").trim(), url, state: d.status, at, provider: providerOf(url, creator), fullSha: typeof a.commit_sha === "string" ? a.commit_sha : typeof a.sha === "string" ? a.sha : null, ...logFacts(a) }];
   });
 }
 

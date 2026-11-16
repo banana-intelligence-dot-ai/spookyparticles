@@ -86,7 +86,7 @@ function fakeData(): HelpData & { calls: string[] } {
       mine(userId, "incidents");
       return {
         checkedAt: "2026-11-13T00:00:00Z", repoRefreshed: false, note: "",
-        incidents: [{ kind: "deploy_failed", key: "k", project: "me/site", environment: "production", host: "vercel", state: "error", at: "2026-11-12T00:00:00Z", url: null, cause: "Type error in page.tsx", logTail: ["VERCEL_TOKEN=abc123secret"], inspectorUrl: null, commit: { sha: "abc", ref: null, message: "fix" }, source: "Vercel" }],
+        incidents: [{ kind: "deploy_failed", key: "k", project: "me/site", environment: "production", host: "vercel", state: "error", at: "2026-11-12T00:00:00Z", url: null, cause: "Type error in page.tsx", logTail: ["VERCEL_TOKEN=abc123secret"], inspectorUrl: null, commit: { sha: "abc", ref: null, message: "fix", agent: null }, source: "Vercel" }],
       };
     }) as unknown as HelpData["incidents"],
     jobs: vi.fn(async (userId: string) => { mine(userId, "jobs"); return [job()]; }) as unknown as HelpData["jobs"],

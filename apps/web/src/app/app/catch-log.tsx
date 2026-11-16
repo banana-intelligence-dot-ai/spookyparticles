@@ -323,7 +323,7 @@ function Story({ c, now, claims = [], jobs = [], projects = [], onChanged }: { c
     ...(c.alertedAt ? [{ label: "You were alerted", at: c.alertedAt }] : []),
     ...(c.heardAt ? [{ label: c.agent ? `${c.agent} asked about it` : "Your agent asked about it", at: c.heardAt }] : []),
     c.fixedAt
-      ? { label: "Fixed", at: c.fixedAt, tone: "accent" as const, note: c.fixedBy?.kind === "commit" ? `${c.fixedBy.sha}${c.fixedBy.message ? ` ${c.fixedBy.message}` : ""}` : undefined }
+      ? { label: "Fixed", at: c.fixedAt, tone: "accent" as const, note: c.fixedBy?.kind === "commit" ? `${c.fixedBy.sha.slice(0, 7)}${c.fixedBy.message ? ` ${c.fixedBy.message}` : ""}` : undefined }
       : c.status === "waiting"
         ? { label: "Waiting on its next run", at: null, note: c.nextRunAt ? `due ${new Date(c.nextRunAt).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}` : undefined }
         : c.status === "retired"

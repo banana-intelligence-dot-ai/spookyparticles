@@ -22,6 +22,7 @@ import { getAccessToken, getConnection, markConnectionErrored } from "@/lib/conn
 import { installDisplayName, isPlaceholderDisplay, readVercelInstallMeta } from "@/lib/vercel-integration";
 import { upsertEdge, upsertNode } from "@/lib/graph";
 import { syncScheduleJobs } from "@/lib/vercel-watch";
+import { recordProductionDeploys } from "@/lib/commit-outcome";
 import { detectServices } from "@/lib/services/catalog";
 import { billedServices, billingWindow, parseJsonLines, rowsForAccount } from "@/lib/services/billing";
 import { setAccountBilling, syncBilledServices, syncProjectBills, syncProjectServices } from "@/lib/services/store";
@@ -150,6 +151,9 @@ const deploymentAttributes = (d: VercelDeployment, project: VercelProject) => ({
   commit_sha: d.commit?.sha ?? null,
   commit_ref: d.commit?.ref ?? null,
   commit_message: d.commit?.message ?? null,
+  commit_agent: d.commit?.agent?.agent ?? null,
+  commit_agent_model: d.commit?.agent?.model ?? null,
+  commit_session: d.commit?.agent?.session ?? null,
   project_id: project.id,
   deployment_id: d.id,
 });
@@ -191,6 +195,7 @@ async function syncOneVercelProject(input: ProjectSyncInput) {
 
   const recent = await guarded(c, () => listDeployments(token, scope, project.id, 20));
   const { production, latest, lastFailure, newestPreview } = chooseDeployments(project, recent);
+  if (project.repo) await recordProductionDeploys(userId, `${project.repo.org}/${project.repo.repo}`, recent.filter((d) => d.target === "production").map((d) => ({ id: d.id, state: d.state, createdAt: d.createdAt, sha: d.commit?.sha ?? null })));
   await syncScheduleJobs({ userId, connectionId: c.id, projectId: project.id, projectName: project.name, scopeId: `${scope.kind}:${scope.id}`, deploymentId: project.cronDeploymentId ?? production?.id ?? null, hasProduction: Boolean(production), schedules: project.schedules ?? [] });
   const lastActivity = latest?.createdAt ?? project.updatedAt;
   const [previous] = await db.select({ attributes: schema.nodes.attributes }).from(schema.nodes).where(and(eq(schema.nodes.userId, userId), eq(schema.nodes.kind, "project"), eq(schema.nodes.externalKey, `vercel:project:${project.id}`))).limit(1);
