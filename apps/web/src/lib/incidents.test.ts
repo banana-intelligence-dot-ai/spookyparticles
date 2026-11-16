@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatIncidentsText, matchesIncidentProject, type Incident } from "./incidents";
+import { formatIncidentsText, jobReachesSession, matchesIncidentProject, type Incident } from "./incidents";
 
 describe("incident project matching", () => {
   it("matches the full repo or its final name", () => {
@@ -8,6 +8,13 @@ describe("incident project matching", () => {
     expect(matchesIncidentProject("repo", "owner/repo")).toBe(true);
     expect(matchesIncidentProject("other/repo", "owner/elsewhere")).toBe(false);
     expect(matchesIncidentProject(null, "repo")).toBe(false);
+  });
+
+  it("sends a job with no project to every session", () => {
+    expect(jobReachesSession(null, "owner/repo")).toBe(true);
+    expect(jobReachesSession("  ", "tmp")).toBe(true);
+    expect(jobReachesSession("owner/repo", "repo")).toBe(true);
+    expect(jobReachesSession("owner/repo", "owner/elsewhere")).toBe(false);
   });
 });
 

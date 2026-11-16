@@ -55,6 +55,14 @@ export function matchesIncidentProject(project: string | null, narrowedTo: strin
   return candidate === name || candidate.endsWith(`/${name}`) || candidate === name.split("/").pop();
 }
 
+/**
+ * A job saved without a project belongs to no repo, so every agent session hears it; otherwise
+ * Now says "sent to your agents" while no session ever asks about it.
+ */
+export function jobReachesSession(project: string | null, narrowedTo: string): boolean {
+  return !project?.trim() || matchesIncidentProject(project, narrowedTo);
+}
+
 /** Jobs that can still reach an agent: not on a project the owner stopped watching, and not cleared from the open list. */
 export async function watchedJobs(userId: string): Promise<JobView[]> {
   const [jobs, mutes, cleared] = await Promise.all([listJobs(userId), mutesFor(userId), clearedJobIds(userId)]);
@@ -90,7 +98,7 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
     .filter((incident) => matchesIncidentProject(incident.project, name) && !muteFor(mutes, incident.project, "deploy"));
   const jobIncidents = jobs.flatMap((job): JobIncident[] => {
     const issue = jobIssue(job);
-    if (!issue || !matchesIncidentProject(job.project, name)) return [];
+    if (!issue || !jobReachesSession(job.project, name)) return [];
     return [{
       kind: "job",
       name: job.name,
