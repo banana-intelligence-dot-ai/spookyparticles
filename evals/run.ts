@@ -7,6 +7,7 @@ import {
   cleanMinutes,
   dueState,
   jobDisplayStatus,
+  jobIssue,
   parseStatusFilter,
 } from "../apps/web/src/lib/checkins";
 import { fixedAfterAlert, medianFixMinutes } from "../apps/web/src/lib/fix-stats";
@@ -43,6 +44,7 @@ const registry: Record<string, (input: Record<string, any>) => unknown> = {
   fixedAfterAlert: ({ catch: c }) => fixedAfterAlert(c),
   medianFixMinutes: ({ fixed }) => medianFixMinutes(fixed),
   historyChoice: ({ currentId, connections, attempts }) => historyChoice(currentId, connections, attempts),
+  jobIssue: ({ job }) => jobIssue(job),
   jobDisplayStatus: ({ job, nowAt }) => jobDisplayStatus(job, nowAt.getTime()),
   mustWaitForCheckIn: ({ job }) => mustWaitForCheckIn(job),
   parseStatusFilter: ({ raw }) => {

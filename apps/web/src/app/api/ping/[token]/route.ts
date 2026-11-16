@@ -3,9 +3,11 @@
  *   ?status=ok (default) | start | fail, and an optional short note as the POST body or ?note=
  * The token is the only credential. Unknown tokens answer 200 with ok: false, so a probe
  * learns nothing. Never cached; the token is never logged.
+ * If Spooky cannot save the check-in (database down), it answers 503 with Retry-After.
  */
 import { connection } from "next/server";
 import { cleanCount, recordPing, type PingKind } from "@/lib/checkins";
+import { pingUnavailable } from "@/lib/ping-unavailable";
 
 const KINDS = new Set<string>(["ok", "start", "fail"]);
 
@@ -25,8 +27,13 @@ async function handle(req: Request, params: Promise<{ token: string }>) {
     }
   }
   const count = cleanCount(url.searchParams.get("count"));
-  const r = await recordPing(token, kind, note, Date.now(), count);
   const headers = { "content-type": "application/json", "cache-control": "no-store" };
+  let r: Awaited<ReturnType<typeof recordPing>>;
+  try {
+    r = await recordPing(token, kind, note, Date.now(), count);
+  } catch (e) {
+    return pingUnavailable(e, token, headers);
+  }
   if (!r.ok) return new Response(JSON.stringify({ ok: false, reason: r.reason }), { status: 200, headers });
   return new Response(JSON.stringify({ ok: true, job: r.job.name, status: r.job.status, nextDueAt: r.job.nextDueAt, recovered: r.recovered }), { status: 200, headers });
 }
