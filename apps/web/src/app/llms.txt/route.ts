@@ -14,7 +14,7 @@ Spooky Particles is for people who deploy on Vercel. It is made by Banana Intell
 ## What it does today
 - Schedules: lists every Vercel cron job and schedule, with path and timing. A read token watches runs without a code change. Missed runs and error responses trigger alerts. Recovery triggers another alert. Add one check-in line to watch through the integration alone.
 - Check-ins: any scheduled job can hit a link when it runs. Silence past its grace period triggers an alert.
-- Alerts reach a phone through ntfy, Slack, Teams or email, routed per project, plus a daily digest.
+- Alerts reach a phone through ntfy or email, routed per project, plus a daily digest.
 - Agent inbox: open problems reach Claude Code sessions at start, with the build log line or job note. Any agent can ask through /api/v1/incidents or MCP.
 - Outcome checks (new): Spooky reads a public JSON URL on a schedule and judges the answer, for example 'date is today, sentCount at least 1'.
 - Automate fixes: a failed deploy or a missed scheduled job starts a GitHub workflow in your repo, where your own coding agent gets the cause and opens a fix as a pull request, or ships it only where the repo's own rules allow. Spooky never merges. Guide at /automate-fixes.

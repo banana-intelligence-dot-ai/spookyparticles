@@ -19,8 +19,8 @@ describe("buildListening", () => {
   });
 
   it("lists broken projects that no session has asked about", () => {
-    const out = buildListening([], [deploy("supportgrid"), deploy("supportgrid")], new Map(), now);
+    const out = buildListening([], [deploy("acme"), deploy("acme")], new Map(), now);
     expect(out.listeners).toEqual([]);
-    expect(out.unheard).toEqual([{ project: "supportgrid", open: 2 }]);
+    expect(out.unheard).toEqual([{ project: "acme", open: 2 }]);
   });
 });

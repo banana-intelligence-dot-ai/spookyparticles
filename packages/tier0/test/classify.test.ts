@@ -216,7 +216,7 @@ test('consumerKind matches subdomains and bare domains', async () => {
 });
 
 test('skips Spooky Particles own alerts, which would count each failure twice', () => {
-  const own = classifyHeader({ from: 'Spooky Particles <alerts@mail.spookyparticles.com>', subject: 'supportgrid: preview deploy failed on GitHub Actions (CI)' });
+  const own = classifyHeader({ from: 'Spooky Particles <alerts@mail.spookyparticles.com>', subject: 'acme: preview deploy failed on GitHub Actions (CI)' });
   assert.equal(own.candidate, false);
   assert.equal(own.skipReason, 'own');
   assert.equal(classifyHeader({ from: 'hello@spookyparticles.ai', subject: 'Your invoice' }).skipReason, 'own');

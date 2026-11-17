@@ -24,6 +24,9 @@ const nextConfig: NextConfig = {
     "/docs/[slug]": ["./content/docs/**"],
   },
   partialPrefetching: true,
+  // Turbopack's on-disk cache served an old globals.css after it changed (on Vercel and locally), so
+  // the live page kept old styles under an unchanged file name. Build and dev start clean instead.
+  experimental: { turbopackFileSystemCacheForBuild: false, turbopackFileSystemCacheForDev: false },
   // POSTHOG_HOST is shared by the server client and the browser client.
   env: { NEXT_PUBLIC_POSTHOG_HOST: process.env.POSTHOG_HOST ?? "" },
   // Pages that moved. Query strings ride along, so sign-in callbacks that still name the old path land right.

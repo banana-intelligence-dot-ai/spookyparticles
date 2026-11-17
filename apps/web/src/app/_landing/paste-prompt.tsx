@@ -22,7 +22,12 @@ export function PastePrompt({ prompt }: { prompt: string }) {
       <button type="button" onClick={copy} title={prompt} aria-label={`Copy this prompt for your coding agent: ${prompt}`} className="paste-pill">
         <span>Copy for your agent</span>
         <code aria-hidden>{prompt}</code>
-        <kbd aria-live="polite">{status === "copied" ? "Copied" : status === "failed" ? "Blocked" : "Copy"}</kbd>
+        <kbd aria-live="polite">{status === "copied" ? "Copied" : status === "failed" ? "Blocked" : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-label="Copy">
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+              <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" />
+            </svg>
+          )}</kbd>
       </button>
       {status === "failed" ? (
         <p className="paste-fail" role="status">

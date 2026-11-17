@@ -8,15 +8,17 @@
 import { useEffect, useState } from "react";
 
 type PublicFix = { at: string; what: string; minutes: number };
-type Feed = { fixed: number; medianMinutes: number | null; windowDays: number; fixes: PublicFix[] };
+type Feed = { fixed: number; medianMinutes: number | null; since: string | null; fixes: PublicFix[]; more: boolean; checkedAt: string };
 type Fallback = { date: string; what: string; tag: string; took: string };
 
 const REFRESH_MS = 60_000;
+/** The homepage shows the newest few; "Show older" pages back through every fix. */
+const FIRST_PAGE = 6;
 let shared: { feed: Feed | null; subs: Set<(f: Feed | null) => void>; timer: ReturnType<typeof setInterval> | null } = { feed: null, subs: new Set(), timer: null };
 
 async function load() {
   try {
-    const r = await fetch("/api/v1/public/fixes");
+    const r = await fetch(`/api/v1/public/fixes?limit=${FIRST_PAGE}`);
     if (!r.ok) return;
     const feed = (await r.json()) as Feed;
     shared.feed = feed;
@@ -47,9 +49,26 @@ function useFeed(): Feed | null {
 
 function took(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;
+  if (minutes >= 24 * 60) {
+    const d = Math.floor(minutes / 1440);
+    const dh = Math.floor((minutes % 1440) / 60);
+    return dh ? `${d} d ${dh} h` : `${d} d`;
+  }
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+const fixKey = (fix: PublicFix) => `${fix.at}|${fix.what}|${fix.minutes}`;
+
+function mergeFixes(...lists: PublicFix[][]): PublicFix[] {
+  const fixes = new Map<string, PublicFix>();
+  for (const fix of lists.flat()) fixes.set(fixKey(fix), fix);
+  return [...fixes.values()].sort((a, b) => b.at.localeCompare(a.at));
+}
+
+function sinceDate(since: string | null): string {
+  return since ? new Date(since).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
 }
 
 const live = (f: Feed | null): f is Feed => Boolean(f && f.fixed > 0);
@@ -62,15 +81,39 @@ export function LiveCount() {
     <a href="#live-fixes" className="ml-auto inline-flex min-h-11 items-center gap-2 font-mono text-[12px] text-fg-2 tabular-nums hover:text-fg">
       <span aria-hidden className="live-dot" />
       {feed.fixed} fixed
-      <span className="sr-only"> after an alert, in the last {feed.windowDays} days</span>
+      <span className="sr-only"> after an alert, since {sinceDate(feed.since)}</span>
     </a>
   );
 }
 
-/** Below the pair: the numbers, then every fix, newest first. */
+/** Below the pair: the numbers, then the loaded fixes, newest first. */
 export function LiveFixes({ fallback, fallbackTitle }: { fallback: readonly Fallback[]; fallbackTitle: string }) {
   const feed = useFeed();
+  const [older, setOlder] = useState<PublicFix[]>([]);
+  const [olderMore, setOlderMore] = useState<boolean | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const isLive = live(feed);
+  const shown = mergeFixes(feed?.fixes ?? [], older);
+  const more = olderMore ?? feed?.more ?? false;
+
+  async function loadOlder() {
+    const oldest = shown.at(-1);
+    if (!oldest || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const r = await fetch(`/api/v1/public/fixes?before=${encodeURIComponent(oldest.at)}`);
+      if (!r.ok) return;
+      const page = (await r.json()) as Feed;
+      // Keep the rows already shown, so a refresh of the first page never leaves a gap.
+      setOlder((current) => mergeFixes(current, feed?.fixes ?? [], page.fixes));
+      setOlderMore(page.more);
+    } catch {
+      // Offline or blocked: keep what is shown.
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+
   return (
     <section id="live-fixes" aria-labelledby="fixes-h" className="scroll-mt-6">
       <div className="flex items-center gap-2.5">
@@ -83,32 +126,42 @@ export function LiveFixes({ fallback, fallbackTitle }: { fallback: readonly Fall
         <>
           <dl className="mt-5 grid grid-cols-2 gap-6">
             <div>
-              <dt className="font-mono text-[12px] text-fg-3">Fixed after an alert</dt>
+              <dt className="font-mono text-[12px] text-fg-2">Fixed after an alert</dt>
               <dd className="mt-1 text-[34px] leading-none font-medium tracking-[-0.02em] text-fg tabular-nums">{feed.fixed}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[12px] text-fg-3">Median time to fix</dt>
-              <dd className="mt-1 text-[34px] leading-none font-medium tracking-[-0.02em] text-accent tabular-nums">
+              <dt className="font-mono text-[12px] text-fg-2">Median time to fix</dt>
+              <dd className="mt-1 text-[34px] leading-none font-medium tracking-[-0.02em] text-fg tabular-nums">
                 {feed.medianMinutes === null ? "None yet" : took(feed.medianMinutes)}
               </dd>
             </div>
           </dl>
           <ul className="mt-8 border-t border-line-1" aria-live="polite">
-            {feed.fixes.map((f, i) => {
+            {shown.map((f) => {
               const d = new Date(f.at);
               return (
-                <li key={`${f.at}-${i}`} className="grid grid-cols-[64px_1fr] gap-x-4 gap-y-1 border-b border-line-1 py-4 text-[15px] tabular-nums min-[821px]:grid-cols-[132px_1fr_auto]">
-                  <time dateTime={f.at} className="row-span-2 font-mono min-[821px]:row-span-1 text-[13px] leading-[1.7] text-fg-3">
+                <li key={fixKey(f)} className="grid grid-cols-[64px_1fr] gap-x-4 gap-y-1 border-b border-line-1 py-4 text-[15px] tabular-nums min-[821px]:grid-cols-[156px_1fr_auto]">
+                  <time dateTime={f.at} className="row-span-2 font-mono tabular-nums min-[821px]:row-span-1 min-[821px]:whitespace-nowrap text-[13px] leading-[1.7] text-fg-3">
                     {d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                     <span className="block min-[821px]:inline"><span className="hidden min-[821px]:inline"> · </span>{d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
                   </time>
                   <span className="text-fg">{f.what}</span>
-                  <span className="col-start-2 font-mono text-[13px] leading-[1.7] text-accent min-[821px]:col-start-3">{took(f.minutes)}</span>
+                  <span className="col-start-2 font-mono text-[13px] leading-[1.7] text-fg-2 min-[821px]:col-start-3">{took(f.minutes)}</span>
                 </li>
               );
             })}
           </ul>
-          <p className="mt-4 font-mono text-[12px] leading-[1.6] text-fg-3">Last {feed.windowDays} days. Anonymous: only a time, the kind of break and how long the fix took. Any account can turn this off.</p>
+          {more ? (
+            <button
+              type="button"
+              disabled={loadingOlder}
+              onClick={() => void loadOlder()}
+              className="mt-3 inline-flex min-h-11 items-center font-mono text-[13px] text-fg-2 underline decoration-line-3 underline-offset-4 hover:text-fg disabled:cursor-wait disabled:opacity-60"
+            >
+              {loadingOlder ? "Loading" : "Show older"}
+            </button>
+          ) : null}
+          <p className="mt-4 font-mono text-[12px] leading-[1.6] text-fg-2">Every fix since {sinceDate(feed.since)}. Anonymous: only a time, the kind of break and how long the fix took. Any account can turn this off.</p>
         </>
       ) : (
         <ul className="mt-5 border-t border-line-1">

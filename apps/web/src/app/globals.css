@@ -225,7 +225,7 @@ body {
   translate: 9vw -48%;
   background: url("/einstein-ink.png") center / contain no-repeat;
   opacity: 0.44;
-  mask-image: linear-gradient(to right, transparent 0%, #000 16%), linear-gradient(to bottom, #000 62%, transparent 96%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 16%), linear-gradient(to bottom, #000 48%, transparent 78%);
   mask-composite: intersect;
   pointer-events: none;
 }
@@ -237,19 +237,19 @@ body {
  * back. Under them, the record of the fix.
  */
 .fix-stage {
-  padding: 32px 16px 120px;
+  padding: 32px 16px 72px;
 }
 .particles {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 56px;
+  gap: 32px;
 }
 .pair {
   position: relative;
   display: flex;
   justify-content: space-between;
-  width: min(880px, 100%);
+  width: min(520px, 100%);
 }
 .node {
   position: relative;
@@ -309,7 +309,7 @@ body {
   to { opacity: 1; translate: -100% 0; }
 }
 .pair {
-  --s-orb: 200px;
+  --s-orb: 112px;
 }
 .orb {
   --s: var(--s-orb);
@@ -371,7 +371,7 @@ body {
   color: var(--accent);
 }
 .fix-log {
-  width: min(480px, 100%);
+  width: min(728px, 100%);
 }
 .fix-log ol {
   border-top: 1px solid var(--line-1);
@@ -384,8 +384,8 @@ body {
   border-bottom: 1px solid var(--line-1);
   font: 400 13.5px/1.5 var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--fg-3);
-  opacity: 0.45;
+  color: var(--fg-2);
+  opacity: 0.85;
   transition: opacity 0.5s, color 0.5s;
 }
 .fix-log li[data-on] {
@@ -393,6 +393,13 @@ body {
   color: var(--fg);
 }
 .fix-log li time {
+  color: var(--fg-3);
+}
+/* A step with no time of its own belongs to the line above it. */
+.fix-log li time:empty::before {
+  content: "\21B3";
+  display: block;
+  padding-left: 24px;
   color: var(--fg-3);
 }
 [data-s="ok"] .fix-log li:last-child span {
@@ -458,19 +465,18 @@ body {
   .hero-scrim {
     opacity: 0.75;
   }
+  /* On a phone the portrait sat behind the words as a smudge; the line carries the screen alone. */
   .hero-portrait {
-    width: min(130vw, 560px);
-    translate: -22% -62%;
-    opacity: 0.3;
+    display: none;
   }
   .fix-stage {
-    padding: 32px 16px 88px;
+    padding: 8px 16px 56px;
   }
   .particles {
-    gap: 40px;
+    gap: 28px;
   }
   .pair {
-    --s-orb: 112px;
+    --s-orb: 72px;
   }
   .node figcaption {
     font-size: 12px;

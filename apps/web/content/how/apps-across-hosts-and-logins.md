@@ -10,7 +10,7 @@ Connect through a Vercel integration or paste a read token. The integration lets
 |---|---|---|
 | Vercel integration | Chosen projects, deploys, domains and schedule paths and timing | It cannot read request history, so it cannot watch schedule runs alone |
 | Vercel read token | Projects, deploys, domains and schedule runs | Vercel cannot scope the token to read-only; our code uses GET requests and one read-only request history query |
-| GitHub read-only connection | Repos, deploy data and GitHub Actions runs | It does not give deep coverage of other hosts |
+| GitHub App (reads; its one write starts the fix workflow where you add it) | Repos, deploy data and GitHub Actions runs | It does not give deep coverage of other hosts |
 | Optional Gmail inbox, by request | Bills and renewals | It is not needed for schedules, deploy alerts or the map |
 
 Every fact names its source. The map joins Vercel projects, GitHub repos, Actions runs, domains and the commit each deploy carries.

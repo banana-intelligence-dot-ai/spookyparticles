@@ -23,7 +23,7 @@ describe("renderDeployFailed", () => {
     expect(r.text).toContain("Last 15 lines of the log");
     expect(r.text).toContain("line 40");
     expect(r.text).not.toContain("line 25\n");
-    expect(r.text).toContain("Nothing was changed, redeployed or rolled back.");
+    expect(r.text).toContain("Spooky Particles changed nothing. Nothing was redeployed or rolled back.");
     expect(r.html).toContain("Stop these emails");
     expect(r.html).toContain("&#39;foo&#39;");
     expect(r.html).not.toContain("<script");

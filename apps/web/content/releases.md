@@ -8,7 +8,7 @@ What changed in Spooky Particles, dated, newest first. One entry per shipped cha
 - **Three key levels.** **Read** looks. **Read and write** changes and removes Spooky's own records. **Full control** adds keys, sign-in approval and account deletion. Pick it on the Agents page, and only for an agent you would hand your own login. A key can only make keys with the access it has itself. Every change lands in your audit log with the key that made it.
 - **If you already have a read and write key.** It can now also remove jobs, expirations and alert channels, dismiss a finding and disconnect an account. It still cannot make keys or delete the account. Revoke it on the Agents page if you do not want that.
 - **Account deletion can be cancelled.** Deletion runs 7 days after it is scheduled. Until then `DELETE /api/v1/delete` or the `cancel_account_deletion` tool stops it. Connections cut when deletion was scheduled stay cut.
-- **Unchanged:** Spooky reads Vercel and GitHub read-only and never deletes anything in those accounts.
+- **Unchanged:** Spooky reads Vercel and GitHub and never deletes anything in those accounts. Its one write is starting the fix workflow on GitHub, in repos where you add it.
 
 ## 2026-11-14
 

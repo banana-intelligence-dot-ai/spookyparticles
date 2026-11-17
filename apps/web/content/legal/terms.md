@@ -1,10 +1,10 @@
 # Spooky Particles Terms of Service
 
-Last updated: 10 November 2026
+Last updated: 17 November 2026
 
 ## Summary
 
-Spooky Particles (spookyparticles.com) is a service from Banana Intelligence LLC. It maps your Vercel projects, schedules, domains and deployments, alongside GitHub repositories and Actions runs, using read-only access. Optional Gmail bills and renewals can provide spend figures. It is a beta, so it is provided as-is. You must be allowed to connect each account you connect. Our liability is capped. You can stop using it and delete your data at any time. By using the Service you agree to these Terms and to our [Privacy Policy](/privacy).
+Spooky Particles (spookyparticles.com) is a service from Banana Intelligence LLC. It maps your Vercel projects, schedules, domains and deployments, alongside GitHub repositories and Actions runs. It reads by default; its one write is starting the fix workflow on GitHub, in repositories where you add it. Optional Gmail bills and renewals can provide spend figures. It is a beta, so it is provided as-is. You must be allowed to connect each account you connect. Our liability is capped. You can stop using it and delete your data at any time. By using the Service you agree to these Terms and to our [Privacy Policy](/privacy).
 
 ## 1. Who we are and what this covers
 
@@ -25,13 +25,13 @@ Keep your sign-in secure. New accounts sign in with Vercel. Accounts created bef
 In this release the Service:
 
 - optionally reads Gmail for bills and renewals, by request only, with the read-only scope
-- reads repository metadata, deployments and Actions runs on GitHub repositories you pick, through a read-only GitHub App
+- reads repository metadata, deployments and Actions runs on GitHub repositories you pick, through a GitHub App; its one write permission starts the fix workflow, only in repositories where you add that workflow
 - reads Vercel projects, deployments, domains and schedules through an integration with Vercel's read scopes on projects you pick, or through an access token you paste; for a pasted token, our software enforces read-only access through GET requests and one read-only request history query
 - records check-ins from scheduled jobs you or your agent create, and sends alerts by email or to an ntfy topic, Slack webhook or Microsoft Teams webhook you add
 - builds an inventory, a cost ledger and findings, and shows a result card
-- serves data to your coding agents through a read-only API and MCP endpoint
+- serves data to your coding agents through an API and MCP endpoint, with keys that can read, or read and report back on findings
 
-It makes **no changes** to any of your accounts. Later releases may add actions. Each action will need your approval, one action at a time, and these Terms will apply to them.
+Its one change to your accounts is starting the fix workflow on GitHub, in repositories where you add it. It never deletes anything of yours. Later releases may add actions. Each action will need your approval, one action at a time, and these Terms will apply to them.
 
 The Service is in beta. Features can change, break or be removed. Access may be limited by invitation.
 

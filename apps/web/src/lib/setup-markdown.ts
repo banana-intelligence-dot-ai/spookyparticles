@@ -61,7 +61,7 @@ Read that file before posting or using a forum tip.
    - If it says this Spooky has no agent sign-in, ask them to make a key under ${base}/app/agents → **Connect an agent** → **Make key** and export it as \`SPOOKY_API_KEY\` themselves.
 
 4. Show your human what it printed, with the source of each number. If it lists anything still on another host, offer to walk them through moving one: \`GET ${base}/api/v1/elsewhere\` (load the key as in **Your own calls**) gives each project's Vercel import link and the matching migration guide.
-5. Turn on agent alerts, so Claude Code, Cursor and Codex hear about a break when a session starts. This also installs the \`spooky\` skill for each of them, so your human can ask any later session how Spooky is doing or to finish setup:
+5. Turn on agent alerts, so Claude Code and Codex hear about a break when a session starts (Cursor works the same way but is not yet verified). This also installs the \`spooky\` skill for each of them, so your human can ask any later session how Spooky is doing or to finish setup:
 
    \`\`\`bash
    sh scripts/spooky.sh alerts
@@ -81,7 +81,7 @@ Read that file before posting or using a forum tip.
    \`\`\`
 
    Then hand your human the start line it prints, to run in their own terminal. Do not start it yourself. Never put a key in a file or in chat.
-8. Tell them alerts already reach their account email, and that they can add an ntfy (phone), Slack or Teams channel on ${base}/app/jobs.
+8. Tell them alerts already reach their account email, and that they can add an ntfy channel for their phone on ${base}/app/jobs.
 
 ## Report back
 
@@ -161,7 +161,7 @@ Never tell your human a break is fixed on your own word. After the fix is deploy
 
 ## Your coding agent hears about it
 
-Claude Code, Cursor and Codex can each hear about open problems when a session starts. Claude Code also checks before later prompts and speaks only when the list changed. Cursor and Codex get the Spooky MCP server too, read with \`SPOOKY_API_KEY\` from their environment, never copied into their config. Step 5 sets it up.
+Claude Code and Codex can each hear about open problems when a session starts (Cursor too, not yet verified). Claude Code also checks before later prompts and speaks only when the list changed. Codex and Cursor get the Spooky MCP server too, read with \`SPOOKY_API_KEY\` from their environment, never copied into their config. Step 5 sets it up.
 
 ## When no session is open
 
@@ -171,7 +171,7 @@ Step 6 sets it up. It runs in the foreground for 12 hours, uses their Claude or 
 
 ## Check-ins for scheduled jobs
 
-Every job that runs on a schedule for your human (a nightly build, a daily publish, a GitHub Actions schedule, a launchd or cron job) should check in with Spooky Particles each time it runs. When you add a scheduled job or find one without a check-in, create the check-in yourself. Don't hand it to your human. If it is still quiet when the grace period ends, your human hears on their phone, Slack, Teams or email, and again when it recovers. Your agent hears at the same moment. Creating a job needs a key with the **write** scope; ask your human for one if yours is read-only.
+Every job that runs on a schedule for your human (a nightly build, a daily publish, a GitHub Actions schedule, a launchd or cron job) should check in with Spooky Particles each time it runs. When you add a scheduled job or find one without a check-in, create the check-in yourself. Don't hand it to your human. If it is still quiet when the grace period ends, your human hears on their phone (ntfy) or by email, and again when it recovers. Your agent hears at the same moment. Creating a job needs a key with the **write** scope; ask your human for one if yours is read-only.
 
 1. Create the job once. Period is how often it should run, in minutes; grace is how late is still fine. For a cron job, send its \`schedule\` (and \`timeZone\`) instead of a period, so lateness follows the real run times:
 
@@ -197,7 +197,7 @@ Every job that runs on a schedule for your human (a nightly build, a daily publi
    ... ${base}/api/v1/checkins | jq -r .job.pingUrl | gh secret set SPOOKY_PING_URL -R you/your-repo
    \`\`\`
 
-3. Tell your human to open ${base}/app/jobs once: they add where alerts go (an ntfy topic for the phone, a Slack or Teams webhook, an email) and press **Send a test**. With no channel set, alerts fall back to their account email.
+3. Tell your human to open ${base}/app/jobs once: they add where alerts go (an ntfy topic for the phone, or an email) and press **Send a test**. With no channel set, alerts fall back to their account email.
 
    A channel can have a \`project\` to receive alerts only for that project. Leave it empty for all projects. Set \`owner\` on a job to name the person responsible; alerts include it. Set \`maxRunMinutes\` (1 to 10080) and send \`?status=start\` before the work to catch a run that never finishes. Set \`minCount\` and send \`?count=N\` with an ok ping to flag a run that processed too few items. A missing count does not fail the run.
 
@@ -223,7 +223,7 @@ printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -fsS -X POST -H @-
   ${base}/api/v1/alert-channels
 \`\`\`
 
-Spooky starts the fix job first. If the check is still down after 15 minutes, it alerts the person on ntfy, Slack, Teams or email. Agent machines can claim the break after the GitHub claim expires.
+Spooky starts the fix job first. If the check is still down after 15 minutes, it alerts the person on ntfy or email. Agent machines can claim the break after the GitHub claim expires.
 
 ## Recommended: agents act, people approve
 

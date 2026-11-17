@@ -20,12 +20,18 @@ const COPY = {
   quote: "“spooky action at a distance”",
   quoteSource: "Einstein, 1947",
   h1: ["Fixed by the time", "you realize it’s broken."],
-  sub: "Spooky Particles watches your deploys around the clock and sends each break to your coding agent.",
-  how: [
-    { h: "Your deploys, wired to your agent.", p: "A deploy fails, a page stops answering, or a scheduled job goes quiet. Spooky checks every 5 minutes, day and night, and sends your coding agent the cause. It fixes, tests and ships." },
-    { h: "You hear at the same moment.", p: "Spooky tells you when it breaks, on email, ntfy, Slack or Teams. Fixed means the check passes again." },
-    { h: "Every fix is tracked.", p: "Each break, page and fix is kept, so you see what your agent fixed and what needed you." },
+  sub: "Spooky watches your Vercel apps and hands each break to your coding agent. It checks that the fix worked.",
+  watchH: "What it watches",
+  watch: [
+    { k: "Deploys", v: "A production build fails on Vercel." },
+    { k: "Pages", v: "Your site stops answering, or starts throwing server errors." },
+    { k: "Scheduled jobs", v: "A cron job fails, or quietly stops running." },
+    { k: "Setup risks", v: "A secret key in your public site, open preview links, a cron anyone can trigger." },
   ],
+  changeH: "What changes for you",
+  before: { k: "Without Spooky", p: "A deploy fails at 2 am. A user tells you in the morning. You dig through logs and paste the error into your agent." },
+  after: { k: "With Spooky", p: "Spooky sees it within minutes and hands your agent the error. Turn on the fix job, a GitHub workflow, and the fix can ship before you wake up." },
+  setupCost: "Setup is one prompt to your agent. You connect Vercel and GitHub in your browser.",
   setupH: "Three things to connect.",
   setup: ["Vercel", "GitHub", "Your agent"],
   reassure: "Reads your accounts. Never deletes anything of yours. Revoke any time.",
@@ -36,15 +42,15 @@ const COPY = {
   agentLink: "Or give your agent setup.md",
   pricingH: "Pricing",
   price: "Free",
-  priceNote: "Requires your own coding agent: Claude Code, Codex or Cursor. Fixes run on your plan.",
-  priceIncludes: ["Reads Vercel and GitHub", "Checks every 5 minutes", "Pings to ntfy, Slack, Teams or email", "Every fix tracked"],
+  priceNote: "Requires your own coding agent: Claude Code or Codex. Fixes run on your plan.",
   faqH: "Questions",
   faq: [
     { q: "Which hosts does it work with?", a: "Vercel only, for now." },
-    { q: "Which agents does it work with?", a: "Claude Code, Codex and Cursor hear about a break when a session starts. Fixes while nobody is at the keyboard run on Claude Code or Codex." },
+    { q: "Which agents does it work with?", a: "Claude Code and Codex hear about a break when a session starts. Fixes while nobody is at the keyboard run in a GitHub job on your Claude Code plan." },
     { q: "Does my laptop need to be on?", a: "No. A GitHub job can start the fix on your own Claude plan at any hour. Or the fixer runs on your computer while it’s on." },
+    { q: "Why did some fixes take hours?", a: "Most breaks so far were on apps without the fix job on, so they waited until someone opened their agent. With it on, a scheduled job that goes quiet gets its fix started the moment Spooky alerts." },
     { q: "Can it break or delete anything?", a: "No. Spooky reads Vercel and GitHub and never deletes anything of yours. Its one write is starting the fix workflow in repos where you added it. Your agent ships a fix only the way your repo’s own rules allow, or opens a pull request." },
-    { q: "How do I hear about it?", a: "Your account email by default. Add ntfy on your phone, Slack or Teams in a minute." },
+    { q: "How do I hear about it?", a: "Your account email by default. Add ntfy on your phone in a minute." },
     { q: "Why is it free?", a: "Your agent does the fixing, on your plan. Spooky watches and connects the two." },
   ],
 } as const;
@@ -88,7 +94,7 @@ const WEBSITE_LD = {
 
 function WaysIn({ vercelEnabled }: { vercelEnabled: boolean }) {
   return (
-    <div className="flex w-full flex-col items-stretch gap-3 min-[821px]:w-auto min-[821px]:gap-2.5 min-[821px]:flex-row min-[821px]:flex-wrap min-[821px]:items-center min-[821px]:justify-center">
+    <div className="flex w-full flex-col items-stretch gap-3 min-[821px]:w-auto min-[821px]:gap-2.5 min-[821px]:flex-row min-[821px]:flex-wrap min-[821px]:items-center">
       <SignIn large ink inline vercelEnabled={vercelEnabled} />
       <PastePrompt prompt={AGENT_PROMPT} />
     </div>
@@ -111,14 +117,14 @@ export default function Landing() {
           __html: JSON.stringify(FAQ_LD).replace(/</g, "\\u003c"),
         }}
       />
-      <header className="relative z-[1] mx-auto flex w-full max-w-[1216px] items-center px-4 py-4 sm:px-12 sm:py-6">
+      <header className="relative z-[1] mx-auto flex w-full max-w-[760px] items-center px-4 py-4 sm:py-6">
         <Wordmark />
         <LiveCount />
       </header>
 
       <main className="relative z-[1] flex flex-1 flex-col">
         {/* First screen: Einstein, the line, two ways in. Nothing else. */}
-        <section className="hero relative mx-auto flex min-h-[calc(100svh-56px)] w-full max-w-[1216px] flex-col items-center justify-center px-4 pb-10 text-center sm:px-12 min-[821px]:min-h-[72dvh]">
+        <section className="hero relative mx-auto flex min-h-[calc(80svh-56px)] w-full max-w-[760px] flex-col items-start justify-center px-4 pb-10 text-left min-[821px]:min-h-[72dvh]">
           <div className="hero-portrait" aria-hidden />
           <div className="hero-scrim" aria-hidden />
           <p className="relative font-mono text-[12.5px] leading-[1.5] text-fg-2">
@@ -139,20 +145,40 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* What changes for you, then the pair playing a real fix. */}
+        <div className="relative z-[1] mx-auto w-full max-w-[760px] px-4 pb-16">
+          <section aria-labelledby="change-h">
+            <h2 id="change-h" className="text-[20px] leading-[1.3] font-medium tracking-[-0.01em] text-fg">{COPY.changeH}</h2>
+            <div className="mt-5 grid gap-3 min-[821px]:grid-cols-2">
+              {[COPY.before, COPY.after].map((c, i) => (
+                <div key={c.k} className={`rounded-xl border px-5 py-5 ${i ? "border-line-3" : "border-line-1"}`}>
+                  <p className={`font-mono text-[12px] ${i ? "text-accent" : "text-fg-3"}`}>{c.k}</p>
+                  <p className={`mt-2 text-[16px] leading-[1.6] text-pretty ${i ? "text-fg" : "text-fg-2"}`}>{c.p}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-5 text-[16px] leading-[1.6] text-pretty text-fg-2">{COPY.setupCost}</p>
+          </section>
+        </div>
+
         {/* Just below: the pair, playing a real fix. */}
         <section aria-label="A fix, played back" className="fix-stage">
           <Particles />
         </section>
 
-        <div className="mx-auto w-full max-w-[672px] px-4 pb-28 sm:px-4">
-          <section aria-label="How it works" className="flex flex-col gap-10">
-            {COPY.how.map((s) => (
-              <div key={s.h}>
-                <h2 className="text-[20px] leading-[1.3] font-medium tracking-[-0.01em] text-fg">{s.h}</h2>
-                <p className="mt-2 text-[16px] leading-[1.65] text-pretty text-fg-2">{s.p}</p>
-              </div>
-            ))}
+        <div className="mx-auto w-full max-w-[760px] px-4 pb-28 sm:px-4">
+          <section aria-labelledby="watch-h" className="mt-8">
+            <h2 id="watch-h" className="text-[20px] leading-[1.3] font-medium tracking-[-0.01em] text-fg">{COPY.watchH}</h2>
+            <dl className="mt-5 border-t border-line-1">
+              {COPY.watch.map((w) => (
+                <div key={w.k} className="grid gap-1 border-b border-line-1 py-4 min-[821px]:grid-cols-[160px_1fr] min-[821px]:gap-4">
+                  <dt className="font-mono text-[13px] leading-[1.7] text-fg-2">{w.k}</dt>
+                  <dd className="text-[16px] leading-[1.6] text-pretty text-fg">{w.v}</dd>
+                </div>
+              ))}
+            </dl>
           </section>
+
 
           <div className="mt-24">
             <LiveFixes fallback={COPY.fixes} fallbackTitle={COPY.fixesH} />
@@ -162,18 +188,9 @@ export default function Landing() {
             <h2 id="pricing-h" className="text-[20px] font-medium tracking-[-0.01em] text-fg">
               {COPY.pricingH}
             </h2>
-            <div className="mt-5 rounded-xl border border-line-2 px-5 py-6 sm:px-6">
-              <p className="text-[34px] leading-none font-medium tracking-[-0.02em] text-fg">{COPY.price}</p>
-              <p className="mt-3 text-[15px] leading-[1.6] text-pretty text-fg-2">{COPY.priceNote}</p>
-              <ul className="mt-5 grid gap-x-6 gap-y-2 border-t border-line-1 pt-5 font-mono text-[13px] text-fg-2">
-                {COPY.priceIncludes.map((i) => (
-                  <li key={i} className="flex gap-2.5">
-                    <span aria-hidden className="text-accent">+</span>
-                    {i}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <p className="mt-4 text-[16px] leading-[1.6] text-pretty text-fg-2">
+              <span className="font-medium text-fg">{COPY.price}.</span> {COPY.priceNote}
+            </p>
           </section>
 
           <section aria-labelledby="faq-h" className="mt-24">
@@ -204,12 +221,12 @@ export default function Landing() {
                 {COPY.agentLink}
               </a>
             </div>
-            <p className="mt-5 font-mono text-[12px] text-fg-3">{COPY.reassure}</p>
+            <p className="mt-5 font-mono text-[12px] text-fg-2">{COPY.reassure}</p>
           </section>
         </div>
       </main>
 
-      <footer className="relative z-[1] mx-auto flex w-full max-w-[1216px] flex-col gap-1 px-4 pb-6 font-mono text-[12px] text-fg-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:px-12">
+      <footer className="relative z-[1] mx-auto flex w-full max-w-[760px] flex-col gap-1 px-4 pb-6 font-mono text-[12px] text-fg-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6">
         <Footer className="text-[12px]" />
         <nav aria-label="Site" className="flex gap-4 sm:ml-auto">
           <a href="/setup.md" className="hover:text-fg">For agents</a>

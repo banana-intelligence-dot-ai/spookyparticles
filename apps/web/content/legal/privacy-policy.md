@@ -1,10 +1,10 @@
 # Spooky Particles Privacy Policy
 
-Last updated: 15 November 2026
+Last updated: 17 November 2026
 
 ## Summary
 
-Spooky Particles (spookyparticles.com) is run by Banana Intelligence LLC. It builds a map of your projects, domains, subscriptions and hosting accounts. It reads Vercel projects, deployments, domains and schedules, and GitHub repositories, deployments and Actions runs. Gmail is optional, by request, for bills and renewals. It reads only what it needs to find bills and project facts. It never changes anything in your accounts in this beta. We do not sell your data, show ads, or train general AI models on it. No person at Banana Intelligence reads your mail unless you ask us to, one message at a time. You can export everything or delete your account whenever you want.
+Spooky Particles (spookyparticles.com) is run by Banana Intelligence LLC. It builds a map of your projects, domains, subscriptions and hosting accounts. It reads Vercel projects, deployments, domains and schedules, and GitHub repositories, deployments and Actions runs. Gmail is optional, by request, for bills and renewals. It reads only what it needs to find bills and project facts. Its one change is starting the fix workflow on GitHub, in repositories where you add it. It never deletes anything of yours. We do not sell your data, show ads, or train general AI models on it. No person at Banana Intelligence reads your mail unless you ask us to, one message at a time. You can export everything or delete your account whenever you want.
 
 ## 1. Who we are
 
@@ -31,7 +31,7 @@ You must be 18 or older. The Service is not directed at children. We do not know
 
 Messages that do not look like billing or ops mail are never fetched beyond their headers.
 
-**GitHub data (read-only).** A GitHub App reads repository metadata, deployments and Actions runs on repositories you pick, including linked deploy URLs and domains. We do not read your source code contents.
+**GitHub data.** A GitHub App reads repository metadata, deployments and Actions runs on repositories you pick, including linked deploy URLs and domains. It can also start the fix workflow, only in repositories where you add that workflow. We do not read your source code contents.
 
 **Vercel data (read-only access in our software).** You may install a Vercel integration on projects you pick, with Vercel's read scopes for integration configuration, deployments, projects, team, current user and domains. You may also paste a Vercel access token. Vercel cannot make that token read-only, so our software sends GET requests and one read-only query of request history, with request counts by path and status code per minute, to check whether schedules ran and whether server errors spiked, and to note when a project last had any request. With a pasted token we also read your team's billing charges for the last 30 days and keep a total for each project and each product on that bill, including Vercel's own. From the same charges we note each outside seller's total, such as Neon, and which projects it was billed for. We store project, deployment, domain and schedule records, the time and status code of scheduled runs, and scrubbed lines from failed build logs. Environment variable values that arrive in Vercel responses are discarded in memory and never stored.
 
@@ -120,12 +120,12 @@ These companies process data for us.
 
 | Name | Purpose | Region |
 |---|---|---|
-| Vercel Inc. | Hosting, scheduled tasks, web analytics and connected Vercel data | United States (confirm exact regions before publishing) |
-| Neon (Databricks) | Postgres database for your records | To be confirmed |
-| Anthropic | Classifying and extracting facts from candidate emails when you connect Gmail. Not used to train its models on our API data | United States (to be confirmed) |
-| PostHog | Product analytics | To be confirmed (US or EU cloud) |
-| Resend | Alert email delivery | To be confirmed |
-| GitHub (Microsoft) | Sign-in for eligible existing accounts and read-only repository data you connect | United States |
+| Vercel Inc. | Hosting, scheduled tasks, web analytics and connected Vercel data | United States |
+| Neon (Databricks) | Postgres database for your records | United States (AWS us-east-2, Ohio) |
+| Anthropic | Classifying and extracting facts from candidate emails when you connect Gmail. Not used to train its models on our API data | United States |
+| PostHog | Product analytics | United States (US cloud) |
+| Resend | Alert email delivery | United States |
+| GitHub (Microsoft) | Sign-in for eligible existing accounts and repository data you connect | United States |
 | Google | Sign-in for eligible existing accounts and optional read-only Gmail data you connect | United States |
 
 GitHub, Google and Vercel are also services you choose to connect. They act on your instructions and have their own privacy policies. Alerts you direct to ntfy, Slack or Microsoft Teams go to the channel you choose.
@@ -142,7 +142,7 @@ We do **not** use third-party advertising trackers. We do **not** record session
 
 - Encryption in transit and at rest.
 - Connection tokens are encrypted. The Vercel integration uses Vercel's read scopes; for pasted Vercel tokens, our software enforces read-only access.
-- Read-only by default. In this release there are no write actions in connected accounts.
+- Read-only by default. The one write is starting the fix workflow on GitHub, in repositories where you add it. We never delete anything of yours.
 - In later releases that can change things in your accounts, each action needs your approval, and we follow a "never delete" rule: the product does not delete resources in your accounts.
 - Environment variable values are never stored.
 - An append-only audit log records every token read and, later, every write.

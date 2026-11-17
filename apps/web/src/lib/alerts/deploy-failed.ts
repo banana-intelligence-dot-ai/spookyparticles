@@ -56,7 +56,7 @@ export function renderDeployFailed(f: DeployFailure, opts: { todayUrl: string; u
     f.inspectorUrl ? `Open the build on ${f.host}: ${f.inspectorUrl}` : null,
     `Open on Spooky Particles: ${opts.todayUrl}`,
     "",
-    "Spooky Particles only reads. Nothing was changed, redeployed or rolled back.",
+    "Spooky Particles changed nothing. Nothing was redeployed or rolled back.",
     "Replies to this address are not read; write to hello@spookyparticles.com.",
     `Stop these emails: ${opts.unsubscribeUrl}`,
   ].filter((l): l is string => l !== null);
@@ -66,7 +66,7 @@ export function renderDeployFailed(f: DeployFailure, opts: { todayUrl: string; u
 ${f.cause ? `<p style="margin:0 0 6px;color:#9a9ca1">Why, from the build log</p><pre style="margin:0 0 16px;padding:12px;background:#15171a;border:1px solid #23262b;border-radius:8px;white-space:pre-wrap;word-break:break-word;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f2b8b5">${escapeHtml(f.cause)}</pre>` : `<p style="margin:0 0 16px;color:#9a9ca1">The build log did not name a cause. The last lines are below.</p>`}
 ${tail.length ? `<p style="margin:0 0 6px;color:#9a9ca1">Last ${tail.length} lines of the log</p><pre style="margin:0 0 16px;padding:12px;background:#15171a;border:1px solid #23262b;border-radius:8px;white-space:pre-wrap;word-break:break-word;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9cbd0">${escapeHtml(tail.join("\n"))}</pre>` : ""}
 <p style="margin:0 0 16px">${f.inspectorUrl ? `<a href="${escapeHtml(f.inspectorUrl)}" style="color:#e6e7e9">Open the build on ${escapeHtml(f.host)}</a> &nbsp;·&nbsp; ` : ""}<a href="${escapeHtml(opts.todayUrl)}" style="color:#e6e7e9">Open on Spooky Particles</a></p>
-<p style="margin:0;color:#6f7177;font-size:13px">Spooky Particles only reads. Nothing was changed, redeployed or rolled back. Replies to this address are not read; write to hello@spookyparticles.com.<br><a href="${escapeHtml(opts.unsubscribeUrl)}" style="color:#6f7177">Stop these emails</a></p>
+<p style="margin:0;color:#6f7177;font-size:13px">Spooky Particles changed nothing. Nothing was redeployed or rolled back. Replies to this address are not read; write to hello@spookyparticles.com.<br><a href="${escapeHtml(opts.unsubscribeUrl)}" style="color:#6f7177">Stop these emails</a></p>
 </body></html>`;
   return { subject, text, html };
 }
