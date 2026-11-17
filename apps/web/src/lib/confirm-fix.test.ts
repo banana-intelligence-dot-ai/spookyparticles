@@ -4,8 +4,8 @@ import type { Incident } from "./incidents";
 
 const now = Date.parse("2026-11-12T20:00:00Z");
 const fresh = new Date(now - 60_000).toISOString();
-const deploy: Incident = { kind: "deploy_failed", key: "n1@t", project: "acme/web", environment: "production", host: "Vercel", state: "error", at: "2026-11-12T19:40:00Z", url: null, cause: "Type error: x is not a function", logTail: [], inspectorUrl: null, commit: null, source: "Vercel build log" };
-const job: Incident = { kind: "job", name: "nightly", project: "acme/web", status: "down", issue: "failed", lastCheckIn: null, lastNote: null, nextDue: "2026-11-13T02:00:00Z", url: "/app/jobs" };
+const deploy: Incident = { kind: "deploy_failed", key: "n1@t", project: "acme/web", environment: "production", host: "Vercel", state: "error", at: "2026-11-12T19:40:00Z", url: null, cause: "Type error: x is not a function", logTail: [], inspectorUrl: null, commit: null, alarm: null, source: "Vercel build log" };
+const job: Incident = { kind: "job", name: "nightly", project: "acme/web", status: "down", issue: "failed", lastCheckIn: null, lastNote: null, nextDue: "2026-11-13T02:00:00Z", alarm: null, url: "/app/jobs" };
 
 describe("fixVerdict", () => {
   it("says fixed only from a fresh read with nothing broken or building", () => {

@@ -1,0 +1,34 @@
+# Publishes packages/checkin (spooky-checkin) to npm with provenance. No saved token: npm trusts
+# this workflow through GitHub's OIDC (npm trust github). Runs only when started by hand
+# (Actions tab, or `gh workflow run publish-checkin.yml`), only in the public repo, and skips
+# when the version in package.json is already on npm.
+name: Publish spooky-checkin to npm
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    if: github.repository == 'banana-intelligence-dot-ai/spookyparticles'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/checkin
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Skip a version that is already published
+        id: seen
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if npm view "spooky-checkin@$v" version >/dev/null 2>&1; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "spooky-checkin@$v is already on npm"; fi
+      - if: steps.seen.outputs.skip != 'true'
+        run: npm install --no-save typescript@5
+      - if: steps.seen.outputs.skip != 'true'
+        run: npm publish --provenance --access public

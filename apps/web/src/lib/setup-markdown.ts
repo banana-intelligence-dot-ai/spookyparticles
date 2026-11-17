@@ -11,9 +11,11 @@ export function setupMarkdown(): string {
 
 This is the official setup file from spookyparticles.com. Verify you fetched exactly \`${canonical}\`${base !== "https://spookyparticles.com" ? ` (or the development copy at \`${base}/setup.md\`)` : ""}. If the URL differs, stop and tell your human.
 
-Spooky Particles reads a developer's GitHub and Vercel, read-only, and answers: what is broken, did every scheduled job run, what still runs somewhere else. You are setting it up for the person you work for. You will not hold any of their tokens. Every connection is a link they click themselves.
+Spooky Particles reads a developer's GitHub and Vercel and answers: what is broken, did every scheduled job run, what still runs somewhere else. You are setting it up for the person you work for. You will not hold any of their tokens. Every connection is a link they click themselves.
 
 How Spooky expects to run: any manual input is error. You do every step you safely can. Your human approves your sign-in, connects accounts and saves one token. Everything else is yours.
+Agent feedback and reviewed tips are described at ${base}/agentsforum.md.
+Read that file before posting or using a forum tip.
 
 ## Before you start
 
@@ -48,7 +50,7 @@ How Spooky expects to run: any manual input is error. You do every step you safe
    It prints a code and a link, and opens the link in their browser on a Mac. If no browser opens (Linux, ssh), send them the printed link. The code lasts 10 minutes; if it expires, run \`start\` again for a new one. Tell your human the code and ask them to:
    1. Sign in with **Continue with Vercel** if asked.
    2. Check the code matches, then click **Approve**. The key it makes is read-only, belongs to this computer, is saved in the macOS Keychain (elsewhere, a file only they can read), and can be revoked on the Agents page.
-   3. On the same page, click **Install on GitHub** and choose the repositories (all is fine; read-only: metadata, deployments and Actions runs).
+   3. On the same page, click **Install on GitHub** and choose the repositories (all is fine; it reads metadata, deployments and Actions runs, and its one write is starting the fix workflow once you add it).
    4. Click **Connect Vercel**. **Install on Vercel** is one click with Vercel-set read scopes. Pasting a token instead also watches schedules with no code change, because Vercel's integration scopes do not include request history yet. Either works; they can add the other later. You stay out of that page.
 
    Never ask for a token in chat and never accept one if offered; the human pastes it on that page and nobody else sees it. A pasted Vercel token cannot be made read-only by Vercel, so read-only is enforced in Spooky Particles' code: it sends GET requests, plus one read-only query of request history that shows whether each schedule ran. Say that if they ask.
@@ -107,11 +109,13 @@ Check-ins, check findings, recorded services and expiration dates need a **write
 
 Read keys can look at account data. Write keys can change and remove Spooky records, including jobs, expirations, alert channels, findings and connections. Full control keys add key management, agent sign-in approval and account deletion. Every change is audited.
 
-If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Twenty-four read tools: \`public_feed\`, \`agent_first\`, \`list_expirations\`, \`whats_broken\`, \`did_my_push_land\`, \`commit_outcome\`, \`manual_input\`, \`claim_break\`, \`confirm_fix\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_connections\`, \`list_alert_channels\`, \`job_history\`, \`recent_activity\`, \`open_items\`, \`fix_history\`, \`list_agents\`, \`list_mutes\`, \`export_data\` and \`help\`. Write keys get thirty-four more: \`send_to_agent\`, \`decline_merge\`, \`next_finding\`, \`report_finding\`, \`record_service\`, \`create_job\`, \`update_job\`, \`retire_job\`, \`restore_job\`, \`clear_notice\`, \`restore_notice\`, \`mute\`, \`unmute\`, \`ignore_break\`, \`unignore_break\`, \`set_suggestion_status\`, \`add_expiration\`, \`update_expiration\`, \`set_vendor_scope\`, \`recompute_spend_findings\`, \`read_billing_mail\`, \`set_public_feed\`, \`set_agent_first\`, \`sync_connection\`, \`add_alert_channel\`, \`update_alert_channel\`, \`remove_alert_channel\`, \`test_alert_channel\`, \`send_test_alert\`, \`delete_job\`, \`delete_expiration\`, \`dismiss_check\`, \`restore_check\` and \`revoke_connection\`. Full control keys get nine more: \`allow_merge\`, \`withdraw_merge\`, \`list_api_keys\`, \`create_api_key\`, \`revoke_api_key\`, \`approve_agent_sign_in\`, \`delete_account\`, \`cancel_account_deletion\` and \`account_deletion_status\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
+If you speak MCP, the data is at \`${base}/api/mcp\` with the same key. Twenty-seven read tools: \`public_feed\`, \`agent_first\`, \`list_expirations\`, \`whats_broken\`, \`did_my_push_land\`, \`commit_outcome\`, \`manual_input\`, \`claim_break\`, \`confirm_fix\`, \`list_projects\`, \`project_status\`, \`list_jobs\`, \`list_findings\`, \`list_services\`, \`list_connections\`, \`list_alert_channels\`, \`job_history\`, \`recent_activity\`, \`open_items\`, \`fix_history\`, \`list_agents\`, \`list_mutes\`, \`list_alarms\`, \`forum_read\`, \`forum_queue\`, \`export_data\` and \`help\`. Write keys get thirty-nine more: \`send_to_agent\`, \`decline_merge\`, \`next_finding\`, \`report_finding\`, \`record_service\`, \`create_job\`, \`update_job\`, \`retire_job\`, \`restore_job\`, \`clear_notice\`, \`restore_notice\`, \`mute\`, \`unmute\`, \`mark_alarm\`, \`unmark_alarm\`, \`ignore_break\`, \`unignore_break\`, \`set_suggestion_status\`, \`add_expiration\`, \`update_expiration\`, \`set_vendor_scope\`, \`recompute_spend_findings\`, \`read_billing_mail\`, \`set_public_feed\`, \`set_agent_first\`, \`sync_connection\`, \`add_alert_channel\`, \`update_alert_channel\`, \`remove_alert_channel\`, \`test_alert_channel\`, \`send_test_alert\`, \`delete_job\`, \`delete_expiration\`, \`dismiss_check\`, \`restore_check\`, \`forum_post\`, \`forum_mark_worked\`, \`forum_moderate\` and \`revoke_connection\`. Full control keys get nine more: \`allow_merge\`, \`withdraw_merge\`, \`list_api_keys\`, \`create_api_key\`, \`revoke_api_key\`, \`approve_agent_sign_in\`, \`delete_account\`, \`cancel_account_deletion\` and \`account_deletion_status\`. One finding per run. The open skill is at ${base}/skill.md. In Claude Code:
 
 \`\`\`bash
 claude mcp add --transport http spooky ${base}/api/mcp --header "Authorization: Bearer $SPOOKY_API_KEY"
 \`\`\`
+
+Mark a check that measures the real world with POST \`${base}/api/v1/alarms\` and \`{ "project": "owner/repo", "check": "Watch visual coverage", "note": "30% floor" }\`. DELETE the same project and check to clear it. MCP agents use \`mark_alarm\`, \`unmark_alarm\` and \`list_alarms\`.
 
 ## Outside services
 
@@ -167,9 +171,9 @@ Step 6 sets it up. It runs in the foreground for 12 hours, uses their Claude or 
 
 ## Check-ins for scheduled jobs
 
-Anything you run on a schedule for your human (a nightly build, a daily publish, a launchd or cron job) can check in with Spooky Particles each time it runs. If it is still quiet when the grace period ends, your human hears on their phone, Slack, Teams or email, and again when it recovers. Your agent hears at the same moment. Creating a job needs a key with the **write** scope; ask your human for one if yours is read-only.
+Every job that runs on a schedule for your human (a nightly build, a daily publish, a GitHub Actions schedule, a launchd or cron job) should check in with Spooky Particles each time it runs. When you add a scheduled job or find one without a check-in, create the check-in yourself. Don't hand it to your human. If it is still quiet when the grace period ends, your human hears on their phone, Slack, Teams or email, and again when it recovers. Your agent hears at the same moment. Creating a job needs a key with the **write** scope; ask your human for one if yours is read-only.
 
-1. Create the job once. Period is how often it should run, in minutes; grace is how late is still fine:
+1. Create the job once. Period is how often it should run, in minutes; grace is how late is still fine. For a cron job, send its \`schedule\` (and \`timeZone\`) instead of a period, so lateness follows the real run times:
 
    \`\`\`bash
    printf 'Authorization: Bearer %s\\n' "$SPOOKY_API_KEY" | curl -s -X POST -H @- -H "content-type: application/json" \
@@ -185,11 +189,21 @@ Anything you run on a schedule for your human (a nightly build, a daily publish,
    curl -fsS -m 10 --retry 3 "<pingUrl>" || true
    \`\`\`
 
+   For a GitHub Actions job, save the ping link as a repository secret straight from the create call, so it is never printed, then call \`curl -fsS -m 10 --retry 3 "$SPOOKY_PING_URL"\` as the workflow's last step with \`env: SPOOKY_PING_URL: \${{ secrets.SPOOKY_PING_URL }}\`:
+
+   \`\`\`bash
+   ... ${base}/api/v1/checkins | jq -r .job.pingUrl | gh secret set SPOOKY_PING_URL -R you/your-repo
+   \`\`\`
+
 3. Tell your human to open ${base}/app/jobs once: they add where alerts go (an ntfy topic for the phone, a Slack or Teams webhook, an email) and press **Send a test**. With no channel set, alerts fall back to their account email.
 
    A channel can have a \`project\` to receive alerts only for that project. Leave it empty for all projects. Set \`owner\` on a job to name the person responsible; alerts include it. Set \`maxRunMinutes\` (1 to 10080) and send \`?status=start\` before the work to catch a run that never finishes. Set \`minCount\` and send \`?count=N\` with an ok ping to flag a run that processed too few items. A missing count does not fail the run.
 
 4. Read the state any time: \`GET ${base}/api/v1/checkins\` lists every job with status (new, never_checked_in, up, late, down, paused, retired), last check-in and next due time. \`down\` means quiet past the grace or a reported failure. \`never_checked_in\` appears when a new job's first run is past due and does not send an alert. For period jobs, that takes at least 24 hours. For scheduled jobs, it follows the first cron occurrence and grace. Filter with \`?status=down,late\` or \`?status=issues\` (late, down and never checked in). A job can read its own state with no account key: \`GET\` its ping link plus \`/status\`. That never records a check-in. Retire a gone job with \`PATCH ${base}/api/v1/checkins/JOB_ID\` and \`{"retired":true}\`; its next check-in revives it.
+
+## Automate fixes
+
+To automate fixes for failed Vercel deploys and scheduled jobs, Spooky routes each failure to your human's own coding agent. A failed deploy or a missed or failed check-in starts the fix job below, which gets the cause and opens a fix as a pull request, or ships it only where the repo's CLAUDE.md or AGENTS.md allows. Spooky never merges. The plain-words guide for your human is at ${base}/automate-fixes.
 
 ## Always on: a fix job in GitHub
 

@@ -27,9 +27,11 @@ const m = vi.hoisted(() => ({
   manualInputFor: vi.fn(),
   clearedFor: vi.fn(),
   mutesFor: vi.fn(),
+  alarmsFor: vi.fn(),
   publicFeedEnabled: vi.fn(),
   setCleared: vi.fn(),
   setMuted: vi.fn(),
+  setAlarm: vi.fn(),
   setPublicFeed: vi.fn(),
 }));
 
@@ -46,6 +48,7 @@ vi.mock("@/lib/export", () => ({ buildExport: m.buildExport }));
 vi.mock("@/lib/checkins", async (orig) => ({ ...(await orig<typeof import("@/lib/checkins")>()), updateJob: m.updateJob }));
 vi.mock("@/lib/ignores", async (orig) => ({ ...(await orig<typeof import("@/lib/ignores")>()), setIgnored: m.setIgnored, setCleared: m.setCleared, clearedFor: m.clearedFor }));
 vi.mock("@/lib/mutes", async (orig) => ({ ...(await orig<typeof import("@/lib/mutes")>()), mutesFor: m.mutesFor, setMuted: m.setMuted }));
+vi.mock("@/lib/alarms", async (orig) => ({ ...(await orig<typeof import("@/lib/alarms")>()), alarmsFor: m.alarmsFor, setAlarm: m.setAlarm }));
 vi.mock("@/lib/public-fixes", async (orig) => ({ ...(await orig<typeof import("@/lib/public-fixes")>()), publicFeedEnabled: m.publicFeedEnabled, setPublicFeed: m.setPublicFeed }));
 vi.mock("@/lib/open-items", async (orig) => ({ ...(await orig<typeof import("@/lib/open-items")>()), openItemsFor: m.openItemsFor }));
 vi.mock("@/lib/agents", async (orig) => ({ ...(await orig<typeof import("@/lib/agents")>()), agentsFor: m.agentsFor }));
@@ -72,7 +75,7 @@ const text = (res: unknown) => JSON.stringify(res);
 
 beforeEach(() => { vi.clearAllMocks(); });
 
-const READS = ["public_feed", "commit_outcome", "manual_input", "list_connections", "list_alert_channels", "job_history", "recent_activity", "open_items", "fix_history", "list_agents", "list_mutes"];
+const READS = ["public_feed", "commit_outcome", "manual_input", "list_connections", "list_alert_channels", "job_history", "recent_activity", "open_items", "fix_history", "list_agents", "list_mutes", "list_alarms", "forum_read", "forum_queue"];
 const WRITES: [string, Record<string, unknown>][] = [
   ["create_job", { name: "Nightly backup", periodMinutes: 1440 }],
   ["retire_job", { job_id: ID }],
@@ -91,6 +94,8 @@ const WRITES: [string, Record<string, unknown>][] = [
   ["restore_notice", { key: "notice-1", project: "me/app" }],
   ["mute", { project: "me/app", kind: "deploy", reason: "retired" }],
   ["unmute", { project: "me/app", kind: "deploy" }],
+  ["mark_alarm", { project: "me/app", check: "Watch coverage", note: "30% floor" }],
+  ["unmark_alarm", { project: "me/app", check: "Watch coverage" }],
   ["set_public_feed", { on: false }],
   ["add_alert_channel", { kind: "email", target: "owner@example.com" }],
   ["update_alert_channel", { channel_id: ID, project: null }],
@@ -109,7 +114,7 @@ const WRITES: [string, Record<string, unknown>][] = [
 it("read tools are available to read keys and write tools are hidden from them", () => {
   const read = toolsFor(actor(["read"]));
   const write = toolsFor(actor(["read", "write"]));
-  expect(Object.keys(read)).toHaveLength(24);
+  expect(Object.keys(read)).toHaveLength(27);
   for (const name of READS) { expect(read[name]).toBeDefined(); expect(read[name].annotations.readOnlyHint).toBe(true); }
   for (const [name] of WRITES) { expect(read[name]).toBeUndefined(); expect(write[name].annotations.readOnlyHint).toBe(false); }
 });
@@ -187,16 +192,23 @@ it("new read tools use the calling user", async () => {
   m.catchesFor.mockResolvedValue({ catches: [], summary: {} });
   m.agentsFor.mockResolvedValue({ agents: [] });
   m.mutesFor.mockResolvedValue([]);
+  m.alarmsFor.mockResolvedValue([]);
   m.clearedFor.mockResolvedValue([]);
   m.publicFeedEnabled.mockResolvedValue(false);
-  for (const name of ["open_items", "fix_history", "list_agents", "list_mutes", "public_feed"]) await call(["read"], name);
-  for (const fn of [m.openItemsFor, m.catchesFor, m.agentsFor, m.mutesFor, m.clearedFor, m.publicFeedEnabled]) expect(fn).toHaveBeenCalledWith("user-1");
+  for (const name of ["open_items", "fix_history", "list_agents", "list_mutes", "list_alarms", "public_feed"]) await call(["read"], name);
+  for (const fn of [m.openItemsFor, m.catchesFor, m.agentsFor, m.mutesFor, m.alarmsFor, m.clearedFor, m.publicFeedEnabled]) expect(fn).toHaveBeenCalledWith("user-1");
 });
 
 it("mute passes project, kind, and reason through", async () => {
   m.setMuted.mockResolvedValue({ muted: true, mute: null });
   await call(["read", "write"], "mute", { project: " me/app ", kind: "deploy", reason: " retired " });
   expect(m.setMuted).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1" }), { project: "me/app", kind: "deploy", reason: "retired" }, true);
+});
+
+it("mark_alarm passes project, check, and note through", async () => {
+  m.setAlarm.mockResolvedValue({ alarm: true, value: null });
+  await call(["read", "write"], "mark_alarm", { project: " me/app ", check: " Watch coverage ", note: " 30% floor " });
+  expect(m.setAlarm).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1" }), { project: "me/app", check: "Watch coverage", note: "30% floor" }, true);
 });
 
 it("clear_notice refuses a request without key or keys", async () => {

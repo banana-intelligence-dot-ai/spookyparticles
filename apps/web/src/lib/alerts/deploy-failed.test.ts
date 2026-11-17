@@ -33,6 +33,13 @@ describe("renderDeployFailed", () => {
     expect(r.text).toContain("did not name a cause");
     expect(r.text).toContain("No log lines were available.");
   });
+  it("renders an alarm as a real-world alarm instead of a failed deploy", () => {
+    const r = renderDeployFailed({ ...failure, alarm: { check: "Watch visual coverage", note: "30% floor" } }, { todayUrl: "t", unsubscribeUrl: "u" });
+    expect(r.subject).toBe("plainballot: alarm, Watch visual coverage");
+    expect(r.text.startsWith("n8peace/plainballot: alarm about the real world from Vercel (30% floor)." )).toBe(true);
+    expect(r.html).toContain("alarm about the real world from Vercel (30% floor)");
+    expect(r.html).not.toContain("the production deploy on Vercel failed");
+  });
 });
 
 describe("opt-out token", () => {

@@ -1,7 +1,7 @@
 {
   "name": "spooky-checkin",
   "version": "0.1.0",
-  "description": "Tell Spooky Particles each time a scheduled job runs, so a missed or failed run raises an alert. One wrapper for a Vercel cron route, one call for any other job. No dependencies.",
+  "description": "Automate fixes for Vercel cron and scheduled jobs: check in on each run, and a missed or failed run goes to your coding agent (Claude Code, Codex) through Spooky Particles. No dependencies.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://spookyparticles.com",
@@ -10,7 +10,20 @@
     "url": "git+https://github.com/banana-intelligence-dot-ai/spookyparticles.git",
     "directory": "packages/checkin"
   },
-  "keywords": ["cron", "vercel", "monitoring", "heartbeat", "check-in"],
+  "keywords": [
+    "automate fixes",
+    "vercel",
+    "cron",
+    "failed deploy",
+    "coding agent",
+    "claude code",
+    "codex",
+    "mcp",
+    "monitoring",
+    "heartbeat",
+    "check-in",
+    "scheduled-jobs"
+  ],
   "engines": {
     "node": ">=18"
   },
@@ -24,13 +37,21 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --experimental-strip-types --test \"test/*.test.ts\""
+    "test": "node --experimental-strip-types --test \"test/*.test.ts\"",
+    "prepublishOnly": "npm run build && npm test"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bugs": {
+    "url": "https://github.com/banana-intelligence-dot-ai/spookyparticles/issues"
   }
 }

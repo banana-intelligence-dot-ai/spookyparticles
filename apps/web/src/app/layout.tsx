@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://spookyparticles.com"),
   title: { default: "spooky particles", template: "%s · spooky particles" },
   description:
-    "Spooky Particles watches Vercel schedules and failed deploys, then alerts you when something breaks. Read-only, with GitHub and your coding agent in the loop.",
+    "Spooky Particles watches Vercel schedules and failed deploys, then alerts you when something breaks. It never deletes anything, with GitHub and your coding agent in the loop.",
   alternates: { canonical: "./" },
   openGraph: { siteName: "spooky particles", type: "website", url: "./" },
   twitter: { card: "summary_large_image" },

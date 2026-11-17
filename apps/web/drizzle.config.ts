@@ -1,11 +1,13 @@
 import { defineConfig } from "drizzle-kit";
 
-// Load apps/web/.env.local when present so `db:migrate` sees DATABASE_URL
-// without extra flags. Next.js loads the same file for the app itself.
-try {
-  process.loadEnvFile(".env.local");
-} catch {
-  // No .env.local (CI, fresh clone): generate still works, migrate will say so.
+// Only migration reads apps/web/.env.local. Schema generation stays offline
+// and does not read local credentials.
+if (process.argv.some((arg) => arg === "migrate")) {
+  try {
+    process.loadEnvFile(".env.local");
+  } catch {
+    // No .env.local (CI, fresh clone): migrate will say so.
+  }
 }
 
 // `npm run db:generate` only reads the schema and writes SQL; it never connects.

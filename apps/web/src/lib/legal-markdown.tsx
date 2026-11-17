@@ -5,13 +5,15 @@
  * subset so they read the same in the repo and on the page.
  */
 import type { ReactNode } from "react";
+import { CodeBlock } from "@/app/docs/code-block";
 
 export type Block =
   | { kind: "heading"; level: number; text: string }
   | { kind: "paragraph"; text: string }
   | { kind: "quote"; text: string }
   | { kind: "list"; ordered: boolean; items: string[] }
-  | { kind: "table"; header: string[]; rows: string[][] };
+  | { kind: "table"; header: string[]; rows: string[][] }
+  | { kind: "code"; lang: string; text: string };
 
 export function parseBlocks(md: string): Block[] {
   const lines = md.replace(/\r\n/g, "\n").split("\n");
@@ -21,6 +23,13 @@ export function parseBlocks(md: string): Block[] {
   while (i < lines.length) {
     const line = lines[i];
     if (!line.trim()) { i += 1; continue; }
+    const fence = /^```\s*([\w-]*)\s*$/.exec(line);
+    if (fence) {
+      const buf: string[] = []; i += 1;
+      while (i < lines.length && !/^```\s*$/.test(lines[i])) { buf.push(lines[i]); i += 1; }
+      i += 1;
+      out.push({ kind: "code", lang: fence[1], text: buf.join("\n") }); continue;
+    }
     const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h) { out.push({ kind: "heading", level: h[1].length, text: h[2].trim() }); i += 1; continue; }
     if (line.startsWith(">")) {
@@ -86,6 +95,8 @@ export function LegalDocument({ markdown }: { markdown: string }) {
             if (b.level === 2) return <h2 key={i} className="mt-12 mb-3 text-[20px] leading-[1.25] font-medium tracking-[-0.01em] text-fg">{inline(b.text)}</h2>;
             return <h3 key={i} className="mt-8 mb-2 text-[16px] font-medium text-fg">{inline(b.text)}</h3>;
           }
+          case "code":
+            return <CodeBlock key={i} text={b.text} lang={b.lang} />;
           case "quote":
             return <p key={i} className="my-5 border-l-2 border-amber/70 pl-4 text-fg">{inline(b.text)}</p>;
           case "list":

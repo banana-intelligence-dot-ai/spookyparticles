@@ -1,12 +1,16 @@
 # spooky-checkin
 
-Tell [Spooky Particles](https://spookyparticles.com) each time a scheduled job runs. If a run is late or fails, Spooky alerts you.
+Automate fixes for Vercel cron and scheduled jobs. Tell [Spooky Particles](https://spookyparticles.com) each time a job runs. If a run is late or fails, Spooky sends the cause to your coding agent (Claude Code or Codex, also over MCP) and alerts you if it is still failing. [How it works](https://spookyparticles.com/automate-fixes).
 
 One file, no dependencies. It works in Vercel functions (Node or Edge), Node 18 and up, Bun and Deno.
 
 ## Get it
 
-It's not on npm yet. Copy [`src/index.ts`](src/index.ts) into your project, for example as `lib/spooky-checkin.ts`.
+```bash
+npm i spooky-checkin
+```
+
+Or copy [`src/index.ts`](https://github.com/banana-intelligence-dot-ai/spookyparticles/blob/main/packages/checkin/src/index.ts) into your project. It's one file with no dependencies.
 
 ## Set it up
 
@@ -21,7 +25,7 @@ Wrap the route's handler:
 
 ```ts
 // app/api/cron/nightly/route.ts
-import { withCheckin } from "@/lib/spooky-checkin";
+import { withCheckin } from "spooky-checkin";
 
 export const GET = withCheckin(async (req) => {
   if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -52,7 +56,7 @@ Set `maxRunMinutes` on the job, then send a `start` check-in before the work. If
 From a script, a worker, or anything else that runs on a schedule:
 
 ```ts
-import { checkin } from "./spooky-checkin";
+import { checkin } from "spooky-checkin";
 
 await checkin("start");
 try {

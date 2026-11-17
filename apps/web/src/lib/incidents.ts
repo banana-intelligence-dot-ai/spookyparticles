@@ -1,5 +1,6 @@
 /** The same current deployment and job incidents for REST and MCP readers. */
 import { jobIssue, listJobs, type JobIssue, type JobView } from "./checkins";
+import { alarmFor, alarmsFor } from "./alarms";
 import { clearedJobIds } from "./ignores";
 import { muteFor, mutesFor } from "./mutes";
 import { refreshRepoQuietly } from "./github-refresh";
@@ -24,6 +25,7 @@ export type DeployIncident = {
   logTail: string[];
   inspectorUrl: string | null;
   commit: { sha: string; ref: string | null; message: string | null; agent: CommitAgent | null } | null;
+  alarm: { check: string; note: string | null } | null;
   source: string;
 };
 
@@ -36,6 +38,7 @@ export type JobIncident = {
   lastCheckIn: string | null;
   lastNote: string | null;
   nextDue: string | null;
+  alarm: { check: string; note: string | null } | null;
   url: "/app/jobs";
 };
 
@@ -75,11 +78,13 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
   const refreshed = name ? await refreshRepoQuietly(userId, name) : "skipped";
   await resyncHostsQuietlyFor(userId);
   const now = Date.now();
-  const [deployments, jobs, mutes] = await Promise.all([failedDeployments(userId), watchedJobs(userId), mutesFor(userId)]);
+  const [deployments, jobs, mutes, alarms] = await Promise.all([failedDeployments(userId), watchedJobs(userId), mutesFor(userId), alarmsFor(userId)]);
   const failed = deployments.filter((d) => d.at && now - Date.parse(d.at) <= WINDOW_MS);
   const deployIncidents = failed
     .map((d) => {
       const projectName = d.name.replace(/\s+\(.*\)$/, "");
+      const trailingName = d.name.match(/\(([^()]*)\)\s*$/)?.[1] ?? null;
+      const alarm = alarmFor(alarms, projectName, [d.environment, d.label, trailingName]);
       return {
         kind: "deploy_failed" as const,
         key: d.key,
@@ -93,6 +98,7 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
         logTail: d.logTail,
         inspectorUrl: d.inspectorUrl,
         commit: d.sha ? { sha: d.sha, ref: d.ref ?? null, message: d.message ?? null, agent: d.agent ?? null } : null,
+        alarm: alarm ? { check: alarm.check, note: alarm.note } : null,
         source: d.cause ? `${d.provider ?? "host"} build log` : d.provider === "Vercel" ? "Vercel deployments" : "GitHub deployments",
       } satisfies DeployIncident;
     })
@@ -100,6 +106,7 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
   const jobIncidents = jobs.flatMap((job): JobIncident[] => {
     const issue = jobIssue(job);
     if (!issue || !jobReachesSession(job.project, name)) return [];
+    const alarm = alarmFor(alarms, job.project, [job.name]);
     return [{
       kind: "job",
       name: job.name,
@@ -109,6 +116,7 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
       lastCheckIn: job.lastPingAt,
       lastNote: oneLine(job.lastNote) || null,
       nextDue: job.nextDueAt,
+      alarm: alarm ? { check: alarm.check, note: alarm.note } : null,
       url: "/app/jobs",
     }];
   });

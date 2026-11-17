@@ -78,7 +78,7 @@ Next.js (App Router) on Vercel, Neon Postgres through Drizzle, Better Auth, Verc
 
 ## Security rules, enforced in code
 
-- Read-only. Calls to your providers are reads, and nothing on your accounts is changed or deleted.
+- Reads by default. Calls to your providers are reads, except one: starting the fix workflow on GitHub in repos where you added it. Nothing on your accounts is deleted.
 - Environment variable values are never stored. When Vercel returns one, it is dropped in memory.
 - Every action is written to an append-only audit log.
 - Revoking a connection deletes its tokens at once and, within 30 days, the data only that connection supplied.

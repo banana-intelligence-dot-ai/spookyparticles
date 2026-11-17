@@ -30,6 +30,7 @@ export type DeployFailure = {
   logTail: string[];
   inspectorUrl: string | null;
   url: string | null;
+  alarm?: { check: string; note: string | null } | null;
 };
 
 export const alertKey = (f: Pick<DeployFailure, "deploymentId">) => `deploy_failed:${f.deploymentId}`;
@@ -39,11 +40,14 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", 
 /** Subject and both bodies. Pure, so the words can be tested and read in the repo. */
 export function renderDeployFailed(f: DeployFailure, opts: { todayUrl: string; unsubscribeUrl: string }) {
   const short = f.project.split("/").pop() ?? f.project;
-  const subject = `${short}: ${f.environment} deploy failed on ${f.host}`;
+  const subject = f.alarm ? `${short}: alarm, ${f.alarm.check}` : `${short}: ${f.environment} deploy failed on ${f.host}`;
   const when = f.at ? new Date(f.at).toUTCString() : "just now";
   const tail = f.logTail.slice(-EMAIL_LOG_LINES);
+  const firstLine = f.alarm
+    ? `${f.project}: alarm about the real world from ${f.host}${f.alarm.note ? ` (${f.alarm.note})` : ""}.`
+    : `${f.project}: the ${f.environment} deploy on ${f.host} failed (${when}).`;
   const lines = [
-    `${f.project}: the ${f.environment} deploy on ${f.host} failed (${when}).`,
+    firstLine,
     "",
     f.cause ? `Why, from the build log:\n  ${f.cause}` : "The build log did not name a cause. The last lines are below.",
     "",
@@ -58,7 +62,7 @@ export function renderDeployFailed(f: DeployFailure, opts: { todayUrl: string; u
   ].filter((l): l is string => l !== null);
   const text = lines.join("\n");
   const html = `<!doctype html><html><body style="margin:0;padding:24px;background:#0c0d0f;color:#e6e7e9;font:15px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif">
-<p style="margin:0 0 16px"><strong style="font-weight:600">${escapeHtml(f.project)}</strong>: the ${f.environment} deploy on ${escapeHtml(f.host)} failed.<br><span style="color:#9a9ca1">${escapeHtml(when)}</span></p>
+<p style="margin:0 0 16px">${f.alarm ? `<strong style="font-weight:600">${escapeHtml(f.project)}</strong>: alarm about the real world from ${escapeHtml(f.host)}${f.alarm.note ? ` (${escapeHtml(f.alarm.note)})` : ""}.` : `<strong style="font-weight:600">${escapeHtml(f.project)}</strong>: the ${f.environment} deploy on ${escapeHtml(f.host)} failed.`}<br><span style="color:#9a9ca1">${escapeHtml(when)}</span></p>
 ${f.cause ? `<p style="margin:0 0 6px;color:#9a9ca1">Why, from the build log</p><pre style="margin:0 0 16px;padding:12px;background:#15171a;border:1px solid #23262b;border-radius:8px;white-space:pre-wrap;word-break:break-word;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f2b8b5">${escapeHtml(f.cause)}</pre>` : `<p style="margin:0 0 16px;color:#9a9ca1">The build log did not name a cause. The last lines are below.</p>`}
 ${tail.length ? `<p style="margin:0 0 6px;color:#9a9ca1">Last ${tail.length} lines of the log</p><pre style="margin:0 0 16px;padding:12px;background:#15171a;border:1px solid #23262b;border-radius:8px;white-space:pre-wrap;word-break:break-word;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9cbd0">${escapeHtml(tail.join("\n"))}</pre>` : ""}
 <p style="margin:0 0 16px">${f.inspectorUrl ? `<a href="${escapeHtml(f.inspectorUrl)}" style="color:#e6e7e9">Open the build on ${escapeHtml(f.host)}</a> &nbsp;·&nbsp; ` : ""}<a href="${escapeHtml(opts.todayUrl)}" style="color:#e6e7e9">Open on Spooky Particles</a></p>

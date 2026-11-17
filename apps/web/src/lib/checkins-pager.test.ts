@@ -11,6 +11,7 @@ vi.mock("@/lib/audit", () => ({ appendAudit: vi.fn() }));
 vi.mock("@/lib/analytics/server", () => ({ track: vi.fn() }));
 vi.mock("@/lib/env", () => ({ appUrl: () => "https://spooky.example" }));
 // The real module loads the incident and listening code; these tests are about the pager.
+vi.mock("./claims", () => ({ claimsFor: vi.fn().mockResolvedValue([]), claimFor: vi.fn().mockReturnValue(null) }));
 vi.mock("./agent-first", () => ({ shouldDeferToAgent: vi.fn().mockResolvedValue(false) }));
 
 const job = { id: "job-1", userId: "user-1", name: "Daily check", project: "owner/repo", missCount: 1 };
@@ -48,6 +49,14 @@ describe("notifyJob GitHub pager", () => {
     vi.mocked(pageGithub).mockResolvedValue({ ok: false, reason: "http 500" });
     await notifyJob(job as never, "job_quiet", notice);
     expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: `${notice.text}\nSpooky couldn't start the GitHub fix job: http 500` }), "owner/repo");
+  });
+  it("does not start the fix job when an agent already claimed the project, and tells people instead", async () => {
+    const { claimFor } = await import("./claims");
+    vi.mocked(claimFor).mockReturnValueOnce({ project: "owner/repo" } as never);
+    vi.mocked(pagerEnabled).mockReturnValue(true);
+    await notifyJob(job as never, "job_quiet", notice);
+    expect(pageGithub).not.toHaveBeenCalled();
+    expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: notice.text }), "owner/repo");
   });
   it("keeps the old human delivery path when the pager is off", async () => {
     vi.mocked(pagerEnabled).mockReturnValue(false);

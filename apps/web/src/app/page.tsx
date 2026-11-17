@@ -16,11 +16,11 @@ import { vercelSignInConfig } from "@/lib/env";
 const COPY = {
   title: "Spooky Particles: your app breaks, your agent fixes it",
   description:
-    "Spooky Particles connects your Vercel deploys to your coding agent for 24/7 fixes, and keeps you posted. Free with your own agent.",
+    "Spooky Particles watches your Vercel deploys and scheduled jobs around the clock, sends each failure to your coding agent, and keeps you posted. Free with your own agent.",
   quote: "“spooky action at a distance”",
   quoteSource: "Einstein, 1947",
   h1: ["Fixed by the time", "you realize it’s broken."],
-  sub: "Spooky Particles connects your deploys to your coding agent for 24/7 resolution.",
+  sub: "Spooky Particles watches your deploys around the clock and sends each break to your coding agent.",
   how: [
     { h: "Your deploys, wired to your agent.", p: "A deploy fails, a page stops answering, or a scheduled job goes quiet. Spooky checks every 5 minutes, day and night, and sends your coding agent the cause. It fixes, tests and ships." },
     { h: "It can ping you too.", p: "Fixed means the check passes again. If it doesn’t, Spooky pings you on ntfy, Slack, Teams or email." },
@@ -28,7 +28,7 @@ const COPY = {
   ],
   setupH: "Three things to connect.",
   setup: ["Vercel", "GitHub", "Your agent"],
-  reassure: "Read-only. Never deletes anything. Revoke any time.",
+  reassure: "Reads your accounts. Never deletes anything. Revoke any time.",
   fixesH: "Real fixes",
   fixes: [
     { date: "Nov 9", what: "Production deploy failed on Vercel", tag: "", took: "9 min 48 s" },
@@ -38,13 +38,13 @@ const COPY = {
   pricingH: "Pricing",
   price: "Free",
   priceNote: "Requires your own coding agent: Claude Code, Codex or Cursor. Fixes run on your plan.",
-  priceIncludes: ["Vercel and GitHub, read-only", "Checks every 5 minutes", "Pings to ntfy, Slack, Teams or email", "Every fix tracked"],
+  priceIncludes: ["Reads Vercel and GitHub", "Checks every 5 minutes", "Pings to ntfy, Slack, Teams or email", "Every fix tracked"],
   faqH: "Questions",
   faq: [
     { q: "Which hosts does it work with?", a: "Vercel only, for now." },
     { q: "Which agents does it work with?", a: "Claude Code, Codex and Cursor hear about a break when a session starts. Fixes while nobody is at the keyboard run on Claude Code or Codex." },
     { q: "Does my laptop need to be on?", a: "No. A GitHub job can start the fix on your own Claude plan at any hour. Or the fixer runs on your computer while it’s on." },
-    { q: "Can it break or delete anything?", a: "No. Spooky reads Vercel and GitHub read-only and never deletes. Your agent ships a fix only the way your repo’s own rules allow, or opens a pull request." },
+    { q: "Can it break or delete anything?", a: "No. Spooky reads Vercel and GitHub and never deletes. Its one write is starting the fix workflow in repos where you added it. Your agent ships a fix only the way your repo’s own rules allow, or opens a pull request." },
     { q: "How do I hear about it?", a: "Your account email by default. Add ntfy on your phone, Slack or Teams in a minute." },
     { q: "Why is it free?", a: "Your agent does the fixing, on your plan. Spooky watches and connects the two." },
   ],

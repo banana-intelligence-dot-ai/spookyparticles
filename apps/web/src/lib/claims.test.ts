@@ -36,7 +36,7 @@ describe("inbox text with claims and evidence", () => {
   const deploy: Incident = {
     kind: "deploy_failed", key: "n1@t", project: "acme/web", environment: "production", host: "Vercel", state: "error", at: "2026-11-12T19:40:00Z", url: null,
     cause: "Type error", logTail: ["> next build", "Failed to compile.", "./app/page.tsx:4:2 Type error"], inspectorUrl: null,
-    commit: { sha: "a1b2c3d4e5f6", ref: "main", message: "Rename the today page", agent: null }, source: "Vercel build log",
+    commit: { sha: "a1b2c3d4e5f6", ref: "main", message: "Rename the today page", agent: null }, alarm: null, source: "Vercel build log",
   };
   const claim = { project: "acme/web", apiKeyId: "k2", agent: "cursor", at: at(5).toISOString(), until: new Date(now + 25 * 60_000).toISOString() };
 

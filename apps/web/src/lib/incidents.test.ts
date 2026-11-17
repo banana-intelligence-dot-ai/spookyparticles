@@ -37,6 +37,7 @@ describe("agent inbox text", () => {
         logTail: [],
         inspectorUrl: "https://vercel.com/acme/repo/deployments/one",
         commit: null,
+        alarm: null,
         source: "Vercel build log",
       },
       {
@@ -48,6 +49,7 @@ describe("agent inbox text", () => {
         lastCheckIn: "2026-11-11T21:00:00.000Z",
         lastNote: "Index command exited 1",
         nextDue: "2026-11-12T21:00:00.000Z",
+        alarm: null,
         url: "/app/jobs",
       },
     ];
@@ -65,6 +67,7 @@ describe("agent inbox text", () => {
       kind: "deploy_failed", key: "d", project: "owner/repo", environment: "production", host: "Vercel",
       state: "failed", at: "2026-11-11T20:00:00.000Z", url: null, cause: null, logTail: [], inspectorUrl: null,
       commit: { sha: "abcdef012345", ref: null, message: "Ship", agent: { agent: "Claude Code", model: "Claude Opus 5.5", session: "https://claude.ai/code/session_abc12345" } },
+      alarm: null,
       source: "Vercel",
     };
     const text = formatIncidentsText({ incidents: [deploy] }, "owner/repo", "https://spooky.example");
@@ -85,6 +88,7 @@ describe("agent inbox text", () => {
       lastCheckIn: null,
       lastNote: `request used ${secret} at /api/ping/${pingToken}`,
       nextDue: null,
+      alarm: null,
       url: "/app/jobs" as const,
       pingUrl: `https://spooky.example/api/ping/${pingToken}`,
     };

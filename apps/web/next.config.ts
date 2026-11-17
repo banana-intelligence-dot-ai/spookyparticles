@@ -16,9 +16,12 @@ const nextConfig: NextConfig = {
     "/privacy": ["./content/legal/**"],
     "/terms": ["./content/legal/**"],
     "/vibeops": ["./content/vibeops.md"],
+    "/automate-fixes": ["./content/automate-fixes.md"],
     "/releases": ["./content/releases.md"],
     "/skill.md": ["./content/skills/spooky/SKILL.md"],
     "/how/[slug]": ["./content/how/**"],
+    "/docs": ["./content/docs/**"],
+    "/docs/[slug]": ["./content/docs/**"],
   },
   partialPrefetching: true,
   // POSTHOG_HOST is shared by the server client and the browser client.

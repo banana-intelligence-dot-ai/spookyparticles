@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.banana-intelligence-dot-ai/spookyparticles",
   "title": "Spooky Particles",
-  "description": "Checks Vercel deploys, sites and cron jobs; sends the cause of a break to your coding agent to fix.",
+  "description": "Automate fixes for failed Vercel deploys and cron jobs: sends the cause to your coding agent.",
   "websiteUrl": "https://spookyparticles.com",
   "repository": {
     "url": "https://github.com/banana-intelligence-dot-ai/spookyparticles",
     "source": "github"
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "remotes": [
     {
       "type": "streamable-http",

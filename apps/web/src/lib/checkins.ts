@@ -423,7 +423,10 @@ export async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind:
     let text = n.text;
     if (pagerEnabled() && kind !== "job_recovered" && (kind === "job_quiet" ? j.missCount === 1 : n.firstEpisode === true)) {
       const channels = await db.select().from(schema.alertChannels).where(and(eq(schema.alertChannels.userId, j.userId), eq(schema.alertChannels.kind, "github"), eq(schema.alertChannels.enabled, true)));
-      if (channels.some((c) => c.project && matchesProject(c.project, j.project))) {
+      // An agent that already claimed this project is on it: no second fixer (same rule as Send to my agent now).
+      const { claimFor, claimsFor } = await import("./claims");
+      const held = j.project ? claimFor(await claimsFor(j.userId), j.project) : null;
+      if (!held && channels.some((c) => c.project && matchesProject(c.project, j.project))) {
         const page = await pageGithub(j.userId, { ...j, alertKey: n.key }, n.text);
         if (page.ok) {
           await db.update(schema.alerts).set({ payload: sql`${schema.alerts.payload} || ${JSON.stringify({ deferred: "pager" })}::jsonb` }).where(eq(schema.alerts.id, row.id));

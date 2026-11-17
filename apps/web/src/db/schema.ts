@@ -19,6 +19,7 @@ import {
   index,
   integer,
   jsonb,
+  primaryKey,
   pgEnum,
   pgTable,
   real,
@@ -768,6 +769,40 @@ export const events = pgTable(
   },
   (t) => [index("events_name_idx").on(t.name, t.createdAt)],
 );
+
+export const forumKind = pgEnum("forum_kind", ["feedback", "tip"]);
+export const forumStatus = pgEnum("forum_status", ["pending", "approved", "held", "hidden", "open", "answered"]);
+
+export const forumPosts = pgTable("forum_posts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  kind: forumKind("kind").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  agent: text("agent"),
+  incidentId: text("incident_id"),
+  confirmedFix: boolean("confirmed_fix").notNull().default(false),
+  status: forumStatus("status").notNull(),
+  holdReason: text("hold_reason"),
+  answer: text("answer"),
+  answeredAt: timestamp("answered_at", { withTimezone: true }),
+  createdAt: now("created_at"),
+  updatedAt: now("updated_at"),
+}, (t) => [
+  index("forum_posts_kind_status_created_idx").on(t.kind, t.status, t.createdAt),
+  index("forum_posts_user_id_idx").on(t.userId),
+  check("forum_posts_title_check", sql`char_length(${t.title}) between 1 and 120`),
+  check("forum_posts_body_check", sql`char_length(${t.body}) between 1 and 2000`),
+  check("forum_posts_agent_check", sql`${t.agent} is null or char_length(${t.agent}) <= 40`),
+  check("forum_posts_answer_check", sql`${t.answer} is null or char_length(${t.answer}) <= 2000`),
+  check("forum_posts_kind_status_check", sql`(${t.kind} = 'feedback' and ${t.status} in ('open', 'answered', 'hidden')) or (${t.kind} = 'tip' and ${t.status} in ('pending', 'approved', 'held', 'hidden'))`),
+]);
+
+export const forumWorked = pgTable("forum_worked", {
+  postId: uuid("post_id").notNull().references(() => forumPosts.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  createdAt: now("created_at"),
+}, (t) => [primaryKey({ columns: [t.postId, t.userId] }), index("forum_worked_user_id_idx").on(t.userId)]);
 
 // ---------------------------------------------------------------------------
 // Gmail backfill: headers only, never bodies.

@@ -1,5 +1,8 @@
 /** Each REST write route has an agent tool or a reason no tool can exist. */
 export const WRITE_ROUTE_TOOLS: Record<string, { tools: string[] } | { noTool: string }> = {
+  "POST forum/posts": { tools: ["forum_post"] },
+  "PATCH forum/posts/[id]": { tools: ["forum_moderate"] },
+  "POST forum/posts/[id]/worked": { tools: ["forum_mark_worked"] },
   "POST alert-channels": { tools: ["add_alert_channel"] },
   "PATCH alert-channels/[id]": { tools: ["update_alert_channel"] },
   "DELETE alert-channels/[id]": { tools: ["remove_alert_channel"] },
@@ -41,6 +44,8 @@ export const WRITE_ROUTE_TOOLS: Record<string, { tools: string[] } | { noTool: s
   "DELETE incidents/ignore": { tools: ["unignore_break"] },
   "POST mutes": { tools: ["mute"] },
   "DELETE mutes": { tools: ["unmute"] },
+  "POST alarms": { tools: ["mark_alarm"] },
+  "DELETE alarms": { tools: ["unmark_alarm"] },
   "POST notices/clear": { tools: ["clear_notice"] },
   "DELETE notices/clear": { tools: ["restore_notice"] },
   "POST public-feed": { tools: ["set_public_feed"] },

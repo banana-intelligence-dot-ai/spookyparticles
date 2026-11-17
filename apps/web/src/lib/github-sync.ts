@@ -16,6 +16,7 @@ import { providerOf } from "@/lib/hosts";
 import type { ProductionDeployment } from "@/lib/move-home";
 import { recordProductionMove } from "@/lib/move-home-record";
 import { agentFromCommit } from "@/lib/commit-agent";
+import { alarmFor, alarmsFor } from "@/lib/alarms";
 
 export type RepoRef = {
   id: number;
@@ -182,10 +183,12 @@ export async function syncActionsWith(t: string, input: { userId: string; repoNo
   }
   rateRemaining = runsRes.rateRemaining;
   const latest = latestRunPerWorkflow(runsRes.data.workflow_runs, repo.defaultBranch);
+  const alarms = await alarmsFor(userId);
   for (const run of latest) {
     const state = stateOfRun(run);
     const externalKey = `github:workflow:${repo.id}:${run.path}`;
     const label = run.name ?? run.path.split("/").pop() ?? "workflow";
+    const alarm = alarmFor(alarms, repo.fullName, [label, run.path]);
     let logFacts: Record<string, unknown> = {};
     if (state === "failure") {
       const [prior] = await getDb().select({ attributes: schema.nodes.attributes }).from(schema.nodes).where(and(eq(schema.nodes.userId, userId), eq(schema.nodes.kind, "deployment"), eq(schema.nodes.externalKey, externalKey))).limit(1);
@@ -208,6 +211,7 @@ export async function syncActionsWith(t: string, input: { userId: string; repoNo
             logTail: (logFacts.log_tail as string[]) ?? [],
             inspectorUrl: run.html_url,
             url: null,
+            alarm: alarm ? { check: alarm.check, note: alarm.note } : null,
           });
         }
       }

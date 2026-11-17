@@ -10,6 +10,8 @@ import { CLAIMED } from "@/lib/claims";
 import { deliverToAll, matchesProject } from "@/lib/alerts/channels";
 import { ignoredKeys } from "@/lib/ignores";
 import { alertMuted } from "@/lib/mutes";
+import { alarmFor, alarmLine, alarmsFor, normCheck } from "@/lib/alarms";
+import { sameProject } from "@/lib/break-guide";
 
 const FIFTEEN_MINUTES = 15 * 60_000;
 const DAY = 24 * 60 * 60_000;
@@ -27,6 +29,14 @@ export function cleanPagerInput(value: string): string {
   return value.replace(/[\r\n\t]+/g, " ").replace(/[^\x20-\x7e\p{L}\p{N}]/gu, "").slice(0, 300);
 }
 
+/** Every fix job hears this, so a broken check is fixed at its cause and never made to pass by weakening it. */
+export const FIX_RULE = "Fix the cause. Never make a check pass by weakening it: no lower thresholds, no skipped or deleted checks, tests or alerts.";
+
+/** Pure: what the fix job is told. The rule always fits; the report is cut to make room. */
+export function pagerWhat(what: string): string {
+  return `${cleanPagerInput(what).slice(0, 300 - FIX_RULE.length - 1).trim()} ${FIX_RULE}`.trim();
+}
+
 function httpReason(status: number): string {
   if (status === 403) return "Spooky needs permission to start Actions in this repo (Actions: write on the Spooky GitHub app).";
   if (status === 404) return "No .github/workflows/spooky-fix.yml in this repo's default branch, or Spooky can't see the repo.";
@@ -38,6 +48,10 @@ const JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /** Dispatch through the connected installation. No token enters a result, event, or log. `actor` is who asked (the pager, or a person or key sending by hand). */
 export async function pageGithub(userId: string, job: PagerJob, what: string, actor = "system:pager"): Promise<PageResult> {
   const db = getDb();
+  const alarms = await alarmsFor(userId);
+  const lowerWhat = what.toLowerCase();
+  const alarm = alarmFor(alarms, job.project, [job.name]) ?? alarms.find((candidate) =>
+    Boolean(job.project) && sameProject(candidate.project, job.project!) && lowerWhat.includes(normCheck(candidate.check))) ?? null;
   let channel: typeof schema.alertChannels.$inferSelect | undefined;
   let repo = "";
   let result: PageResult = { ok: false, reason: "No GitHub responder for this project." };
@@ -72,7 +86,7 @@ export async function pageGithub(userId: string, job: PagerJob, what: string, ac
               headers: { ...headers, "Content-Type": "application/json" },
               body: JSON.stringify({ ref: data.default_branch, inputs: {
                 project: cleanPagerInput(job.project ?? ""), check: cleanPagerInput(job.name),
-                what: cleanPagerInput(what), link: cleanPagerInput(new URL("/app/jobs", appUrl()).toString()),
+                what: pagerWhat(alarm ? `${alarmLine(alarm)} ${what}` : what), link: cleanPagerInput(new URL("/app/jobs", appUrl()).toString()),
               } }),
             });
             result = dispatched.status === 204 ? { ok: true } : { ok: false, reason: httpReason(dispatched.status) };

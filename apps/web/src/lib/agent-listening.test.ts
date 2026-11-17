@@ -4,7 +4,7 @@ import type { Incident } from "./incidents";
 
 const now = new Date("2026-11-12T22:00:00Z");
 const deploy = (project: string): Incident => ({
-  kind: "deploy_failed", key: "n1@t", project, environment: "production", host: "vercel", state: "ERROR", at: now.toISOString(), url: null, cause: null, logTail: [], inspectorUrl: null, commit: null, source: "vercel",
+  kind: "deploy_failed", key: "n1@t", project, environment: "production", host: "vercel", state: "ERROR", at: now.toISOString(), url: null, cause: null, logTail: [], inspectorUrl: null, commit: null, alarm: null, source: "vercel",
 });
 
 describe("buildListening", () => {
