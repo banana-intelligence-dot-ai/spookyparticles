@@ -43,14 +43,14 @@ For each schedule off Vercel that is not watched:
 
 ## A Vercel cron route
 
-Use the check-in package, one file with no dependencies: [packages/checkin](https://github.com/banana-intelligence-dot-ai/spookyparticles/tree/main/packages/checkin).
+Use the `spooky-checkin` package on npm, one file with no dependencies. Guide: https://spookyparticles.com/docs/npm-package.
 
 1. Create the job and have the person store the link as `SPOOKY_PING_URL` in the Vercel project's environment variables (Production), as in steps 1 and 2 above.
-2. Copy `packages/checkin/src/index.ts` into the project, for example as `lib/spooky-checkin.ts`.
+2. Add the package: `npm i spooky-checkin`. If the project avoids new dependencies, copy `packages/checkin/src/index.ts` into it instead, for example as `lib/spooky-checkin.ts`.
 3. Wrap the route's handler, keeping any existing `CRON_SECRET` check inside it:
 
    ```ts
-   import { withCheckin } from "@/lib/spooky-checkin";
+   import { withCheckin } from "spooky-checkin";
    export const GET = withCheckin(async (req) => { /* the existing handler body */ });
    ```
 

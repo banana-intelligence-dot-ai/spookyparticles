@@ -108,6 +108,7 @@ $begin_marker
 Spooky watches this project's Vercel deploys and scheduled jobs through the \`spooky\` MCP server.
 
 - At the start of work, call \`whats_broken\` for this project and tell the user what is open.
+- If the \`spooky\` server is not available (for example \`SPOOKY_API_KEY\` is not set in this shell), run \`sh ~/.config/spooky/spooky-inbox.sh\` in the project folder instead and read what it prints. It finds the key itself and never prints it.
 - After you deploy a fix, call \`confirm_fix\` with the project. Say it is fixed only when it answers "fixed".
 $end_marker
 EOF
@@ -260,6 +261,44 @@ merge_codex_toml() {
 # --- Writing ------------------------------------------------------------------------------
 
 # write_merged <file> <merge function> [args...]: back up, merge to a temp file, then move into place.
+# Codex and Cursor read SPOOKY_API_KEY from the shell that starts them, but sign-in saves the key
+# in the Keychain (Linux: a file only you can read). This marked block in the shell profile loads it
+# at shell start. It holds no key value, and never overrides a key that is already set.
+shell_profile() {
+  case "${SHELL:-}" in
+    */zsh) printf '%s/.zshrc' "$HOME" ;;
+    */bash) if [ "$(uname -s 2>/dev/null)" = Darwin ]; then printf '%s/.bash_profile' "$HOME"; else printf '%s/.bashrc' "$HOME"; fi ;;
+    *) printf '%s/.profile' "$HOME" ;;
+  esac
+}
+
+profile_block() {
+  cat <<'PROFILE'
+# spooky:begin
+# Loads the Spooky Particles agent key from the Keychain (or ~/.config/spooky/agent-key) for Codex and Cursor. No key is stored in this file.
+[ -n "${SPOOKY_API_KEY:-}" ] || SPOOKY_API_KEY="$(security find-generic-password -s spookyparticles.com -a spooky-agent -w 2>/dev/null || cat "${XDG_CONFIG_HOME:-$HOME/.config}/spooky/agent-key" 2>/dev/null)"
+[ -n "${SPOOKY_API_KEY:-}" ] && export SPOOKY_API_KEY
+# spooky:end
+PROFILE
+}
+
+merge_profile() {
+  file=$1
+  if [ -f "$file" ] && grep -qxF "$toml_begin" "$file"; then
+    block_file="$file.block-spooky.$$"
+    profile_block > "$block_file"
+    awk -v b="$toml_begin" -v e="$toml_end" -v bf="$block_file" '
+      $0 == b { while ((getline line < bf) > 0) print line; skip = 1; next }
+      skip && $0 == e { skip = 0; next }
+      !skip { print }
+    ' "$file"
+    rm -f "$block_file"
+  else
+    [ -f "$file" ] && { cat "$file"; [ -s "$file" ] && printf '\n'; }
+    profile_block
+  fi
+}
+
 write_merged() {
   target=$1
   shift
@@ -316,6 +355,9 @@ if [ "$dry_run" = true ]; then
     show "$HOME/.codex/config.toml" merge_codex_toml "$HOME/.codex/config.toml"
     show "$HOME/.codex/AGENTS.md" merge_agents_md "$HOME/.codex/AGENTS.md"
   fi
+  if [ "$want_codex" = true ] || [ "$want_cursor" = true ]; then
+    show "$(shell_profile)" merge_profile "$(shell_profile)"
+  fi
   exit 0
 fi
 
@@ -367,6 +409,16 @@ if [ "$want_codex" = true ]; then
     printf 'Codex: failed, check the files above.\n' >&2; status=1
   fi
   install_skill "$HOME/.codex" || { printf 'Codex: the spooky skill was not installed.\n' >&2; status=1; }
+fi
+
+if [ "$want_codex" = true ] || [ "$want_cursor" = true ]; then
+  profile=$(shell_profile)
+  json_backup=false
+  if write_merged "$profile" merge_profile "$profile"; then
+    printf 'Shell: a marked block in %s loads SPOOKY_API_KEY from the Keychain in new shells, for Codex and Cursor. It holds no key.\n' "$profile"
+  else
+    printf 'Shell: could not update %s; start Codex from a shell that has SPOOKY_API_KEY.\n' "$profile" >&2; status=1
+  fi
 fi
 
 printf 'Not signed in yet? Run: sh scripts/agent-inbox/spooky-fixer.sh --sign-in\n'

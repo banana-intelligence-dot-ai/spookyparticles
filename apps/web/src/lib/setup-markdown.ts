@@ -33,7 +33,7 @@ Read that file before posting or using a forum tip.
 
 ## Steps
 
-1. Tell your human what will happen, in about 3 minutes of their time: one page where they approve a sign-in code for you and connect GitHub and Vercel, then one token saved for the fix job. Spooky only reads their connected accounts. Agent alerts, the fix job and the optional fixer come after, once they have seen what Spooky found.
+1. Tell your human what will happen, in about 3 minutes of their time: one page where they approve a sign-in code for you and connect GitHub and Vercel, then one token saved for the fix job. Spooky reads their connected accounts; on GitHub it can also start the fix workflow, in repos where they add it. Agent alerts, the fix job and the optional fixer come after, once they have seen what Spooky found.
 2. Get the setup scripts (public, MIT licensed). Run every later command from this folder:
 
    \`\`\`bash
@@ -188,6 +188,8 @@ Every job that runs on a schedule for your human (a nightly build, a daily publi
    # ... the job ...
    curl -fsS -m 10 --retry 3 "<pingUrl>" || true
    \`\`\`
+
+   In a Node, Bun or Deno job, or a Vercel cron route, the \`spooky-checkin\` npm package does this for you: \`npm i spooky-checkin\`, set \`SPOOKY_PING_URL\` as an environment variable, then wrap the route with \`withCheckin\` or call \`checkin("ok")\`. Guide: ${base}/docs/npm-package.
 
    For a GitHub Actions job, save the ping link as a repository secret straight from the create call, so it is never printed, then call \`curl -fsS -m 10 --retry 3 "$SPOOKY_PING_URL"\` as the workflow's last step with \`env: SPOOKY_PING_URL: \${{ secrets.SPOOKY_PING_URL }}\`:
 

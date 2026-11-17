@@ -29,6 +29,13 @@ export const DOCS_PAGES: DocsPage[] = [
     checked: "2026-11-16",
   },
   {
+    slug: "npm-package",
+    title: "spooky-checkin on npm",
+    description: "Check in from a Vercel cron route or any job with one small package.",
+    published: "2026-11-16",
+    checked: "2026-11-16",
+  },
+  {
     slug: "alarms",
     title: "Alarm checks",
     description: "Mark a workflow or job as an alarm about the real world, so a fix job repairs the cause and never the check.",
@@ -46,17 +53,6 @@ export const DOCS_PAGES: DocsPage[] = [
     slug: "api",
     title: "REST API",
     description: "Keys, scopes, endpoints and the error shape for the Spooky API.",
-    published: "2026-11-16",
-    checked: "2026-11-16",
-  },
-];
-
-// Move into DOCS_PAGES after the first npm publish. Until then the page is not linked or built.
-export const NPM_PENDING: DocsPage[] = [
-  {
-    slug: "npm-package",
-    title: "spooky-checkin on npm",
-    description: "Check in from a Vercel cron route or any job with one small package.",
     published: "2026-11-16",
     checked: "2026-11-16",
   },

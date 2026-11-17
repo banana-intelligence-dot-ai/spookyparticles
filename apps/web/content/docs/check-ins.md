@@ -59,6 +59,8 @@ curl -fsS -m 10 --retry 3 "<pingUrl>?count=12"
 - Send `?status=start` before the work, and set `maxRunMinutes`, to catch a run that never finishes.
 - Send `?count=N` with an ok ping, and set `minCount`, to flag a run that processed too few items. A missing count does not fail the run.
 
+In a Vercel cron route or a Node, Bun or Deno job, the [spooky-checkin package](/docs/npm-package) sends these pings for you.
+
 ## Read a job's own status
 
 Add `/status` to the ping link. It needs no key and never records a check-in.

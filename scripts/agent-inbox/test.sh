@@ -22,6 +22,17 @@ for f in $files; do
   [ -e "$HOME/$f.bak-spooky" ] || [ "$f" = .cursor/hooks.json ] || { echo "no backup: $f"; exit 1; }
 done
 grep -q 'Be nice.' "$HOME/.codex/AGENTS.md"
+# Shell profile: one marked block, no key value, loads the key from the key file in a new shell.
+prof="$HOME/.zshrc"; [ "${SHELL##*/}" = zsh ] || prof=$(SHELL=/bin/zsh; printf '%s/.zshrc' "$HOME")
+SHELL=/bin/zsh sh "$here/install.sh" --agent codex >/dev/null
+[ "$(grep -c '^# spooky:begin$' "$prof")" = 1 ] || { echo "profile block missing or doubled"; exit 1; }
+! grep -q 'sp_' "$prof" || { echo "key value in profile"; exit 1; }
+mkdir -p "$HOME/.config/spooky" && printf 'sp_test_from_file\n' > "$HOME/.config/spooky/agent-key"
+got=$(env -u SPOOKY_API_KEY PATH=/usr/bin:/bin HOME="$HOME" XDG_CONFIG_HOME= sh -c '. "$1" >/dev/null 2>&1; printf %s "${SPOOKY_API_KEY:-}"' _ "$prof")
+case "$got" in sp_*) ;; *) echo "profile did not load a key"; exit 1 ;; esac
+kept=$(SPOOKY_API_KEY=sp_already HOME="$HOME" sh -c '. "$1" >/dev/null 2>&1; printf %s "$SPOOKY_API_KEY"' _ "$prof")
+[ "$kept" = sp_already ] || { echo "profile overrode a set key"; exit 1; }
+rm -f "$HOME/.config/spooky/agent-key"
 grep -q '"other"' "$HOME/.cursor/mcp.json"
 grep -q 'model = "m"' "$HOME/.codex/config.toml"
 [ "$(grep -c 'mcp_servers.spooky' "$HOME/.codex/config.toml")" = 1 ]

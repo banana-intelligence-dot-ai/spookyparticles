@@ -26,7 +26,7 @@ Spooky Particles is for people who deploy on Vercel. It is made by Banana Intell
 - Optional Gmail: a read-only inbox for bills and renewals, by request. Google has not finished verifying the app. Spend appears as a column, not a reason to connect.
 
 ## Security
-- Read-only by default. It never deletes resources in connected accounts.
+- Reads by default. Its one write is starting the fix workflow on GitHub, in repos where you added it. It never deletes resources in connected accounts.
 - Access is recorded in an audit log. Environment variable values are never stored.
 
 ## Pages
@@ -38,6 +38,7 @@ Spooky Particles is for people who deploy on Vercel. It is made by Banana Intell
 - [Developer docs](https://spookyparticles.com/docs): Start here to set up Spooky and connect your coding agent.
 - [Quickstart](https://spookyparticles.com/docs/quickstart): Sign in and give your coding agent the setup file.
 - [Check-ins](https://spookyparticles.com/docs/check-ins): Create a check-in for a scheduled job and ping it with curl.
+- [spooky-checkin on npm](https://spookyparticles.com/docs/npm-package): Check in from a Vercel cron route or any job with one small package.
 - [Alarm checks](https://spookyparticles.com/docs/alarms): Mark a check as an alarm so a fix repairs the cause and never weakens the check.
 - [MCP server](https://spookyparticles.com/docs/mcp-server): Connect your coding agent to Spooky over MCP.
 - [REST API](https://spookyparticles.com/docs/api): Keys, scopes, endpoints and errors.

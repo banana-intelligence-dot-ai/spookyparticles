@@ -18,19 +18,17 @@ const SEQUENCE: [State, number][] = [
 ];
 /** Full passes before it rests on "ok". */
 const PASSES = 2;
-/** What the agent got with the problem: the error the build log names, e.g. "WorkflowBuildError". */
-const WHY = /\[(\w+)\]/.exec(INCIDENT.cause)?.[1] ?? "the build log";
 const LINES: Record<State, { app: string; agent: string }> = {
   idle: { app: "running", agent: "working" },
   fail: { app: "deploy failed", agent: "working" },
-  know: { app: "deploy failed", agent: "paged" },
+  know: { app: "deploy failed", agent: "reads the alert" },
   /** The agent gets the credit: d0c7f6c is the commit a coding agent pushed to fix it. */
   ok: { app: "working again", agent: `pushed ${INCIDENT.fixed.commit}` },
 };
 /** The log under the pair. Times only where the record has them (UTC); each line lights when the replay reaches it. */
 const LOG: { at: State[]; time: string; text: string }[] = [
   { at: ["fail", "know", "ok"], time: INCIDENT.failed.failedAt, text: "Deploy fails on Vercel" },
-  { at: ["know", "ok"], time: "", text: `Your agent gets the cause: ${WHY}` },
+  { at: ["know", "ok"], time: "", text: "Spooky alerts. Claude Code reads it" },
   { at: ["ok"], time: INCIDENT.fixed.readyAt, text: `Fix ${INCIDENT.fixed.commit} is live` },
   { at: ["ok"], time: "", text: `Spooky checks: fixed in ${INCIDENT.minutesToFix}` },
 ];
