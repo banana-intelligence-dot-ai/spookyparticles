@@ -56,6 +56,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(OFF_TOPIC_LINE);
     expect(prompt).toContain("Never invent a feature");
     expect(prompt).toContain("point to /setup.md");
+    expect(prompt).toContain("a person reads hello@spookyparticles.com");
   });
   it("grounds in setup.md and the product facts, as data", () => {
     expect(prompt).toContain("<setup_guide>\n# Set up Spooky Particles\nSTEP ONE\n</setup_guide>");
@@ -152,6 +153,9 @@ describe("links and dashes", () => {
       { label: "Settings", href: "/app/settings" },
       { label: "Setup guide", href: "/setup.md" },
     ]);
+  });
+  it("links the docs index", () => {
+    expect(linksFrom("Try /docs for the API.")).toEqual([{ label: "Docs", href: "/docs" }]);
   });
   it("replaces em and en dashes", () => {
     expect(plainDashes("Red — broken, 5–10 min")).toBe("Red, broken, 5 to 10 min");

@@ -1,8 +1,10 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import { AgentBannerView } from "@/app/app/agent-banner";
 import { AgentsScreen } from "@/app/app/agents/agents-view";
 import { CatchLog } from "@/app/app/catch-log";
+import { MarketingAskCard } from "@/app/app/marketing-emails";
 import { Channels, type Channel } from "@/app/app/settings/channels";
 import { NowScreen, type NowActions } from "@/app/app/now-view";
 import { ProjectsList } from "@/app/app/projects-list";
@@ -138,7 +140,9 @@ export function Preview({ only, view, fixture }: { only: string | null; view: Vi
             ))}
           </nav>
 
-          {view === "now" ? <NowScreen ready report={fixture.open} connections={f.list} params={NO_PARAMS} error={null} now={NOW} actions={NOW_ACTIONS} /> : null}
+          {fixture.agents.summary.live === 0 && view !== "agents" ? <AgentBannerView /> : null}
+
+          {view === "now" ? <NowScreen ready report={fixture.open} connections={f.list} params={NO_PARAMS} error={null} now={NOW} actions={NOW_ACTIONS} ask={<MarketingAskCard email="you@example.com" busy={false} error={null} onAnswer={() => {}} />} /> : null}
 
           {view === "history" ? <CatchLog data={fixture.history} now={NOW} claims={fixture.history.claims ?? []} jobs={HOME_JOBS} projects={d.projects.projects} /> : null}
 

@@ -26,14 +26,22 @@ export function refuseSecrets(text: string): string[] {
   return found;
 }
 
-export function holdReasons(text: string): string[] {
-  const reasons: string[] = [];
+/** What makes text unsafe to hand an agent: instructions aimed at it, shell pipes, asks for secrets, smuggled bytes. */
+export function injectionReasons(text: string): string[] {
   const rules: [string, RegExp][] = [
     ["instructions aimed at agents", /\b(?:ignore (?:previous|your) instructions|system prompt|you must now|disregard(?: your| previous)?(?: instructions| rules| prompt))\b/i],
     ["pipe to shell", /\b(?:curl|wget)\b[^\n|]{0,300}\|\s*(?:sh|bash)\b/i],
     ["request for secrets", /\b(?:print|show|send|share|upload|post|reveal|dump|exfiltrate)\b.{0,80}\b(?:env(?:ironment)?(?: vars?| variables?)?|secrets?|api keys?|tokens?|credentials?|passwords?)\b/i],
     ["large encoded blob", /(?:[A-Za-z0-9+/]{4}){51,}(?:={0,2})/],
     ["hidden control character", /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/],
+  ];
+  return rules.filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
+}
+
+/** Tips are published to every agent, so they also hold links and asks for moderation. */
+export function holdReasons(text: string): string[] {
+  const reasons = injectionReasons(text);
+  const rules: [string, RegExp][] = [
     ["asks for moderation", /\b(?:approve|moderat\w*|admin\w*|publish this)\b/i],
     ["URL", /\b(?:https?:\/\/|www\.)\S+|\b(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::\d+)?(?:\/\S*)?/i],
   ];

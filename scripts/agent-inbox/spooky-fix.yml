@@ -22,7 +22,8 @@ permissions:
   contents: write
   pull-requests: write
 concurrency:
-  group: spooky-fix
+  # One run per check, so a second break waits instead of being dropped.
+  group: spooky-fix-${{ inputs.check }}
   cancel-in-progress: false
 jobs:
   fix:
@@ -45,4 +46,32 @@ jobs:
             Check: ${{ inputs.check }}
             What happened: ${{ inputs.what }}
             Jobs: ${{ inputs.link }}
-            Read .spooky/lessons.md first if it exists. Find the cause in the code, logs, and recent commits. Make the smallest fix and run this project's own tests. Commit and ship only as CLAUDE.md or AGENTS.md allows; otherwise open a pull request. Add one dated line to .spooky/lessons.md with the cause and fix. Never print secrets.
+            Read .spooky/lessons.md first; create it if it is missing. Find the cause in the code, logs, and recent commits. Make the smallest fix.
+            Judge the fix only by this project's existing tests and checks, as they are on the default branch. Never edit, skip or delete a test, CI workflow or check config to make it pass. You may add a new test. If a check itself is wrong, open a pull request for a person and stop.
+            Run this project's own tests. After three attempts that fail, stop: change nothing on the default branch, and open a pull request with what you tried and the failing output, so a person can take over.
+            End every commit message with a line "Verified: <command> <result>", or "Verified: none, <why>".
+            Commit and ship only as CLAUDE.md or AGENTS.md allows; otherwise open a pull request.
+            Add one dated line to .spooky/lessons.md: what broke, the real cause, and what fixed it or why you stopped. Never print secrets.
+      # The fix can't grade itself: flag a run whose commits changed checks or skipped the "Verified:" line.
+      # A new gate only warns until its false alarms are gone; then it fails the run.
+      - name: Check the fix against the rules
+        if: always()
+        shell: bash
+        env:
+          START: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          git rev-list --branches --not "$START" > "$RUNNER_TEMP/commits.txt"
+          [ -s "$RUNNER_TEMP/commits.txt" ] || { echo "No new commits." >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          bad=0
+          while read -r c; do
+            git diff-tree --no-commit-id --name-status -r "$c" | awk -F'\t' '$1 ~ /^(M|D|R|T)/ {print $2}' >> "$RUNNER_TEMP/touched.txt"
+            if ! git log -1 --format=%B "$c" | grep -q '^Verified: '; then
+              echo "Commit ${c:0:7} has no \"Verified:\" line." >> "$GITHUB_STEP_SUMMARY"; bad=1
+            fi
+          done < "$RUNNER_TEMP/commits.txt"
+          if grep -E '(^|/)(\.github/|tests?/|__tests__/)|\.(test|spec)\.[A-Za-z]+$|_test\.(go|py)$|(^|/)test_[^/]*\.py$|(^|/)(vitest|jest|playwright)\.config\.|(^|/)(pytest\.ini|conftest\.py)$' "$RUNNER_TEMP/touched.txt" > "$RUNNER_TEMP/checks.txt" 2>/dev/null; then
+            { echo "The fix changed or deleted existing checks, so a person must review it:"; sed 's/^/- /' "$RUNNER_TEMP/checks.txt"; } >> "$GITHUB_STEP_SUMMARY"; bad=1
+          fi
+          if [ "$bad" = 1 ]; then echo "::warning title=Spooky fix rules::This fix needs a person's review. See the run summary."; fi
+          exit 0

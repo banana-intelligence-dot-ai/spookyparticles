@@ -12,7 +12,7 @@ import { SERVER_FAULT, errorMessage } from "./use-api";
 
 type Turn = { role: "user" | "assistant"; content: string; links?: { label: string; href: string }[] };
 
-export const HELP_STARTERS = ["Why is this red?", "How does the fixer work?", "How do I connect Vercel?"] as const;
+export const HELP_STARTERS = ["Why is this red?", "How do I connect my agent?", "How does the fixer work?"] as const;
 
 const MAX_CHARS = 2000;
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -171,6 +171,12 @@ export function HelpPanel({ label = "Help" }: { label?: string }) {
                       </li>
                     ))}
                   </ul>
+                  <p className="mt-6 text-[13px] leading-[1.6] text-fg-3">
+                    Want a person?{" "}
+                    <a href="mailto:hello@spookyparticles.com" className="inline-flex min-h-11 items-center text-fg-2 underline decoration-line-3 underline-offset-4 hover:text-fg">
+                      hello@spookyparticles.com
+                    </a>
+                  </p>
                 </div>
               ) : (
                 <ol className="flex flex-col gap-5">

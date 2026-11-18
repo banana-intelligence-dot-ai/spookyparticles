@@ -73,7 +73,7 @@ export function ConnectAgent({
 
   return (
     <div className={`mb-6 px-4 py-5 sm:px-6 ${surface}`}>
-      <h3 className="text-[16px] font-medium text-fg">Connect an agent</h3>
+      <h3 className="text-[16px] font-medium text-fg">Connect with an agent</h3>
       <ol className="mt-4 flex flex-col gap-6">
         <li>
           <p className="text-[14px] text-fg">

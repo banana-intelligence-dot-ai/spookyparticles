@@ -232,3 +232,20 @@ export function Parts({ className = "", children }: { className?: string; childr
     </p>
   );
 }
+
+/** An on/off switch. The label lives beside it, named by labelledBy. */
+export function Switch({ on, busy, labelledBy, onFlip }: { on: boolean; busy: boolean; labelledBy: string; onFlip: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-labelledby={labelledBy}
+      disabled={busy}
+      onClick={onFlip}
+      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60 ${on ? "border-accent bg-accent/80" : "border-line-3 bg-raised-2"}`}
+    >
+      <span className={`inline-block size-5 rounded-full bg-fg transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
+    </button>
+  );
+}

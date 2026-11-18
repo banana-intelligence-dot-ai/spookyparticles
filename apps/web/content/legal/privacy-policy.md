@@ -60,6 +60,7 @@ We use your data to:
 - serve your data through the API and MCP endpoint to your coding agents
 - run the Service, keep it secure, and prevent abuse
 - answer your support requests
+- email you news about the product, only if you opt in; you can opt out in Settings or by the link in any such email, and we never sell or share your email
 - measure whether the product works (aggregate analytics)
 - meet legal duties
 

@@ -390,6 +390,17 @@ export async function sweepQuietJobs(nowMs = Date.now(), onlyJobIds?: string[]):
   return { late, down };
 }
 
+/**
+ * Pure: why an alert went to a person with no fix started, in one line, so nobody has to ask.
+ * Null when a fix job covers the project (it was started on the first alert of this episode).
+ */
+export function noFixReason(s: { project: string | null; fixer: boolean; held: boolean }): string | null {
+  if (!s.project) return "No fix started: this job has no project, so Spooky can't tell which repo to fix. Ask your agent to set the job's project and turn on the fix job.";
+  if (s.held) return `No new fix started: an agent is already working on ${s.project}.`;
+  if (!s.fixer) return `No fix started: the fix job isn't on for ${s.project}. Ask your agent to turn it on.`;
+  return null;
+}
+
 export function ago(ms: number): string {
   const m = Math.round(ms / 60_000);
   if (m < 1) return "under a minute";
@@ -421,18 +432,24 @@ export async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind:
     };
     if (n.silent) return hold({ silent: true }, "alert.not_sent_person_never_told");
     let text = n.text;
-    if (pagerEnabled() && kind !== "job_recovered" && (kind === "job_quiet" ? j.missCount === 1 : n.firstEpisode === true)) {
+    // Pager off is the kill switch: the old delivery path, untouched.
+    if (pagerEnabled() && kind !== "job_recovered") {
       const channels = await db.select().from(schema.alertChannels).where(and(eq(schema.alertChannels.userId, j.userId), eq(schema.alertChannels.kind, "github"), eq(schema.alertChannels.enabled, true)));
+      const fixer = channels.some((c) => c.project && matchesProject(c.project, j.project));
       // An agent that already claimed this project is on it: no second fixer (same rule as Send to my agent now).
       const { claimFor, claimsFor } = await import("./claims");
-      const held = j.project ? claimFor(await claimsFor(j.userId), j.project) : null;
-      if (!held && channels.some((c) => c.project && matchesProject(c.project, j.project))) {
+      const held = j.project ? Boolean(claimFor(await claimsFor(j.userId), j.project)) : false;
+      const first = kind === "job_quiet" ? j.missCount === 1 : n.firstEpisode === true;
+      if (first && !held && fixer) {
         const page = await pageGithub(j.userId, { ...j, alertKey: n.key }, n.text);
         if (page.ok) {
           await db.update(schema.alerts).set({ payload: sql`${schema.alerts.payload} || ${JSON.stringify({ deferred: "pager" })}::jsonb` }).where(eq(schema.alerts.id, row.id));
           return;
         }
         text += `\nSpooky couldn't start the GitHub fix job: ${page.reason ?? "request failed"}`;
+      } else {
+        const why = noFixReason({ project: j.project, fixer, held });
+        if (why) text += `\n${why}`;
       }
     }
     // Agent first: a listening agent hears it now; the person only if it is still broken in 30 min.

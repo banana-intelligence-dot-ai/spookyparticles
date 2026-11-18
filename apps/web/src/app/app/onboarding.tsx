@@ -1,7 +1,7 @@
 "use client";
 /**
- * First run on Now: GitHub and Vercel until each has finished a first sync, then the coding agent
- * until one is connected. After the first source syncs, only the source step that is left shows. Gmail is not a
+ * First run on Now: GitHub and Vercel until each has finished a first sync. The coding agent is not a
+ * step here: the agent banner over every app page asks for it until one is connected. After the first source syncs, only the source step that is left shows. Gmail is not a
  * setup step; an inbox is an optional extra in Settings. A connection
  * that stops later becomes a row in the open list. Reads the same /api/v1/connections data
  * as Settings.
@@ -17,6 +17,8 @@ const GITHUB_START = "/api/connect/github/start?next=/app";
 const GMAIL_START = "/api/connect/gmail/start?next=/app";
 /** The Vercel connect form lives in Settings; ?vercel=open opens it. */
 const VERCEL_START = "/app/settings?vercel=open#vercel";
+/** The Agents page opens its connect form (the setup prompt to paste) on ?connect=1. */
+export const AGENT_START = "/app/agents?connect=1";
 
 const live = (list: Connection[], provider: Connection["provider"]) => list.filter((c) => c.provider === provider && c.status !== "revoked");
 
@@ -157,7 +159,8 @@ export function Onboarding({ connections, params, now, agents = null }: { connec
   // Once one source has synced, the card shrinks to the step that is left; the synced one lives in Settings.
   const showGithub = !(synced === 1 && ghState === "done");
   const showVercel = !(synced === 1 && vcState === "done");
-  // The agent is the point of the product, so it is a step of its own until one is connected.
+  // Until an agent is connected, the banner above the page holds the one primary button (Connect with an agent),
+  // so these steps step back to secondary.
   const showAgent = agents === 0;
   const sources = [gh.some(isSynced), vc.some(isSynced)].filter(Boolean).length;
   // After any first sync, steps drop their per-account rows to one line; the accounts live in Settings.
@@ -187,7 +190,7 @@ export function Onboarding({ connections, params, now, agents = null }: { connec
 
   return (
     <section aria-labelledby="setup-title" className="mb-12">
-      <SectionTitle id="setup-title" count={showAgent ? `${sources} of 3 done` : `${sources} of 2 synced`}>
+      <SectionTitle id="setup-title" count={`${sources} of 2 synced`}>
         Setup
       </SectionTitle>
 
@@ -209,11 +212,11 @@ export function Onboarding({ connections, params, now, agents = null }: { connec
             <Step
               state={ghState}
               title="GitHub"
-              note={brief(gh, "Read-only. You choose the repos on GitHub.")}
+              note={brief(gh, "You choose the repos on GitHub. Spooky reads them and can start your fix job.")}
               accounts={compact ? undefined : gh}
               now={now}
               action={
-                <a href={GITHUB_START} className={ghActive ? buttonStyles.ghost : buttonStyles.primary}>
+                <a href={GITHUB_START} className={ghActive ? buttonStyles.ghost : showAgent ? buttonStyles.secondary : buttonStyles.primary}>
                   {ghActive ? "Add another" : "Install on GitHub"}
                 </a>
               }
@@ -227,21 +230,8 @@ export function Onboarding({ connections, params, now, agents = null }: { connec
               accounts={compact ? undefined : vc}
               now={now}
               action={
-                <Link href={VERCEL_START} className={vcActive ? buttonStyles.ghost : ghActive ? buttonStyles.primary : buttonStyles.secondary}>
+                <Link href={VERCEL_START} className={vcActive ? buttonStyles.ghost : ghActive && !showAgent ? buttonStyles.primary : buttonStyles.secondary}>
                   {vcActive ? "Add another" : "Connect Vercel"}
-                </Link>
-              }
-            />
-          ) : null}
-          {showAgent ? (
-            <Step
-              state="todo"
-              title="Your coding agent"
-              note="Claude Code, Codex or Cursor. Breaks go to it first, with the cause."
-              now={now}
-              action={
-                <Link href="/app/agents" className={sources ? buttonStyles.primary : buttonStyles.secondary}>
-                  Connect an agent
                 </Link>
               }
             />

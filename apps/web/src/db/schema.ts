@@ -43,6 +43,9 @@ export const user = pgTable("user", {
   image: text("image"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Product email consent. Opted in only when optInAt is set and newer than optOutAt. Both null: never asked. */
+  marketingOptInAt: timestamp("marketing_opt_in_at", { withTimezone: true }),
+  marketingOptOutAt: timestamp("marketing_opt_out_at", { withTimezone: true }),
 });
 
 export const session = pgTable(

@@ -27,7 +27,7 @@ export default function LinkPage() {
           </Suspense>
         </div>
       </main>
-      <footer className="flex h-16 items-center border-t border-line-1">
+      <footer className="flex min-h-16 items-center border-t border-line-1 py-2">
         <Footer />
       </footer>
     </div>

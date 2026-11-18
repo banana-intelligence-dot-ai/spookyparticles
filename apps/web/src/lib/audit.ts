@@ -16,8 +16,9 @@ export type AuditEntry = {
   after?: unknown;
 };
 
-export async function appendAudit(entry: AuditEntry): Promise<void> {
-  await getDb()
+/** The insert itself, unsent, so a caller can batch it with the change it records (one transaction). */
+export function auditInsert(entry: AuditEntry) {
+  return getDb()
     .insert(schema.auditLog)
     .values({
       actor: entry.actor,
@@ -27,4 +28,8 @@ export async function appendAudit(entry: AuditEntry): Promise<void> {
       before: entry.before ?? null,
       after: entry.after ?? null,
     });
+}
+
+export async function appendAudit(entry: AuditEntry): Promise<void> {
+  await auditInsert(entry);
 }

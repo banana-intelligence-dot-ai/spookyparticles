@@ -44,7 +44,7 @@ export function DocsFrame({ markdown, current }: { markdown: string; current?: s
           <LegalDocument markdown={markdown} />
         </main>
       </div>
-      <footer className="flex h-16 items-center border-t border-line-1">
+      <footer className="flex min-h-16 items-center border-t border-line-1 py-2">
         <Footer />
       </footer>
     </div>

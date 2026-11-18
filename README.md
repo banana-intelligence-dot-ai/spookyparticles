@@ -9,7 +9,7 @@ Live at [spookyparticles.com](https://spookyparticles.com). Sign in with Vercel.
 - **Watches schedules and deploys.** Every Vercel cron job and schedule, with an alert when a run misses or fails and again when it recovers. A failed deploy comes with the log line that names the cause.
 - **Checks the basics.** Uptime, server-error spikes, secrets in browser-readable variables, open preview links, unguarded cron routes, dependency updates, dates that expire. The full list is [the Standard](docs/standard/STANDARD.md).
 - **Lists what you run.** Every outside service each project depends on, what it costs on your Vercel bill, and whether it is still used.
-- **Hands work to your agent.** An MCP server and a REST API, so a coding agent can ask what is broken and open a pull request to fix it. Setup for agents: [spookyparticles.com/setup.md](https://spookyparticles.com/setup.md).
+- **Hands work to your agent.** An MCP server and a REST API, so a coding agent can ask what is broken, then write the fix in its own pull request. Spooky never changes your code itself. Setup for agents: [spookyparticles.com/setup.md](https://spookyparticles.com/setup.md).
 
 ## Skills
 

@@ -45,6 +45,10 @@ const link = "underline decoration-line-3 underline-offset-4 hover:decoration-fg
 /** Presentational, so the dev preview draws the real screen against fixtures. */
 export function AgentsScreen({ report, now, onCreate, onRevoke }: { report: AgentsReport | null; now: number; onCreate: Create; onRevoke: (id: string) => Promise<string | null> }) {
   const [connecting, setConnecting] = useState(false);
+  // ?connect=1 (the setup step on Now) arrives with the connect form open. Read once, after mount.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("connect") === "1") setConnecting(true);
+  }, []);
   const [showGone, setShowGone] = useState(false);
   const live = report?.agents.filter((a) => a.state === "live") ?? [];
   const gone = report?.agents.filter((a) => a.state !== "live") ?? [];
@@ -55,7 +59,7 @@ export function AgentsScreen({ report, now, onCreate, onRevoke }: { report: Agen
       <PageHeader title="Agents" lede="The coding agents that hear about your breaks, and what each one did. Read only unless you choose otherwise. Revoke one and its key stops working at once.">
         {!connecting ? (
           <button type="button" className={buttonStyles.primary} onClick={() => setConnecting(true)}>
-            Connect an agent
+            Connect with an agent
           </button>
         ) : null}
       </PageHeader>
@@ -81,7 +85,7 @@ export function AgentsScreen({ report, now, onCreate, onRevoke }: { report: Agen
           title="No agent is connected."
           action={
             <button type="button" className={buttonStyles.secondary} onClick={() => setConnecting(true)}>
-              Connect an agent
+              Connect with an agent
             </button>
           }
         >

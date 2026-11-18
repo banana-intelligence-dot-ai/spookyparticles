@@ -15,9 +15,10 @@ export const HELP_PAGES: Record<string, string> = {
   "/app/settings": "Settings",
   "/app/expirations": "Expirations",
   "/setup.md": "Setup guide",
+  "/docs": "Docs",
 };
 
-const PATH = /(?:^|[\s(`"'])(?:https?:\/\/[^\s/`"')]+)?(\/(?:app(?:\/[a-z-]+)?|setup\.md))(?=$|[\s).,;:!?`"'])/g;
+const PATH = /(?:^|[\s(`"'])(?:https?:\/\/[^\s/`"')]+)?(\/(?:app(?:\/[a-z-]+)?|setup\.md|docs))(?=$|[\s).,;:!?`"'])/g;
 
 export function linksFrom(answer: string, max = 3): HelpLink[] {
   const seen = new Set<string>();

@@ -69,7 +69,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<{ ok: bo
   return apiSend<T>("POST", path, body);
 }
 
-export async function apiSend<T>(method: "POST" | "DELETE" | "PATCH", path: string, body?: unknown): Promise<{ ok: boolean; status: number; data: T | null; error?: string }> {
+export async function apiSend<T>(method: "POST" | "PUT" | "DELETE" | "PATCH", path: string, body?: unknown): Promise<{ ok: boolean; status: number; data: T | null; error?: string }> {
   const res = await fetch(path, {
     method,
     credentials: "same-origin",

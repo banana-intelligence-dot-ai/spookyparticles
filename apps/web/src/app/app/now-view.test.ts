@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { OpenReport } from "@/lib/open-items";
 import { fixedLine, nowIsEmpty, nowLead } from "./now-view";
 import { pairLength } from "./pair";
-import { isActive, MORE, RAIL_ITEMS } from "./rail";
+import { feedbackNav, isActive, MORE, RAIL_ITEMS } from "./rail";
 
 const summary = (over: Partial<OpenReport["summary"]> = {}): OpenReport["summary"] => ({
   open: 0, onYou: 0, withAgents: 0, fixed: 0, fixedByAgents: 0, medianFixMinutes: null, watching: 3, notWatched: 0, agents: 1, windowDays: 30, ...over,
@@ -59,5 +59,11 @@ describe("the rail", () => {
     expect(isActive("/app", "/app/history")).toBe(false);
     expect(isActive("/app/settings", "/app/jobs")).toBe(true);
     expect(isActive("/app/settings", "/app/check/abc")).toBe(true);
+  });
+  it("shows Agent feedback with the open count only when the queue answers 200", () => {
+    expect(feedbackNav(200, 3)).toEqual({ href: "/app/feedback", label: "Agent feedback", count: 3 });
+    expect(feedbackNav(403, 0)).toBeNull();
+    expect(feedbackNav(401, 0)).toBeNull();
+    expect(feedbackNav(null, 0)).toBeNull();
   });
 });

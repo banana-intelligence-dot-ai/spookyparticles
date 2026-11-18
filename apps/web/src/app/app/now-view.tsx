@@ -16,7 +16,8 @@ import type { OpenItem, OpenReport, Prevent, RecentFix } from "@/lib/open-items"
 import { type Connection, isRunning } from "./connection-model";
 import { agentButton, CopyForAgent } from "./copy-for-agent";
 import { absoluteTime } from "./data-model";
-import { Onboarding, onboardingComplete } from "./onboarding";
+import { MarketingAsk } from "./marketing-emails";
+import { AGENT_START, Onboarding, onboardingComplete } from "./onboarding";
 import { Pair, pairLength } from "./pair";
 import { ago, projectHref } from "./project-model";
 
@@ -75,6 +76,7 @@ export function NowView() {
       error={conns.error ?? open.error}
       now={now ?? 0}
       actions={actions}
+      ask={<MarketingAsk />}
     />
   );
 }
@@ -113,6 +115,7 @@ export function NowScreen({
   error,
   now,
   actions,
+  ask,
 }: {
   ready: boolean;
   report: OpenReport | null | undefined;
@@ -121,6 +124,8 @@ export function NowScreen({
   error: string | null;
   now: number;
   actions: NowActions;
+  /** The one-time product email ask. Under the setup card, or at the bottom when setup is done. */
+  ask?: React.ReactNode;
 }) {
   // Items the owner just cleared stay on screen, at the top, until they leave or undo.
   const [done, setDone] = useState<Record<string, Done>>({});
@@ -151,7 +156,7 @@ export function NowScreen({
   };
 
   const s = report?.summary;
-  const setup = ready && (!onboardingComplete(connections) || s?.agents === 0);
+  const setup = ready && !onboardingComplete(connections);
   const empty = Boolean(s && nowIsEmpty(s));
   const onboarding = <Onboarding connections={connections} params={params} now={now} agents={s ? s.agents : null} />;
   const lead = s ? nowLead(s) : null;
@@ -168,6 +173,7 @@ export function NowScreen({
       {error ? <ErrorLine message={error} /> : null}
       {!ready && !error ? <p className="text-[16px] text-fg-2">Loading…</p> : null}
       {setup && empty ? onboarding : null}
+      {ready && empty && ask ? <div className="mt-12">{ask}</div> : null}
 
       {ready && report && s && lead && !empty ? (
         <>
@@ -222,6 +228,8 @@ export function NowScreen({
             ) : null}
           </section>
 
+          {ask}
+
           <p className="num text-[13px] leading-[1.6] text-fg-3">
             Watching {s.watching} {s.watching === 1 ? "project" : "projects"}
             {" · "}
@@ -230,8 +238,8 @@ export function NowScreen({
                 {s.agents} {s.agents === 1 ? "agent" : "agents"} connected
               </Link>
             ) : (
-              <Link href="/app/agents" className={`text-fg-2 hover:text-fg ${link}`}>
-                Connect an agent
+              <Link href={AGENT_START} className={`text-fg-2 hover:text-fg ${link}`}>
+                Connect with an agent
               </Link>
             )}
             {s.notWatched ? (

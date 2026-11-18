@@ -13,12 +13,24 @@ export function Wordmark({ href = "/" }: { href?: string }) {
   );
 }
 
+/** Who made it and where the open source lives. One row, wraps on phones. */
+export const FOOTER_LINKS = [
+  { href: "https://x.com/n8peace", label: "@n8peace on X" },
+  { href: "https://github.com/banana-intelligence-dot-ai/spookyparticles", label: "GitHub" },
+  { href: "https://github.com/banana-intelligence-dot-ai/spookyparticles/tree/main/skills", label: "Agent skills" },
+] as const;
+
 export function Footer({ className = "" }: { className?: string }) {
   return (
-    <p className={`text-fg-2 ${className || "text-[14px]"}`}>
-      <a href="https://bananaintelligence.ai?ref=spookyparticles" className="hover:text-fg">
+    <p className={`flex flex-wrap items-center gap-x-4 text-fg-2 ${className || "text-[14px]"}`}>
+      <a href="https://bananaintelligence.ai?ref=spookyparticles" className="inline-flex min-h-11 items-center hover:text-fg">
         A Banana Intelligence product
       </a>
+      {FOOTER_LINKS.map((l) => (
+        <a key={l.href} href={l.href} className="inline-flex min-h-11 items-center hover:text-fg" rel="noopener">
+          {l.label}
+        </a>
+      ))}
     </p>
   );
 }

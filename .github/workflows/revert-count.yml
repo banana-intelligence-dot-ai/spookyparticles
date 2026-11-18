@@ -1,0 +1,20 @@
+name: Weekly revert count
+# The score for the checks (Nate, 2026-11-17): how many commits in the last 7 days undid earlier work.
+# Log-only: writes the count to the run summary. The script is read from the commit on master.
+on:
+  schedule:
+    - cron: "0 15 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Count reverts and rollbacks
+        run: sh scripts/revert-count/count.sh 7 > count.txt && cat count.txt >> "$GITHUB_STEP_SUMMARY"

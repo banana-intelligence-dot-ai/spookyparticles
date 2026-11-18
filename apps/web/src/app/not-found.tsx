@@ -24,7 +24,7 @@ export default function NotFound() {
           Back to spooky particles
         </Link>
       </main>
-      <footer className="flex h-16 items-center border-t border-line-1">
+      <footer className="flex min-h-16 items-center border-t border-line-1 py-2">
         <Footer />
       </footer>
     </div>

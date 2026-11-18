@@ -3,7 +3,8 @@ import { getDb } from "@/db";
 import { getInstallationToken } from "@/lib/connections";
 import { locateRepo } from "@/lib/github-refresh";
 import { alarmLine, alarmsFor } from "./alarms";
-import { dueEscalations, FIX_RULE, pageGithub, pagerWhat, type EscalationJob, type Paged } from "./pager";
+import { appendAudit } from "@/lib/audit";
+import { dueEscalations, FIX_RULE, MAX_ROUNDS, pageGithub, pagerWhat, roundsReason, roundsSpent, type EscalationJob, type Paged } from "./pager";
 
 vi.mock("@/db", async (original) => ({ ...await original(), getDb: vi.fn() }));
 vi.mock("@/lib/connections", () => ({ getInstallationToken: vi.fn() }));
@@ -96,5 +97,43 @@ describe("what the fix job is told", () => {
   });
   it("names thresholds, so a job asked to fix a floor alarm does not lower the floor", () => {
     expect(FIX_RULE).toMatch(/no lower thresholds/);
+  });
+});
+
+describe("three rounds, then a person", () => {
+  const at = (d: string) => new Date(`2026-11-${d}T06:10:00.000Z`);
+  const rounds = [{ after: { ok: true }, createdAt: at("14") }, { after: { ok: false }, createdAt: at("13") }, { after: { ok: true }, createdAt: at("12") }, { after: { ok: true }, createdAt: at("16") }];
+  const withRounds = (rows: unknown[]) => {
+    const answers = [[channel], rows];
+    return { ...db, select: () => ({ from: () => ({ where: async () => answers.shift() ?? [] }) }) };
+  };
+
+  it("counts only runs that started, oldest first", () => {
+    expect(roundsSpent(rounds)).toEqual([at("12"), at("14"), at("16")]);
+    expect(roundsSpent([{ after: null, createdAt: at("12") }])).toEqual([]);
+  });
+
+  it("tells the person when the runs were and where to see them", () => {
+    expect(roundsReason([at("12"), at("14"), at("16")], "owner/repo")).toBe("3 fix runs for this check in 7 days didn't hold (11-12 06:10, 11-14 06:10, 11-16 06:10 UTC), so Spooky stopped starting new ones. It's over to you. The runs: https://github.com/owner/repo/actions/workflows/spooky-fix.yml");
+  });
+
+  it("stops the pager after three runs that didn't hold, and audits it", async () => {
+    vi.mocked(getDb).mockReturnValue(withRounds(rounds) as never);
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    const result = await pageGithub("user-1", job, "broken");
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain(`${MAX_ROUNDS} fix runs`);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(appendAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "pager.rounds_exhausted", target: "job-1" }));
+  });
+
+  it("still starts a run under the limit, and when a person sends it by hand", async () => {
+    vi.mocked(getDb).mockReturnValue(withRounds(rounds.slice(0, 2)) as never);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ default_branch: "main" }) }).mockResolvedValueOnce({ status: 204 }));
+    expect(await pageGithub("user-1", job, "broken")).toEqual({ ok: true });
+    vi.mocked(getDb).mockReturnValue(withRounds(rounds) as never);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ default_branch: "main" }) }).mockResolvedValueOnce({ status: 204 }));
+    expect(await pageGithub("user-1", job, "broken", "user:nate")).toEqual({ ok: true });
   });
 });

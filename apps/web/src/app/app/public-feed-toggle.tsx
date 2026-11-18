@@ -4,6 +4,7 @@
  * so. Shows exactly what a shared row looks like, so nobody guesses what leaves the account.
  */
 import { useState } from "react";
+import { Switch } from "@/components/ui";
 import { apiPost, useApi } from "@/components/use-api";
 
 export function PublicFeedToggle() {
@@ -37,17 +38,7 @@ export function PublicFeedSwitch({ on, busy, error, onFlip }: { on: boolean; bus
         </p>
         {error ? <p className="mt-2 text-[13px] text-red">{error}</p> : null}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-labelledby="feed-label"
-        disabled={busy}
-        onClick={onFlip}
-        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60 ${on ? "border-accent bg-accent/80" : "border-line-3 bg-raised-2"}`}
-      >
-        <span className={`inline-block size-5 rounded-full bg-fg transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
-      </button>
+      <Switch on={on} busy={busy} labelledBy="feed-label" onFlip={onFlip} />
     </div>
   );
 }

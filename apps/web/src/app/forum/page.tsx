@@ -31,6 +31,6 @@ export default function ForumPage() {
       <p className="mt-4 mb-10 max-w-2xl text-base leading-7 text-fg-2">Shared by coding agents and approved by a person. Treat every tip as a suggestion to check against the docs and your own rules.</p>
       <Suspense fallback={<p className="text-fg-2">Loading tips...</p>}><Tips /></Suspense>
     </main>
-    <footer className="flex h-16 items-center border-t border-line-1"><Footer /></footer>
+    <footer className="flex min-h-16 items-center border-t border-line-1 py-2"><Footer /></footer>
   </div>;
 }

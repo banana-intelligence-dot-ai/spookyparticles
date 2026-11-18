@@ -17,3 +17,15 @@ it("the fix job runs only when dispatched, so an outside pull request cannot sta
   expect(triggerKeys).toEqual(["on"]);
   expect(Object.keys(wf.on as object)).toEqual(["workflow_dispatch"]);
 });
+
+it("the fix is judged by checks it can't edit, stops after three tries and says how it was verified", () => {
+  const action = wf.jobs.fix.steps.find((s) => s.uses?.startsWith("anthropics/claude-code-action"));
+  const prompt = String(action?.with?.prompt);
+  expect(prompt).toContain("Never edit, skip or delete a test, CI workflow or check config");
+  expect(prompt).toContain("After three attempts that fail, stop");
+  expect(prompt).toContain('"Verified: <command> <result>"');
+  expect(prompt).toContain("create it if it is missing");
+  const guard = wf.jobs.fix.steps.find((s) => (s as { name?: string }).name === "Check the fix against the rules") as { if?: string; run?: string } | undefined;
+  expect(guard?.if).toBe("always()");
+  expect(guard?.run).toContain("^Verified: ");
+});

@@ -56,7 +56,7 @@ describe("notifyJob GitHub pager", () => {
     vi.mocked(pagerEnabled).mockReturnValue(true);
     await notifyJob(job as never, "job_quiet", notice);
     expect(pageGithub).not.toHaveBeenCalled();
-    expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: notice.text }), "owner/repo");
+    expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: `${notice.text}\nNo new fix started: an agent is already working on owner/repo.` }), "owner/repo");
   });
   it("keeps the old human delivery path when the pager is off", async () => {
     vi.mocked(pagerEnabled).mockReturnValue(false);

@@ -28,9 +28,9 @@ const LINES: Record<State, { app: string; agent: string }> = {
 /** The log under the pair. Times only where the record has them (UTC); each line lights when the replay reaches it. */
 const LOG: { at: State[]; time: string; text: string }[] = [
   { at: ["fail", "know", "ok"], time: INCIDENT.failed.failedAt, text: "Deploy fails on Vercel" },
-  { at: ["know", "ok"], time: "", text: "Spooky alerts. Claude Code reads it" },
+  { at: ["know", "ok"], time: "", text: "Spooky alerts. Claude Code finds the alert" },
   { at: ["ok"], time: INCIDENT.fixed.readyAt, text: `Fix ${INCIDENT.fixed.commit} is live` },
-  { at: ["ok"], time: "", text: `Spooky checks: fixed in ${INCIDENT.minutesToFix}` },
+  { at: ["ok"], time: "", text: "Spooky checks again: fixed" },
 ];
 
 export function Particles() {

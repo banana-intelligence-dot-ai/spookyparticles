@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, cleanMinutes, cleanName, jobDisplayStatus, jobIssue, parseStatusFilter, sortJobViews, classifyPing, pingDueAt, isHungRun, shouldRealert, dueState, firstCheckInWindowMs } from "./checkins";
+import { ago, cleanMinutes, cleanName, jobDisplayStatus, jobIssue, parseStatusFilter, sortJobViews, classifyPing, pingDueAt, isHungRun, shouldRealert, dueState, firstCheckInWindowMs, noFixReason } from "./checkins";
 import { matchesProject, validateTarget } from "./alerts/channels";
 
 describe("project alert routing", () => {
@@ -149,5 +149,20 @@ describe("scheduled jobs that report early", () => {
   it("counts a ping a minute early toward that run, so the next due time is the next weekday", () => {
     const early = Date.parse("2026-11-13T12:34:00Z"); // Friday 7:34 New York
     expect(pingDueAt("ok", 1440, null, early, "35 7 * * 1-5", "America/New_York", "manual")).toBe(Date.parse("2026-11-16T12:35:00Z"));
+  });
+});
+
+describe("noFixReason", () => {
+  it("says a job with no project can't be fixed (found 2026-11-18: Nate asked why a quiet job was never fixed)", () => {
+    expect(noFixReason({ project: null, fixer: false, held: false })).toMatch(/no project/);
+  });
+  it("says the fix job is off for the project", () => {
+    expect(noFixReason({ project: "acme/app", fixer: false, held: false })).toBe("No fix started: the fix job isn't on for acme/app. Ask your agent to turn it on.");
+  });
+  it("says an agent already holds the project", () => {
+    expect(noFixReason({ project: "acme/app", fixer: true, held: true })).toMatch(/already working on acme\/app/);
+  });
+  it("says nothing when the fix job covers the project", () => {
+    expect(noFixReason({ project: "acme/app", fixer: true, held: false })).toBeNull();
   });
 });

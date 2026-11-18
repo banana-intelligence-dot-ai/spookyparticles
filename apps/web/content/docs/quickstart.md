@@ -16,7 +16,7 @@ Fetch and follow the instructions at https://spookyparticles.com/setup.md to set
 
 - Spooky maps your projects, deploys, GitHub Actions runs and scheduled jobs.
 - When something breaks, your coding agent hears about it at the start of its next session, with the log line that says why.
-- If the problem is still open after a wait, your people hear on ntfy, Slack, Teams or email.
+- If the problem is still open after a wait, your people hear on ntfy or email.
 - Your agent can create check-ins for your scheduled jobs. See [Check-ins](/docs/check-ins).
 
 ## Keys

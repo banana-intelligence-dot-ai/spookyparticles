@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { AgentBanner } from "./agent-banner";
 import { Rail } from "./rail";
 
 export default function AppLayout({ children }: LayoutProps<"/app">) {
@@ -9,7 +10,13 @@ export default function AppLayout({ children }: LayoutProps<"/app">) {
         <Rail />
       </Suspense>
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-10">
-        <div className="mx-auto w-full max-w-6xl">{children}</div>
+        <div className="mx-auto w-full max-w-6xl">
+          {/* Reads the pathname, so it streams in under cacheComponents. */}
+          <Suspense fallback={null}>
+            <AgentBanner />
+          </Suspense>
+          {children}
+        </div>
       </main>
     </div>
   );

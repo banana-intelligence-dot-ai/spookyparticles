@@ -33,6 +33,8 @@ const m = vi.hoisted(() => ({
   setMuted: vi.fn(),
   setAlarm: vi.fn(),
   setPublicFeed: vi.fn(),
+  marketingFor: vi.fn(),
+  setMarketing: vi.fn(),
 }));
 
 vi.mock("@/lib/connections-read", () => ({ listConnectionsFor: m.listConnectionsFor }));
@@ -50,6 +52,7 @@ vi.mock("@/lib/ignores", async (orig) => ({ ...(await orig<typeof import("@/lib/
 vi.mock("@/lib/mutes", async (orig) => ({ ...(await orig<typeof import("@/lib/mutes")>()), mutesFor: m.mutesFor, setMuted: m.setMuted }));
 vi.mock("@/lib/alarms", async (orig) => ({ ...(await orig<typeof import("@/lib/alarms")>()), alarmsFor: m.alarmsFor, setAlarm: m.setAlarm }));
 vi.mock("@/lib/public-fixes", async (orig) => ({ ...(await orig<typeof import("@/lib/public-fixes")>()), publicFeedEnabled: m.publicFeedEnabled, setPublicFeed: m.setPublicFeed }));
+vi.mock("@/lib/marketing", () => ({ marketingFor: m.marketingFor, setMarketing: m.setMarketing }));
 vi.mock("@/lib/open-items", async (orig) => ({ ...(await orig<typeof import("@/lib/open-items")>()), openItemsFor: m.openItemsFor }));
 vi.mock("@/lib/agents", async (orig) => ({ ...(await orig<typeof import("@/lib/agents")>()), agentsFor: m.agentsFor }));
 vi.mock("@/lib/catches", async (orig) => ({ ...(await orig<typeof import("@/lib/catches")>()), catchesFor: m.catchesFor }));
@@ -75,7 +78,7 @@ const text = (res: unknown) => JSON.stringify(res);
 
 beforeEach(() => { vi.clearAllMocks(); });
 
-const READS = ["public_feed", "commit_outcome", "manual_input", "list_connections", "list_alert_channels", "job_history", "recent_activity", "open_items", "fix_history", "list_agents", "list_mutes", "list_alarms", "forum_read", "forum_queue"];
+const READS = ["public_feed", "marketing_emails", "commit_outcome", "manual_input", "list_connections", "list_alert_channels", "job_history", "recent_activity", "open_items", "fix_history", "list_agents", "list_mutes", "list_alarms", "forum_read", "forum_queue"];
 const WRITES: [string, Record<string, unknown>][] = [
   ["create_job", { name: "Nightly backup", periodMinutes: 1440 }],
   ["retire_job", { job_id: ID }],
@@ -97,6 +100,7 @@ const WRITES: [string, Record<string, unknown>][] = [
   ["mark_alarm", { project: "me/app", check: "Watch coverage", note: "30% floor" }],
   ["unmark_alarm", { project: "me/app", check: "Watch coverage" }],
   ["set_public_feed", { on: false }],
+  ["set_marketing_emails", { opt_in: true }],
   ["add_alert_channel", { kind: "email", target: "owner@example.com" }],
   ["update_alert_channel", { channel_id: ID, project: null }],
   ["remove_alert_channel", { channel_id: ID }],
@@ -114,9 +118,20 @@ const WRITES: [string, Record<string, unknown>][] = [
 it("read tools are available to read keys and write tools are hidden from them", () => {
   const read = toolsFor(actor(["read"]));
   const write = toolsFor(actor(["read", "write"]));
-  expect(Object.keys(read)).toHaveLength(27);
+  expect(Object.keys(read)).toHaveLength(28);
   for (const name of READS) { expect(read[name]).toBeDefined(); expect(read[name].annotations.readOnlyHint).toBe(true); }
   for (const [name] of WRITES) { expect(read[name]).toBeUndefined(); expect(write[name].annotations.readOnlyHint).toBe(false); }
+});
+
+it("marketing tools read and set only the caller's own consent", async () => {
+  m.marketingFor.mockResolvedValue({ email: "me@example.com", optedIn: false, answered: false, optInAt: null, optOutAt: null });
+  await call(["read"], "marketing_emails");
+  expect(m.marketingFor).toHaveBeenCalledWith("user-1");
+  m.setMarketing.mockResolvedValue({ email: "me@example.com", optedIn: true, answered: true, optInAt: "2026-11-17T00:00:00.000Z", optOutAt: null });
+  await call(["read", "write"], "set_marketing_emails", { opt_in: true });
+  expect(m.setMarketing).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", label: "api_key:k1" }), true);
+  expect(await call(["read", "write"], "set_marketing_emails", { opt_in: "yes" })).toMatchObject({ error: { message: "opt_in must be true or false" } });
+  expect(m.setMarketing).toHaveBeenCalledTimes(1);
 });
 
 it("commit_outcome validates inputs and reads only the caller's account", async () => {

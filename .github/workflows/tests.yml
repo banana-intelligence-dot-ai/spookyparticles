@@ -1,0 +1,34 @@
+name: Tests
+# Every push to master and every pull request: types, unit tests and the agent-inbox shell tests,
+# read from the commit under test. Log-only (continue-on-error) until its false alarms are gone;
+# then remove continue-on-error so a red run blocks.
+on:
+  push:
+    branches: [master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w packages/tier0
+      - name: Types
+        working-directory: apps/web
+        run: npx next typegen && npm run -s typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Agent inbox shell tests
+        run: sh scripts/agent-inbox/test.sh
+      - name: Revert count script test
+        run: sh scripts/revert-count/test.sh

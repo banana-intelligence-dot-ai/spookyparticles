@@ -38,6 +38,13 @@ export function isActive(href: string, pathname: string): boolean {
   return under(href, pathname);
 }
 
+export const FEEDBACK_ITEM = { href: "/app/feedback", label: "Agent feedback" } as const;
+
+/** The feedback item shows only when the maker-only queue answered 200; anyone else (403, error, loading) sees nothing. */
+export function feedbackNav(status: number | null, openCount: number): { href: string; label: string; count: number } | null {
+  return status === 200 ? { ...FEEDBACK_ITEM, count: openCount } : null;
+}
+
 type Me = { user: { email: string; name: string } };
 
 export function Rail() {
@@ -45,11 +52,14 @@ export function Rail() {
   const router = useRouter();
   const me = useApi<Me>("/api/v1/me");
   const open = useApi<OpenReport>("/api/v1/open", { pollMs: () => 60_000 });
+  // Non-makers get a 403 once and stop asking.
+  const queue = useApi<{ posts: unknown[] }>("/api/v1/forum/queue", { pollMs: (d) => (d ? 60_000 : null) });
   return (
     <RailView
       pathname={pathname}
       email={me.data?.user.email ?? null}
       onYou={open.data?.summary.onYou ?? 0}
+      feedback={feedbackNav(queue.status, queue.data?.posts.length ?? 0)}
       onSignOut={async () => {
         await authClient.signOut();
         router.push("/");
@@ -59,7 +69,9 @@ export function Rail() {
 }
 
 /** Presentational, so the dev preview can draw the real shell. */
-export function RailView({ pathname, email, onYou = 0, onSignOut }: { pathname: string; email: string | null; onYou?: number; onSignOut: () => void }) {
+export function RailView({ pathname, email, onYou = 0, feedback = null, onSignOut }: { pathname: string; email: string | null; onYou?: number; feedback?: ReturnType<typeof feedbackNav>; onSignOut: () => void }) {
+  const items: { href: string; label: string; count: number }[] = RAIL_ITEMS.map((i) => ({ ...i, count: i.href === "/app" ? onYou : 0 }));
+  if (feedback) items.push(feedback);
   return (
     <aside className="flex shrink-0 flex-col border-b border-line-1 bg-bg-deep md:sticky md:top-0 md:h-dvh md:w-56 md:border-r md:border-b-0">
       <div className="flex h-14 items-center justify-between pr-1 pl-4 md:h-16 md:px-5">
@@ -70,9 +82,10 @@ export function RailView({ pathname, email, onYou = 0, onSignOut }: { pathname: 
         </div>
       </div>
       <nav className="flex gap-0.5 overflow-x-auto px-2 pb-2 [scrollbar-width:none] md:flex-col md:gap-1 md:overflow-visible md:px-3 md:pb-0" aria-label="App">
-        {RAIL_ITEMS.map((item) => {
-          const active = isActive(item.href, pathname);
-          const count = item.href === "/app" ? onYou : 0;
+        {items.map((item) => {
+          const active = item.href === FEEDBACK_ITEM.href ? under(item.href, pathname) : isActive(item.href, pathname);
+          const count = item.count;
+          const isFeedback = item.href === FEEDBACK_ITEM.href;
           return (
             <Link
               key={item.href}
@@ -87,7 +100,7 @@ export function RailView({ pathname, email, onYou = 0, onSignOut }: { pathname: 
                 <span className="num inline-flex items-center gap-1.5 font-mono text-[12px] text-amber">
                   <span aria-hidden className="size-1.5 rounded-full bg-amber" />
                   {count}
-                  <span className="sr-only"> on you</span>
+                  <span className="sr-only">{isFeedback ? " open" : " on you"}</span>
                 </span>
               ) : null}
             </Link>

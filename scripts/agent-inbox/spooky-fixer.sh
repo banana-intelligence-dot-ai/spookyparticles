@@ -251,7 +251,7 @@ if [ -z "$SPOOKY_API_KEY" ] && { [ -t 0 ] || [ "$sign_in_only" = true ]; }; then
     exit 1
   elif [ "$si_rc" = 2 ]; then
     # This Spooky has no sign-in yet: ask for a key, hidden.
-    printf 'Paste your Spooky key (from Agents, Connect an agent, Read). It stays hidden: '
+    printf 'Paste your Spooky key (from Agents, Connect with an agent, Read). It stays hidden: '
     stty -echo 2>/dev/null; IFS= read -r SPOOKY_API_KEY || SPOOKY_API_KEY=; stty echo 2>/dev/null; printf '\n'
     SPOOKY_API_KEY=$(printf '%s' "$SPOOKY_API_KEY" | tr -d ' \t\r\n')
     case "$SPOOKY_API_KEY" in sp_?*) ;; *) SPOOKY_API_KEY=; printf 'That is not a Spooky key (they start with sp_).\n' >&2; exit 1 ;; esac
@@ -653,10 +653,11 @@ You are fixing a production problem in this repository. Spooky Particles found i
 
 1. Read this repo's CLAUDE.md or AGENTS.md first and follow its rules, above all about committing, pushing and deploying. If they say a person must approve a deploy, commit the fix and stop there.
 2. Read .spooky/lessons.md if it exists: what earlier fixes in this repo learned. The latest ones are also under the incident. Then find the cause, starting from the incident, then the code, the logs and recent commits.
-3. If the cause is clear, make the smallest fix, add or update a test, and run the repo's own tests. If the cause is not clear, or the fix needs secrets, environment variables, DNS, billing, a database schema change or deleting data, change nothing and say why.
-4. Deploy only the way the repo's rules allow.
-5. Do not run the claim or confirm commands in the incident, and do not try to reach Spooky. The fixer that started you has claimed this problem and asks Spooky to check production as soon as you finish.
-6. Add one dated line to .spooky/lessons.md (create it if needed): what broke, the real cause, and what fixed it or why you stopped. Write it for the next agent that fixes this repo. Keep the file under 60 lines by merging repeats. Commit it with your fix; if you changed nothing else, commit it alone only if the repo's rules allow.
+3. If the cause is clear, make the smallest fix, add a test if one fits, and run the repo's own tests. Judge the fix only by the tests and checks already on the default branch: never edit, skip or delete a test, CI workflow or check config to make it pass. After three attempts that fail, stop and say what you tried, with the failing output. If the cause is not clear, or the fix needs secrets, environment variables, DNS, billing, a database schema change or deleting data, change nothing and say why.
+4. End every commit message with a line "Verified: <command> <result>", or "Verified: none, <why>".
+5. Deploy only the way the repo's rules allow.
+6. Do not run the claim or confirm commands in the incident, and do not try to reach Spooky. The fixer that started you has claimed this problem and asks Spooky to check production as soon as you finish.
+7. Add one dated line to .spooky/lessons.md (create it if needed): what broke, the real cause, and what fixed it or why you stopped. Write it for the next agent that fixes this repo. Keep the file under 60 lines by merging repeats. Commit it with your fix; if you changed nothing else, commit it alone only if the repo's rules allow.
 
 Never read or print .env files, keys or tokens. One fix per run. Run git commit, git push and gh pr create each as its own command, never chained with && or ; to anything else: only then can they reach your signing key and the network.
 

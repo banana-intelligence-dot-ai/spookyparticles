@@ -1,6 +1,6 @@
 "use client";
 /**
- * Settings: the accounts Spooky reads, where alerts go, what is not watched, the homepage feed,
+ * Settings: the accounts Spooky reads, where alerts go, what is not watched, the homepage feed, product emails,
  * ways to sign in, your data, and the pages that left the rail. Read only toward your accounts.
  */
 import Link from "next/link";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui";
 import { ConnectionState } from "../connection-state";
 import { apiPost, formatInt, useApi } from "@/components/use-api";
+import { MarketingToggle } from "../marketing-emails";
 import { PublicFeedToggle } from "../public-feed-toggle";
 import { MORE } from "../rail";
 import { SignInWays, type Identity } from "./sign-in-ways";
@@ -228,6 +229,12 @@ export function SettingsView({ integrationEnabled, vercelSignInEnabled }: { inte
         <section aria-labelledby="feed-title" className="mt-14">
           <SectionTitle id="feed-title">Homepage feed</SectionTitle>
           <PublicFeedToggle />
+        </section>
+      ) : null}
+      {conns.data ? (
+        <section aria-labelledby="emails-title" className="mt-14">
+          <SectionTitle id="emails-title">Emails</SectionTitle>
+          <MarketingToggle />
         </section>
       ) : null}
       {me.data?.signInIdentities && (vercelSignInEnabled || me.data.signInIdentities.length > 0) ? (

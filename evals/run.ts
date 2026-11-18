@@ -10,6 +10,8 @@ import {
   jobIssue,
   parseStatusFilter,
 } from "../apps/web/src/lib/checkins";
+import { jobReachesSession } from "../apps/web/src/lib/incidents";
+import { FIX_RULE, pagerWhat } from "../apps/web/src/lib/pager";
 import { fixedAfterAlert, medianFixMinutes } from "../apps/web/src/lib/fix-stats";
 import {
   historyChoice,
@@ -47,6 +49,12 @@ const registry: Record<string, (input: Record<string, any>) => unknown> = {
   jobIssue: ({ job }) => jobIssue(job),
   jobDisplayStatus: ({ job, nowAt }) => jobDisplayStatus(job, nowAt.getTime()),
   mustWaitForCheckIn: ({ job }) => mustWaitForCheckIn(job),
+  pagerWhat: ({ what }) => pagerWhat(what),
+  pagerWhatShape: ({ word, times }) => {
+    const out = pagerWhat(String(word).repeat(times));
+    return { fits: out.length <= 300, endsWithRule: out.endsWith(FIX_RULE) };
+  },
+  jobReachesSession: ({ project, narrowedTo }) => jobReachesSession(project, narrowedTo),
   parseStatusFilter: ({ raw }) => {
     const statuses = parseStatusFilter(raw);
     return statuses ? [...statuses].sort() : null;
