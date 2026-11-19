@@ -9,12 +9,13 @@
  * suggestions: nothing sends them to an agent until the owner hands one over.
  */
 
-export type BreakKind = "deploy_failed" | "job_failed" | "job_quiet" | "job_never" | "site_down" | "server_errors" | "check";
+export type BreakKind = "deploy_failed" | "job_failed" | "job_quiet" | "job_never" | "site_down" | "sitemap_page_dropped" | "sitemap_page_down" | "sitemap_unreadable" | "server_errors" | "check";
 
 /** The chart's kinds, plus what the job says now, mapped to one break kind. */
-export function breakKind(c: { kind: "deploy" | "job" | "site" | "server_errors" | "check"; what: string }, jobStatus?: string | null): BreakKind {
+export function breakKind(c: { kind: "deploy" | "job" | "site" | "sitemap_page_dropped" | "sitemap_page_down" | "sitemap_unreadable" | "server_errors" | "check"; what: string }, jobStatus?: string | null): BreakKind {
   if (c.kind === "deploy") return "deploy_failed";
   if (c.kind === "site") return "site_down";
+  if (c.kind === "sitemap_page_dropped" || c.kind === "sitemap_page_down" || c.kind === "sitemap_unreadable") return c.kind;
   if (c.kind === "server_errors") return "server_errors";
   if (c.kind === "check") return "check";
   if (jobStatus === "never_checked_in") return "job_never";
@@ -27,6 +28,9 @@ const TODO: Record<BreakKind, string> = {
   job_quiet: "Check the job still runs on schedule. If it is gone, retire it here.",
   job_never: "Add the check-in line to the job, or retire it if the job is gone.",
   site_down: "Open the site. If it is down, roll back to the last good deploy on your host.",
+  sitemap_page_dropped: "Check whether the page was removed on purpose; if not, restore it in the sitemap source and redeploy.",
+  sitemap_page_down: "Open the page. If it is gone by mistake, restore it or roll back the last deploy.",
+  sitemap_unreadable: "Open the sitemap. Restore it if it is missing or broken.",
   server_errors: "Open the host's logs for the failing route and fix the error.",
   check: "Open the suggestion and apply the fix it names, or dismiss it if it does not matter.",
 };
@@ -90,7 +94,7 @@ export function claimOn<C extends ClaimLike>(claims: C[], project: string | null
  */
 export function routingStatus(kind: BreakKind, claim: ClaimLike | null, now: number): { sent: boolean; text: string } {
   if (kind === "check") return { sent: false, text: "Not sent to your agent: suggestions wait for you." };
-  if (kind === "site_down" || kind === "server_errors") return { sent: false, text: "You were alerted. Your agents are not told about this kind yet." };
+  if (kind === "site_down" || kind.startsWith("sitemap_") || kind === "server_errors") return { sent: false, text: "You were alerted. Your agents are not told about this kind yet." };
   if (!claim) return { sent: true, text: "Sent to your agents. Nobody has picked it up yet." };
   const who = claim.agent === "a GitHub job" ? "A GitHub job took it" : !claim.apiKeyId ? "You claimed it from the web app" : claim.agent && /fixer/i.test(claim.agent) ? "Your fixer claimed it" : claim.agent ? `${claim.agent} claimed it` : "An agent claimed it";
   return { sent: true, text: `Sent to your agents. ${who} ${sinceWords(claim.at, now)}.` };

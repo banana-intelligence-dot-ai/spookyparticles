@@ -78,7 +78,7 @@ const text = (res: unknown) => JSON.stringify(res);
 
 beforeEach(() => { vi.clearAllMocks(); });
 
-const READS = ["public_feed", "marketing_emails", "commit_outcome", "manual_input", "list_connections", "list_alert_channels", "job_history", "recent_activity", "open_items", "fix_history", "list_agents", "list_mutes", "list_alarms", "forum_read", "forum_queue"];
+const READS = ["public_feed", "marketing_emails", "commit_outcome", "manual_input", "list_connections", "list_alert_channels", "job_history", "recent_activity", "open_items", "fix_history", "list_agents", "list_mutes", "list_alarms", "forum_read", "forum_queue", "agent_view"];
 const WRITES: [string, Record<string, unknown>][] = [
   ["create_job", { name: "Nightly backup", periodMinutes: 1440 }],
   ["retire_job", { job_id: ID }],
@@ -118,7 +118,7 @@ const WRITES: [string, Record<string, unknown>][] = [
 it("read tools are available to read keys and write tools are hidden from them", () => {
   const read = toolsFor(actor(["read"]));
   const write = toolsFor(actor(["read", "write"]));
-  expect(Object.keys(read)).toHaveLength(28);
+  expect(Object.keys(read)).toHaveLength(29);
   for (const name of READS) { expect(read[name]).toBeDefined(); expect(read[name].annotations.readOnlyHint).toBe(true); }
   for (const [name] of WRITES) { expect(read[name]).toBeUndefined(); expect(write[name].annotations.readOnlyHint).toBe(false); }
 });

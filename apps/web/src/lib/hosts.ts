@@ -62,3 +62,9 @@ export function providerFromUrl(url: string | null): string | null {
   for (const [re, name] of table) if (re.test(host)) return name;
   return null;
 }
+
+/** Order for picking a project's public address: the owner's own domains first, Vercel's *.vercel.app names last, then by name. */
+export function byPublicName(x: string, y: string): number {
+  const platform = (n: string) => (/\.vercel\.app$/i.test(n) ? 1 : 0);
+  return platform(x) - platform(y) || x.localeCompare(y);
+}

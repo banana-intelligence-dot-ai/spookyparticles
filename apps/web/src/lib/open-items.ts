@@ -22,13 +22,14 @@ import { duration, fixedByAgent, fixedByWords, medianFixMinutes } from "./fix-st
 import { ignoredKeys } from "./ignores";
 import { muteFor, mutesFor, type Mute, type MuteKind } from "./mutes";
 import { projectsFor, type ProjectView } from "./projects";
+import { pushAlertKey } from "./push-no-deploy";
 
 const DAY = 86_400_000;
 /** No push for this long and a project looks ended: the clear prompt offers the whole project. */
 export const ENDED_DAYS = 90;
 const RECENT_FIXES = 5;
 
-export type OpenKind = BreakKind | "connection" | "stale_push";
+export type OpenKind = BreakKind | "connection" | "push_not_deployed";
 export type OpenLink = { label: string; href: string; external: boolean };
 export type Prevent = { project: string; kind: MuteKind | null; ask: string };
 export type OpenItem = {
@@ -87,7 +88,7 @@ export type OpenInput = {
 };
 
 const PROVIDER: Record<string, string> = { github: "GitHub", gmail: "Gmail", vercel: "Vercel", supabase: "Supabase", cloudflare: "Cloudflare" };
-const KIND_WORDS: Record<CatchKind, string> = { deploy: "failed-deploy notices", job: "job notices", site: "site-down notices", server_errors: "server-error notices", check: "check suggestions" };
+const KIND_WORDS: Record<CatchKind, string> = { deploy: "failed-deploy notices", job: "job notices", site: "site-down notices", sitemap_page_dropped: "sitemap page-drop notices", sitemap_page_down: "sitemap page-down notices", sitemap_unreadable: "sitemap unreadable notices", server_errors: "server-error notices", check: "check suggestions" };
 const ROUTED = new Set<BreakKind>(["deploy_failed", "job_failed", "job_quiet", "job_never"]);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const short = (project: string) => project.split("/").pop() ?? project;
@@ -197,31 +198,33 @@ export function buildOpenItems(input: OpenInput): OpenReport {
     });
   }
 
-  // A push the host never built. Nothing sends this to an agent.
+  // A default-branch push Vercel never built is a deploy break agents can take.
   for (const p of input.projects) {
     const s = p.stalePush;
     if (!s) continue;
-    const clearKey = `stale:${p.id}@${s.pushedAt}`;
+    const clearKey = pushAlertKey(p.name, s.sha);
     if (input.cleared.has(clearKey) || muteFor(input.mutes, p.name, "deploy")) continue;
-    const title = `${s.host} has not deployed the latest push`;
+    const title = `${s.host} has no deployment for ${s.sha.slice(0, 7)}`;
+    const claim = claimOn(input.claims, p.name);
+    const owner = input.agents > 0 ? "agents" : "you";
     items.push({
-      id: `stale:${p.id}`,
-      kind: "stale_push",
+      id: `push:${clearKey}`,
+      kind: "push_not_deployed",
       project: p.name,
       title,
-      happened: `Pushed ${sinceWords(s.pushedAt, now)}. ${s.lastDeployAt ? `The last deploy was ${sinceWords(s.lastDeployAt, now)}.` : `${s.host} shows no deploy for it.`}`,
-      todo: `Open ${s.host} and check why the push did not build.`,
-      owner: "you",
-      who: "Not sent to your agents: this one waits for you.",
+      happened: `Pushed to ${s.branch} ${sinceWords(s.pushedAt, now)}. ${s.host} has no deployment for ${s.sha.slice(0, 7)}.`,
+      todo: "Check the project's Git settings in Vercel and restore the deploy link.",
+      owner,
+      who: owner === "you" ? noAgent : routingStatus("deploy_failed", claim, now).text,
       since: s.pushedAt,
       waiting: false,
       count: 1,
-      prompt: breakPrompt({ project: p.name, what: title, at: s.pushedAt }),
+      prompt: breakPrompt({ project: p.name, what: title, cause: `Pushed commit ${s.sha} to ${s.branch}, but Vercel has no deployment for it.`, at: s.pushedAt }),
       clearKeys: [clearKey],
       jobId: null,
       link: { label: "Open the project", href: projectHref(p.name), external: false },
       prevent: preventFor(p.name, "deploy", input.projects, now),
-      sendable: false,
+      sendable: owner === "agents" && !claim,
     });
   }
 
@@ -250,7 +253,7 @@ export function buildOpenItems(input: OpenInput): OpenReport {
     });
   }
 
-  const RANK: Record<OpenKind, number> = { site_down: 0, server_errors: 1, connection: 2, deploy_failed: 3, job_failed: 4, job_quiet: 5, job_never: 6, stale_push: 7, check: 8 };
+  const RANK: Record<OpenKind, number> = { site_down: 0, server_errors: 1, connection: 2, deploy_failed: 3, push_not_deployed: 3, job_failed: 4, job_quiet: 5, job_never: 6, sitemap_page_down: 7, sitemap_page_dropped: 8, sitemap_unreadable: 8, check: 9 };
   const order = (a: OpenItem, b: OpenItem) => Number(a.waiting) - Number(b.waiting) || RANK[a.kind] - RANK[b.kind] || (b.since ?? "").localeCompare(a.since ?? "") || a.id.localeCompare(b.id);
   const onYou = items.filter((i) => i.owner === "you").sort(order);
   const withAgents = items.filter((i) => i.owner === "agents").sort(order);

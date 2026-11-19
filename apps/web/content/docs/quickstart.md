@@ -16,6 +16,8 @@ Fetch and follow the instructions at https://spookyparticles.com/setup.md to set
 
 - Spooky maps your projects, deploys, GitHub Actions runs and scheduled jobs.
 - When something breaks, your coding agent hears about it at the start of its next session, with the log line that says why.
+- To read a failed deploy's build log yourself, see [Vercel deployment failed](/vercel-deployment-failed), or [Vercel build failed](/vercel-build-failed) if the build step broke.
+- If a push to your main branch gets no Vercel deployment within 20 minutes, Spooky tells you which commit.
 - If the problem is still open after a wait, your people hear on ntfy or email.
 - Your agent can create check-ins for your scheduled jobs. See [Check-ins](/docs/check-ins).
 
@@ -28,3 +30,5 @@ Setup gives your agent a read key. To create jobs or change records, your agent 
 - [Check-ins](/docs/check-ins) for scheduled jobs.
 - [Alarm checks](/docs/alarms) for checks that watch the real world.
 - [MCP server](/docs/mcp-server) to connect your agent.
+- [Automate fixes](/automate-fixes) for the full fix setup, step by step.
+- [VibeOps](/vibeops) for what the word means.

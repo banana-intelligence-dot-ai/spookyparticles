@@ -1,17 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { decideRuns, expectedRuns, nextRun, pickSchedules, validTimeZone } from "./vercel-schedules";
+import { decideRuns, expectedRuns, mergeSchedules, nextRun, pickSchedules, pickVercelSchedules, validTimeZone } from "./vercel-schedules";
 
 const ms = (value: string) => Date.parse(value);
 const runs = (cron: string, start: string, end: string) => expectedRuns(cron, ms(start), ms(end))?.map((n) => new Date(n).toISOString());
 
 describe("Vercel schedule definitions", () => {
-  it("picks legacy crons and named schedules without copying other project data", () => {
-    expect(pickSchedules({ crons: { definitions: [{ path: "/api/daily", schedule: "0 0 * * *", host: "secret.example" }] }, schedules: { billing: { path: "/api/bill", schedule: "*/5 * * * *", requestMethod: "POST" } } })).toEqual([
-      { name: "/api/daily", path: "/api/daily", schedule: "0 0 * * *", method: "GET" },
-      { name: "billing", path: "/api/bill", schedule: "*/5 * * * *", method: "POST" },
+  it("picks legacy crons from the project JSON", () => {
+    expect(pickSchedules({
+      crons: { definitions: [{ path: "/api/daily", schedule: "0 0 * * *", host: "secret.example" }] },
+    })).toEqual([
+      { name: "/api/daily", path: "/api/daily", schedule: "0 0 * * *", method: "GET", timeZone: null, jitterMinutes: 0 },
     ]);
     expect(pickSchedules({})).toEqual([]);
-    expect(pickSchedules({ crons: { definitions: [null, { path: 1, schedule: "* * * * *" }] }, schedules: { bad: null } })).toEqual([]);
+    expect(pickSchedules({ crons: { definitions: [null, { path: 1, schedule: "* * * * *" }] } })).toEqual([]);
+  });
+
+  it("maps active path cron schedules and skips unsupported definitions", () => {
+    expect(pickVercelSchedules([
+      { name: "billing", namespace: "default", timezone: "America/New_York", expression: { type: "cron", cron: "*/5 * * * *" }, jitter: 7, target: { type: "path", path: "/api/bill", requestMethod: "get" }, state: "active", source: "dynamic" },
+      { name: "defaulted", timezone: "UTC", expression: { type: "cron", cron: "0 * * * *" }, target: { type: "path", path: "/api/default" }, state: "active" },
+      { name: "high", timezone: "America/Not_A_Zone", expression: { type: "cron", cron: "0 * * * *" }, jitter: 99, target: { type: "path", path: "/api/high" }, state: "active" },
+      { name: "low", expression: { type: "cron", cron: "0 * * * *" }, jitter: -4, target: { type: "path", path: "/api/low" }, state: "active" },
+      { name: "function", expression: { type: "cron", cron: "0 * * * *" }, target: { type: "function", functionId: "fn_1" }, state: "active" },
+      { name: "queue", expression: { type: "cron", cron: "0 * * * *" }, target: { type: "queue", topic: "work" }, state: "active" },
+      { name: "once", expression: { type: "single", at: "2026-12-01T00:00:00Z" }, target: { type: "path", path: "/api/once" }, state: "active" },
+      { name: "paused", expression: { type: "cron", cron: "0 * * * *" }, target: { type: "path", path: "/api/paused" }, state: "inactive" },
+    ])).toEqual([
+      { name: "billing", path: "/api/bill", schedule: "*/5 * * * *", method: "GET", timeZone: "America/New_York", jitterMinutes: 7 },
+      { name: "defaulted", path: "/api/default", schedule: "0 * * * *", method: "POST", timeZone: null, jitterMinutes: 1 },
+      { name: "high", path: "/api/high", schedule: "0 * * * *", method: "POST", timeZone: null, jitterMinutes: 15 },
+      { name: "low", path: "/api/low", schedule: "0 * * * *", method: "POST", timeZone: null, jitterMinutes: 0 },
+    ]);
+  });
+
+  it("merges crons and schedules and deduplicates by name and path", () => {
+    const cron = { name: "daily", path: "/api/daily", schedule: "0 0 * * *", method: "GET", timeZone: null, jitterMinutes: 0 };
+    const schedule = { ...cron, method: "POST" };
+    const hourly = { ...cron, name: "hourly", schedule: "0 * * * *" };
+    expect(mergeSchedules([cron], [schedule, hourly])).toEqual([cron, hourly]);
   });
 });
 
@@ -35,6 +61,9 @@ describe("UTC cron", () => {
 });
 
 describe("zoned cron", () => {
+  it("places a New York 9am run at 14:00 UTC in winter", () => {
+    expect(expectedRuns("0 9 * * *", ms("2026-01-01T13:59:00Z"), ms("2026-01-01T14:00:00Z"), 1, "America/New_York")).toEqual([ms("2026-01-01T14:00:00Z")]);
+  });
   it("moves a New York morning check across the spring DST change", () => {
     expect(nextRun("35 7 * * 1-5", ms("2026-03-06T12:35:00Z"), "America/New_York")).toBe(ms("2026-03-09T11:35:00Z"));
     expect(nextRun("35 7 * * 1-5", ms("2026-03-05T12:35:00Z"), "America/New_York")).toBe(ms("2026-03-06T12:35:00Z"));

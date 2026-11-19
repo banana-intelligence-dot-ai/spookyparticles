@@ -14,6 +14,8 @@ npm i spooky-checkin
 
 ## A Vercel cron route
 
+For why Vercel cron runs go missing and how Spooky catches them, see [Vercel cron job monitoring](/vercel-cron-job-monitoring).
+
 Wrap the route's handler.
 
 ```ts

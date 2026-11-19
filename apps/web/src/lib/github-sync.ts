@@ -109,6 +109,16 @@ export async function syncRepoWith(t: string, input: { userId: string; accountNo
   const call = `GET /repos/${owner}/${name}/deployments`;
   const list = await gh<Deployment[]>(t, `${base}/deployments?per_page=100`, { emptyOn: EMPTY_STATUSES, empty: [] });
   let rateRemaining = list.rateRemaining;
+  // This is best effort: an empty repo or missing commit permission must not stop inventory.
+  if (repo.defaultBranch) {
+    try {
+      const head = await gh<{ sha: string; commit?: { committer?: { date?: string | null } | null; message?: string | null } }>(t, `${base}/commits/${encodeURIComponent(repo.defaultBranch)}`, { emptyOn: new Set([403, 404, 409]), empty: { sha: "" } });
+      if (head.data.sha && head.data.commit?.committer?.date) {
+        await getDb().update(schema.nodes).set({ attributes: sqlMergeAttr({ head_sha: head.data.sha, head_at: head.data.commit.committer.date, head_message: head.data.commit.message?.split("\n")[0].slice(0, 120) ?? null }) }).where(eq(schema.nodes.id, repoNodeId));
+      }
+      rateRemaining = head.rateRemaining ?? rateRemaining;
+    } catch { /* A head read is optional. */ }
+  }
   const latestByEnv = new Map<string, Deployment>();
   const observedProduction: ProductionDeployment[] = [];
   for (const d of list.data) {

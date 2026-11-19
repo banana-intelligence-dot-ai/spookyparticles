@@ -59,6 +59,8 @@ export function fixVerdict(input: { project: string; known: boolean; incidents: 
   if (building.length) {
     return { ...base, verdict: "checking", retryAfterSeconds: 60, message: `A deploy is still building (${building[0].name}). Ask again when it finishes.` };
   }
+  const missing = incidents.find((i) => i.kind === "push_not_deployed");
+  if (missing?.kind === "push_not_deployed") return { ...base, verdict: "still_broken", retryAfterSeconds: null, message: `Not fixed yet. Vercel has no deployment for ${missing.commit.sha.slice(0, 7)} on ${project}.` };
   const deploys = incidents.filter((i) => i.kind === "deploy_failed");
   if (deploys.length) {
     const first = deploys[0];
@@ -126,7 +128,7 @@ export async function confirmFix(actor: Actor, project: string, nowMs = Date.now
 export function formatFixCheckText(c: FixCheck): string {
   const lines = [`Spooky fix check for ${c.project}: ${c.verdict.replace(/_/g, " ")}`, c.message];
   for (const i of c.open.slice(0, 5)) {
-    lines.push(i.kind === "deploy_failed" ? `- deploy failed (${i.environment ?? "?"}) at ${i.at ?? "?"}${i.cause ? `: ${i.cause}` : ""}` : `- job ${i.name}: ${i.issue.replace(/_/g, " ")}`);
+    lines.push(i.kind === "deploy_failed" ? `- deploy failed (${i.environment ?? "?"}) at ${i.at ?? "?"}${i.cause ? `: ${i.cause}` : ""}` : i.kind === "push_not_deployed" ? `- push not deployed: ${i.commit.sha.slice(0, 7)} at ${i.commit.at}` : `- job ${i.name}: ${i.issue.replace(/_/g, " ")}`);
   }
   return lines.join("\n") + "\n";
 }

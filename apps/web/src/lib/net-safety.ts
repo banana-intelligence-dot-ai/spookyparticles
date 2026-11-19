@@ -48,27 +48,28 @@ export async function resolvePublic(host: string, timeoutMs: number, resolver: (
 }
 
 /** One pinned HTTPS GET. The caller decides whether a redirect is allowed. */
-export function pinnedGet(url: URL, address: PublicAddress, timeoutMs: number, headers: Record<string, string>, limit = 0): Promise<{ status: number; location?: string; body: string; capped: boolean }> {
+export function pinnedGet(url: URL, address: PublicAddress, timeoutMs: number, headers: Record<string, string>, limit = 0): Promise<{ status: number; location?: string; type?: string; body: string; capped: boolean }> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0, capped = false;
     let settled = false;
     let timer: ReturnType<typeof setTimeout>;
-    const finish = (result: { status: number; location?: string; body: string; capped: boolean } | Error) => {
+    const finish = (result: { status: number; location?: string; type?: string; body: string; capped: boolean } | Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (result instanceof Error) reject(result); else resolve(result);
     };
     const req = request(url, { method: "GET", headers, lookup: pinnedLookup(address) }, (res) => {
+      const type = res.headers["content-type"];
       if (limit === 0) { finish({ status: res.statusCode ?? 0, location: res.headers.location, body: "", capped: false }); res.destroy(); return; }
       res.on("error", (err) => { if (!capped) finish(err); });
       res.on("data", (chunk: Buffer) => {
         if (size + chunk.length > limit) { chunks.push(chunk.subarray(0, Math.max(0, limit - size))); capped = true; res.destroy(); return; }
         chunks.push(chunk); size += chunk.length;
       });
-      res.on("end", () => finish({ status: res.statusCode ?? 0, location: res.headers.location, body: Buffer.concat(chunks).toString("utf8"), capped }));
-      res.on("close", () => { if (capped) finish({ status: res.statusCode ?? 0, location: res.headers.location, body: Buffer.concat(chunks).toString("utf8"), capped }); else if (!res.complete) finish(new Error("network error")); });
+      res.on("end", () => finish({ status: res.statusCode ?? 0, location: res.headers.location, type, body: Buffer.concat(chunks).toString("utf8"), capped }));
+      res.on("close", () => { if (capped) finish({ status: res.statusCode ?? 0, location: res.headers.location, type, body: Buffer.concat(chunks).toString("utf8"), capped }); else if (!res.complete) finish(new Error("network error")); });
     });
     timer = setTimeout(() => req.destroy(new Error("timeout")), Math.max(1, timeoutMs));
     req.on("error", finish);

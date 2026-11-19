@@ -10,16 +10,17 @@ import { getDb, schema } from "@/db";
 import type { FindingKind, ReceiptKind } from "@/db/schema";
 import { loadReceipts, publicFinding, spendFor, type LoadedReceipt } from "./findings";
 import { billingUrl, linkSubscriptions, matchRepo, type RepoNode } from "./findings-rules";
-import { providerFromCreator, providerOf } from "./hosts";
+import { byPublicName, providerFromCreator, providerOf } from "./hosts";
 import { moveHome, productionHost } from "./move-home";
 import { recordProductionMove } from "./move-home-record";
 import { breakKey, ignoredKeys } from "./ignores";
-import { mutesFor, type MuteKind } from "./mutes";
+import { muteFor, mutesFor, type MuteKind } from "./mutes";
 import { sameProject } from "./break-guide";
 import { buildProjectPage, type PageFinding, type ProjectPage } from "./project-page";
 import type { SpendReport, Subscription, VendorScope } from "./spend";
 import type { UptimeState } from "./vercel-health";
 import { storedAgent, type CommitAgent } from "./commit-agent";
+import { pushAlertKey, pushNoDeploy } from "./push-no-deploy";
 
 export { providerFromCreator, providerFromUrl, providerOf } from "./hosts";
 
@@ -95,11 +96,8 @@ export type ProjectView = {
   movedFrom: string | null;
   monthlyCents: number | null;
   currency: string | null;
-  /**
-   * A push the host never built: the repo deploys on a connected host, the last push is newer
-   * than the newest deployment by more than STALE_PUSH_MS, and nothing is building. Null otherwise.
-   */
-  stalePush: { pushedAt: string; lastDeployAt: string | null; host: string } | null;
+  /** The default branch head Vercel has not deployed after STALE_PUSH_MS. */
+  stalePush: { pushedAt: string; lastDeployAt: string | null; host: string; sha: string; message: string | null; branch: string } | null;
   subscriptions: { id: string; vendor: string; plan: string | null; scope: VendorScope; monthlyCents: number | null; currency: string | null; inbox: string }[];
   notices: NoticeView[];
   openFindings: { id: string; kind: FindingKind; title: string; amountCents: number | null }[];
@@ -159,10 +157,16 @@ export function dedupeDeployments(list: DeploymentView[]): DeploymentView[] {
 const DAY = 86_400_000;
 export const FAILED_STATES = new Set(["failure", "error"]);
 
+/** Any linked Vercel project building the default branch counts; null when none names a branch. */
+function productionBranchFor(branches: unknown[], defaultBranch: unknown): string | null {
+  const named = branches.filter((b): b is string => typeof b === "string");
+  if (named.length < branches.length) return null;
+  return named.find((b) => b === defaultBranch) ?? named[0] ?? null;
+}
+
 type ProjectRow = { id: string; name: string; status: string | null; lastActivityAt: Date | null; attributes: Record<string, unknown>; kind: "repo" | "host"; host: string | null; hostLinked: string | null };
 
-/** A push older than this with no deployment after it counts as a push the host never built. */
-export const STALE_PUSH_MS = 20 * 60_000;
+export { STALE_PUSH_MS } from "./push-no-deploy";
 
 /**
  * The rows the map calls projects: every GitHub repo, plus every host project (Vercel) that
@@ -180,18 +184,21 @@ async function projectRows(userId: string): Promise<ProjectRow[]> {
   ]);
   const domainById = new Map(domains.map((d) => [d.id, d]));
   const customByProject = new Map<string, string>();
-  for (const edge of pointsTo.sort((x, y) => (domainById.get(x.fromNodeId)?.name ?? "").localeCompare(domainById.get(y.fromNodeId)?.name ?? ""))) {
+  for (const edge of pointsTo.sort((x, y) => byPublicName(domainById.get(x.fromNodeId)?.name ?? "", domainById.get(y.fromNodeId)?.name ?? ""))) {
     const d = domainById.get(edge.fromNodeId);
     if (d?.status === "verified" && !d.attributes.redirect_to && !customByProject.has(edge.toNodeId)) customByProject.set(edge.toNodeId, `https://${d.name}`);
   }
   const linked = new Set(hostedOn.map((e) => e.toNodeId));
-  const hostByRepo = new Map<string, { provider: string; uptime: unknown; productionUrl: string | null }>();
+  const hostByRepo = new Map<string, { provider: string; uptime: unknown; productionUrl: string | null; recentDeployments: unknown; productionBranches: unknown[] }>();
   for (const e of hostedOn) {
     const p = hostProjects.find((x) => x.id === e.toNodeId);
     const provider = typeof (p?.attributes as Record<string, unknown> | undefined)?.provider === "string" ? String((p!.attributes as Record<string, unknown>).provider) : null;
-    hostByRepo.set(e.fromNodeId, { provider: provider === "vercel" ? "Vercel" : (provider ?? "host"), uptime: p?.attributes.uptime, productionUrl: customByProject.get(e.toNodeId) ?? (typeof p?.attributes.production_url === "string" ? p.attributes.production_url : null) });
+    const prior = hostByRepo.get(e.fromNodeId);
+    // A monorepo can feed several Vercel projects: keep every one's recent deploys, so a commit any of them built counts.
+    const recent = provider === "vercel" && Array.isArray(p?.attributes.recent_deployments) ? [...(Array.isArray(prior?.recentDeployments) ? prior.recentDeployments : []), ...p.attributes.recent_deployments] : prior?.recentDeployments;
+    if (provider === "vercel" || !prior) hostByRepo.set(e.fromNodeId, { provider: provider === "vercel" ? "Vercel" : (provider ?? "host"), uptime: p?.attributes.uptime, productionUrl: customByProject.get(e.toNodeId) ?? (typeof p?.attributes.production_url === "string" ? p.attributes.production_url : null), recentDeployments: recent, productionBranches: provider === "vercel" ? [...(prior?.productionBranches ?? []), p?.attributes.production_branch] : (prior?.productionBranches ?? []) });
   }
-  const rows: ProjectRow[] = repos.map((r) => ({ id: r.id, name: r.name, status: r.status, lastActivityAt: r.lastActivityAt, attributes: { ...r.attributes, uptime: hostByRepo.get(r.id)?.uptime, production_url: hostByRepo.get(r.id)?.productionUrl }, kind: "repo", host: null, hostLinked: hostByRepo.get(r.id)?.provider ?? null }));
+  const rows: ProjectRow[] = repos.map((r) => ({ id: r.id, name: r.name, status: r.status, lastActivityAt: r.lastActivityAt, attributes: { ...r.attributes, uptime: hostByRepo.get(r.id)?.uptime, production_url: hostByRepo.get(r.id)?.productionUrl, vercel_deployments: hostByRepo.get(r.id)?.recentDeployments, vercel_production_branch: productionBranchFor(hostByRepo.get(r.id)?.productionBranches ?? [], r.attributes.default_branch) }, kind: "repo", host: null, hostLinked: hostByRepo.get(r.id)?.provider ?? null }));
   for (const p of hostProjects) {
     if (linked.has(p.id)) continue;
     const a = p.attributes as Record<string, unknown>;
@@ -338,13 +345,11 @@ export async function projectsFor(userId: string, nowMs = Date.now(), pre?: Prel
     const recentDeployFailure = deps.some((d) => failedDeploy(d) && within(d.at, 30) && !laterSuccess(d.environment, d.at));
     const recentNoticeFailure = notices.some((n) => n.kind === "deployment" && within(n.at, 30) && !laterSuccess(null, n.at));
     const oldFailure = !recentDeployFailure && deps.some(failedDeploy);
-    // A push the host never built: only for repos a host connection links, so "no deploy" is the host's word.
-    const newestDeployAt = deps.map((d) => d.at).filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
-    const building = deps.some((d) => d.state === "in_progress" || d.state === "queued" || d.state === "pending");
-    const stalePush =
-      r.kind === "repo" && r.hostLinked && r.lastActivityAt && !building && r.status !== "archived" && nowMs - r.lastActivityAt.getTime() >= STALE_PUSH_MS && (!newestDeployAt || Date.parse(newestDeployAt) + STALE_PUSH_MS < r.lastActivityAt.getTime())
-        ? { pushedAt: r.lastActivityAt.toISOString(), lastDeployAt: newestDeployAt, host: r.hostLinked }
-        : null;
+    const head = typeof a.head_sha === "string" && typeof a.head_at === "string" ? { sha: a.head_sha, at: a.head_at } : null;
+    const vercelDeployments = Array.isArray(a.vercel_deployments) ? a.vercel_deployments.filter((d): d is { sha: string | null; at: string | null } => d && typeof d === "object" && (d.sha === null || typeof d.sha === "string") && (d.at === null || typeof d.at === "string")) : [];
+    const branchMatches = typeof a.vercel_production_branch !== "string" || a.vercel_production_branch === a.default_branch;
+    const missing = pushNoDeploy({ head, linkedToVercel: r.kind === "repo" && r.hostLinked === "Vercel" && Array.isArray(a.vercel_deployments) && branchMatches, archived: r.status === "archived", deployments: vercelDeployments, nowMs });
+    const stalePush = missing && !ignored.has(pushAlertKey(r.name, missing.sha)) && !muteFor(mutes, r.name, "deploy") ? { pushedAt: missing.at, lastDeployAt: missing.lastDeployAt, host: "Vercel", sha: missing.sha, message: typeof a.head_message === "string" ? a.head_message : null, branch: typeof a.default_branch === "string" ? a.default_branch : "default branch" } : null;
     const recentTrouble = notices.some((n) => (n.kind === "payment_failed" || n.kind === "incident_alert") && within(n.at, 30));
     let health: ProjectHealth = "unknown";
     if (r.status === "archived" && !archivedButLive) health = "archived";

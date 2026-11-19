@@ -1,13 +1,15 @@
 /** The same current deployment and job incidents for REST and MCP readers. */
 import { jobIssue, listJobs, type JobIssue, type JobView } from "./checkins";
 import { alarmFor, alarmsFor } from "./alarms";
-import { clearedJobIds } from "./ignores";
+import { clearedJobIds, ignoredKeys } from "./ignores";
 import { muteFor, mutesFor } from "./mutes";
 import { refreshRepoQuietly } from "./github-refresh";
 import { failedDeployments } from "./projects";
 import { resyncHostsQuietlyFor } from "./sync";
 import type { Claim } from "./claims";
 import type { CommitAgent } from "./commit-agent";
+import { pushAlertKey } from "./push-no-deploy";
+import { pushNoDeployFor, type LinkedPushFinding } from "./push-no-deploy-store";
 
 const WINDOW_MS = 30 * 86_400_000;
 
@@ -42,7 +44,22 @@ export type JobIncident = {
   url: "/app/jobs";
 };
 
-export type Incident = DeployIncident | JobIncident;
+export type PushIncident = {
+  kind: "push_not_deployed";
+  key: string;
+  project: string;
+  commit: { sha: string; message: string | null; at: string };
+  minutesSince: number;
+  cause: string;
+};
+
+export function pushIncident(f: LinkedPushFinding): PushIncident {
+  return { kind: "push_not_deployed", key: pushAlertKey(f.project, f.sha), project: f.project,
+    commit: { sha: f.sha, message: f.message, at: f.at }, minutesSince: f.minutesSince,
+    cause: `Pushed to ${f.branch} ${f.minutesSince} minutes ago and Vercel has no deployment for it. The Git link may be broken: check the project's Git settings in Vercel.` };
+}
+
+export type Incident = DeployIncident | PushIncident | JobIncident;
 
 export type IncidentsReport = {
   incidents: Incident[];
@@ -78,7 +95,7 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
   const refreshed = name ? await refreshRepoQuietly(userId, name) : "skipped";
   await resyncHostsQuietlyFor(userId);
   const now = Date.now();
-  const [deployments, jobs, mutes, alarms] = await Promise.all([failedDeployments(userId), watchedJobs(userId), mutesFor(userId), alarmsFor(userId)]);
+  const [deployments, jobs, mutes, alarms, pushes, ignored] = await Promise.all([failedDeployments(userId), watchedJobs(userId), mutesFor(userId), alarmsFor(userId), pushNoDeployFor(userId, now), ignoredKeys(userId)]);
   const failed = deployments.filter((d) => d.at && now - Date.parse(d.at) <= WINDOW_MS);
   const deployIncidents = failed
     .map((d) => {
@@ -120,8 +137,9 @@ export async function incidentsFor(userId: string, project = ""): Promise<Incide
       url: "/app/jobs",
     }];
   });
+  const pushIncidents = pushes.map(pushIncident).filter((incident) => matchesIncidentProject(incident.project, name) && !muteFor(mutes, incident.project, "deploy") && !ignored.has(incident.key));
   return {
-    incidents: [...deployIncidents, ...jobIncidents],
+    incidents: [...deployIncidents, ...pushIncidents, ...jobIncidents],
     checkedAt: new Date(now).toISOString(),
     repoRefreshed: refreshed === "refreshed",
     note: name
@@ -196,6 +214,13 @@ export function formatIncidentsText(
         ...(claimed ? [claimed] : []),
       ].join("\n");
     }
+    if (incident.kind === "push_not_deployed") return [
+      `Push not deployed: ${oneLine(incident.project)}`,
+      `Change: ${oneLine(incident.commit.sha).slice(0, 7)}${incident.commit.message ? ` ${oneLine(incident.commit.message)}` : ""}`,
+      `When: ${oneLine(incident.commit.at)}`,
+      `Cause: ${oneLine(incident.cause)}`,
+      ...(claimed ? [claimed] : []),
+    ].join("\n");
     const c = incident.commit;
     const tail = (incident.logTail ?? []).map(oneLine).filter(Boolean).slice(-LOG_LINES);
     return [

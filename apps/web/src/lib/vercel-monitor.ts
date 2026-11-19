@@ -6,6 +6,7 @@ import { deliverToAll } from "@/lib/alerts/channels";
 import { alertMuted } from "@/lib/mutes";
 import { getAccessToken } from "@/lib/connections";
 import { appUrl } from "@/lib/env";
+import { byPublicName } from "@/lib/hosts";
 import { pinnedGet, resolvePublic } from "@/lib/net-safety";
 import type { VercelScope } from "@/lib/providers/vercel";
 import { queryErrorRate } from "@/lib/providers/vercel-query";
@@ -15,7 +16,7 @@ import { readNodes, type SlimNode } from "@/lib/node-reads";
 
 type ProjectNode = SlimNode;
 const unreadableUntil = new Map<string, number>();
-const attrs = (p: ProjectNode) => p.attributes as Record<string, unknown>;
+export const attrs = (p: ProjectNode) => p.attributes as Record<string, unknown>;
 const priorError = (p: ProjectNode): ErrorRateState | null => {
   const v = attrs(p).errorRate;
   return v && typeof v === "object" && "incidentAt" in v && "recoveryWindows" in v ? v as ErrorRateState : null;
@@ -25,22 +26,22 @@ const priorUptime = (p: ProjectNode): UptimeState | null => {
   return v && typeof v === "object" && "state" in v && "lastCheckedAt" in v ? v as UptimeState : null;
 };
 
-async function notify(userId: string, kind: "server_errors" | "server_errors_recovered" | "site_down" | "site_recovered", key: string, project: string, subject: string, text: string) {
+export async function notify(userId: string, kind: "server_errors" | "server_errors_recovered" | "site_down" | "site_recovered" | "sitemap_page_dropped" | "sitemap_page_down" | "sitemap_unreadable" | "sitemap_resolved", key: string, project: string, subject: string, text: string, silent = false, url?: string) {
   const db = getDb();
   // Stopped watching: no ping. A recovery is still recorded, so the episode it closes does not stay open.
   const muted = await alertMuted(userId, project, kind);
-  if (muted && kind !== "site_recovered" && kind !== "server_errors_recovered") return false;
+  if (muted && !silent && kind !== "site_recovered" && kind !== "server_errors_recovered") return false;
   const [person] = await db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, userId)).limit(1);
-  const [row] = await db.insert(schema.alerts).values({ userId, kind, key, channel: "channels", to: person?.email ?? "", subject, payload: { project } })
+  const [row] = await db.insert(schema.alerts).values({ userId, kind, key, channel: "channels", to: person?.email ?? "", subject, payload: { project, ...(url ? { url } : {}) } })
     .onConflictDoNothing({ target: [schema.alerts.userId, schema.alerts.key] }).returning({ id: schema.alerts.id });
-  if (!row || muted) return false;
+  if (!row || muted || silent) return false;
   const results = await deliverToAll(userId, { subject, text, link: new URL("/app", appUrl()).toString(), priority: kind === "site_down" || kind === "server_errors" ? "high" : "default" }, project);
   const anyOk = results.some((r) => r.ok);
   await db.update(schema.alerts).set({ sentAt: anyOk ? new Date() : null, error: anyOk ? null : (results.map((r) => `${r.kind}: ${r.reason ?? "failed"}`).join("; ") || "no channel").slice(0, 200), payload: sql`${schema.alerts.payload} || ${JSON.stringify({ deliveries: results })}::jsonb` }).where(eq(schema.alerts.id, row.id));
   return true;
 }
 
-async function save(p: ProjectNode, field: "errorRate" | "uptime", state: ErrorRateState | UptimeState) {
+export async function save(p: ProjectNode, field: "errorRate" | "uptime" | "sitemap", state: ErrorRateState | UptimeState | Record<string, unknown>) {
   await getDb().update(schema.nodes).set({ attributes: sql`${schema.nodes.attributes} || ${JSON.stringify({ [field]: state })}::jsonb` })
     .where(and(eq(schema.nodes.id, p.id), eq(schema.nodes.userId, p.userId)));
 }
@@ -152,7 +153,7 @@ export function siteTargets<P extends ProjectNode>(projects: P[], domains: Proje
   return projects.filter((p) => p.externalKey.startsWith("vercel:project:")).map((p) => {
     const a = attrs(p);
     const own = links.filter((e) => e.toNodeId === p.id).map((e) => domainById.get(e.fromNodeId)).filter((d): d is ProjectNode => Boolean(d) && d!.userId === p.userId);
-    const custom = own.filter((d) => d.status === "verified" && !d.attributes.redirect_to).sort((x, y) => x.name.localeCompare(y.name))[0]?.name;
+    const custom = own.filter((d) => d.status === "verified" && !d.attributes.redirect_to).sort((x, y) => byPublicName(x.name, y.name))[0]?.name;
     const deployment = typeof a.production_url === "string" ? a.production_url : null;
     const url = custom ? `https://${custom}` : deployment;
     const knownHosts = new Set(own.map((d) => d.name.toLowerCase()));

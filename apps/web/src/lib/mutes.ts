@@ -16,7 +16,7 @@ export const MUTED = "notice.muted";
 export const UNMUTED = "notice.unmuted";
 
 /** The kinds a mute can name. Null (or "all") is the whole project. */
-export const MUTE_KINDS = ["deploy", "job", "site", "server_errors", "check"] as const;
+export const MUTE_KINDS = ["deploy", "job", "site", "sitemap_page_dropped", "sitemap_page_down", "sitemap_unreadable", "server_errors", "check"] as const;
 export type MuteKind = (typeof MUTE_KINDS)[number];
 export type Mute = { key: string; project: string; kind: MuteKind | null; reason: string | null; at: string; by: string | null };
 
@@ -55,8 +55,9 @@ export function muteFor(mutes: Mute[], project: string | null | undefined, kind?
 
 /** Alert kinds as they are stored, mapped to the kind a mute names. Expirations follow the whole-project mute only. */
 export function muteKindOfAlert(alertKind: string): MuteKind | null {
-  if (alertKind.startsWith("deploy")) return "deploy";
+  if (alertKind.startsWith("deploy") || alertKind === "push_not_deployed") return "deploy";
   if (alertKind.startsWith("job")) return "job";
+  if (alertKind === "sitemap_page_dropped" || alertKind === "sitemap_page_down" || alertKind === "sitemap_unreadable") return alertKind;
   if (alertKind.startsWith("site")) return "site";
   if (alertKind.startsWith("server_errors")) return "server_errors";
   return null;

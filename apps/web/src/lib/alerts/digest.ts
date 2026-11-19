@@ -22,6 +22,9 @@ const KIND_WORDS: Record<string, string> = {
   job_quiet: "quiet jobs",
   deploy_failed: "failed deploys",
   site_down: "sites down",
+  sitemap_page_dropped: "pages missing from sitemaps",
+  sitemap_page_down: "sitemap pages down",
+  sitemap_unreadable: "unreadable sitemaps",
   server_errors: "error bursts",
   expiration: "expiry warnings",
 };

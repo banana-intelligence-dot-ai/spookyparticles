@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { historyChoice, scheduleConnectionId, scheduleSyncStatus } from "./vercel-watch";
+import { historyChoice, scheduleConnectionId, scheduleSyncStatus, shouldPauseMissingSchedule } from "./vercel-watch";
 
 const refused = { ok: false as const, reason: "not_readable" as const, status: 403 };
 const unavailable = { ok: false as const, reason: "unavailable" as const };
@@ -54,6 +54,15 @@ describe("schedule state during sync", () => {
     expect(scheduleSyncStatus("up", true, false)).toBe("paused");
     expect(scheduleSyncStatus("down", false, true)).toBe("up");
     expect(scheduleSyncStatus("late", false, false)).toBe("late");
+  });
+
+  it("never pauses a missing job when the project schedule list is unknown", () => {
+    const refs = new Set(["prj_1:/api/current:current"]);
+    const missing = { status: "up", externalRef: "prj_1:/api/old:old" };
+    expect(shouldPauseMissingSchedule(missing, refs, false)).toBe(false);
+    expect(shouldPauseMissingSchedule(missing, refs, true)).toBe(true);
+    expect(shouldPauseMissingSchedule({ ...missing, externalRef: "prj_1:/api/current:current" }, refs, true)).toBe(false);
+    expect(shouldPauseMissingSchedule({ ...missing, status: "retired" }, refs, true)).toBe(false);
   });
 });
 

@@ -59,7 +59,18 @@ curl -fsS -m 10 --retry 3 "<pingUrl>?count=12"
 - Send `?status=start` before the work, and set `maxRunMinutes`, to catch a run that never finishes.
 - Send `?count=N` with an ok ping, and set `minCount`, to flag a run that processed too few items. A missing count does not fail the run.
 
-In a Vercel cron route or a Node, Bun or Deno job, the [spooky-checkin package](/docs/npm-package) sends these pings for you.
+The link also takes path endings, for tools that build the URL that way (resticprofile, backrest and Ofelia hooks, for example):
+
+```bash
+curl -fsS -m 10 --retry 3 "<pingUrl>/start"   # started
+curl -fsS -m 10 --retry 3 "<pingUrl>"         # ran fine
+curl -fsS -m 10 --retry 3 "<pingUrl>/fail"    # failed
+curl -fsS -m 10 --retry 3 "<pingUrl>/$?"      # exit code: 0 is ok, 1 to 255 is a failure
+```
+
+The first 2,000 characters of a POST body on any of these are kept as the run's note.
+
+In a Vercel cron route or a Node, Bun or Deno job, the [spooky-checkin package](/docs/npm-package) sends these pings for you. For the Vercel side, see [Vercel cron job monitoring](/vercel-cron-job-monitoring).
 
 ## Read a job's own status
 
@@ -107,4 +118,6 @@ Then make the last step of the workflow ping it.
 
 ## Where alerts go
 
-Open `/app/jobs` once. Add an ntfy topic, a Slack or Teams webhook, or an email, then press Send a test. With no channel set, alerts go to your account email.
+Open `/app/jobs` once. Add an ntfy topic or an email, then press Send a test. With no channel set, alerts go to your account email.
+
+To have a missed run start a fix by your coding agent, see [Automate fixes](/automate-fixes). For the bigger picture, see [VibeOps](/vibeops).

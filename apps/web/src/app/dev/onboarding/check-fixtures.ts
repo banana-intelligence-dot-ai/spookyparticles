@@ -102,3 +102,13 @@ export const SERVICES_SAMPLE: ReturnType<typeof serviceRows> & { bill: typeof BI
   [use("a", "s1", "vercel", "GET /v1/billing/charges"), use("b", "s2"), use("c", "s2"), use("a", "s3", "manual"), use("b", "s4"), use("c", "s5")],
   { productionAt: new Map([["prj_a", new Date(NOW - 2 * 86_400_000).toISOString()], ["prj_b", new Date(NOW - 90 * 86_400_000).toISOString()]]), billingReadable: true, nowMs: NOW },
 ) }));
+
+/** What AI agents get, for the dev preview. Example sites only. */
+export const AGENT_VIEW = {
+  checkedAt: "2026-11-18T22:30:00.000Z",
+  sites: [
+    { project: "octocat/ledger-api", url: "https://ledger.example.com/", state: "ok" as const, reason: null, page: { bytes: 601_088, words: 544, bytesPerWord: 1105, capped: false }, markdown: { served: false, bytes: null, words: null }, llmsTxt: { served: false, bytes: null }, summary: "An agent reads 587 KB to get 544 words. No Markdown version. No llms.txt." },
+    { project: "octocat/docs", url: "https://docs.example.com/", state: "ok" as const, reason: null, page: { bytes: 267_264, words: 624, bytesPerWord: 428, capped: false }, markdown: { served: true, bytes: 4_096, words: 610 }, llmsTxt: { served: true, bytes: 9_400 }, summary: "An agent reads 261 KB to get 624 words. Markdown version answers (4 KB). llms.txt answers." },
+    { project: "octocat/admin", url: "https://admin.example.com/", state: "unknown" as const, reason: "site_protected" as const, page: null, markdown: { served: false, bytes: null, words: null }, llmsTxt: { served: false, bytes: null }, summary: "The site asks for a login, so an agent gets nothing." },
+  ],
+};

@@ -53,7 +53,7 @@ const BUSY: OpenInput = {
     project("p1", "octocat/ledger-api", 3),
     project("p2", "octocat/old-landing", 140 * 24),
     project("p3", "octocat/billing-web", 60),
-    project("p4", "hubot/docs-site", 5, { health: "attention", stalePush: { pushedAt: at(5), lastDeployAt: at(170), host: "Vercel" } }),
+    project("p4", "hubot/docs-site", 5, { health: "attention", stalePush: { pushedAt: at(5), lastDeployAt: at(170), host: "Vercel", sha: "abc123456789", message: "Ship docs", branch: "main" } }),
     project("p5", "hubot/newsletter", 90),
     project("p6", "octocat/edge-proxy", 30),
     project("p7", "octocat/search-api", 200),

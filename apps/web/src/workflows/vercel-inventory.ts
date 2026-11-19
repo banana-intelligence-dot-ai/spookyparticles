@@ -7,7 +7,7 @@ import { failRun } from "./steps/gmail";
 import { runErrorMessage } from "./steps/run-error";
 import { ensureVercelAccounts, listScopeProjects, markVercelSynced, syncVercelBilling, syncVercelProjects } from "./steps/vercel";
 
-/** Projects per step. Each step is billed, and this runs every 5 minutes. */
+/** Projects per step. Each step is billed, so the watcher starts this only after a change or hourly. */
 const BATCH = 10;
 
 export async function vercelInventory(input: { connectionId: string; syncRunId: string; billing?: boolean }) {
@@ -17,7 +17,7 @@ export async function vercelInventory(input: { connectionId: string; syncRunId: 
   let projects = 0;
   let truncated = false;
   try {
-    const { userId, accounts } = await ensureVercelAccounts(connectionId);
+    const { userId, accounts, fingerprints } = await ensureVercelAccounts(connectionId);
     for (const { scope, nodeId } of accounts) {
       const list = await listScopeProjects(connectionId, scope);
       truncated = truncated || list.truncated;
@@ -27,7 +27,7 @@ export async function vercelInventory(input: { connectionId: string; syncRunId: 
       // After the projects, so a charge tagged with a project can link to it. Billing moves daily, so the 5-minute watcher reads it once an hour.
       if (billing) await syncVercelBilling({ connectionId, userId, accountNodeId: nodeId, scope });
     }
-    await markVercelSynced(connectionId, syncRunId, projects, truncated);
+    await markVercelSynced(connectionId, syncRunId, projects, truncated, accounts, fingerprints);
     return { projects, truncated };
   } catch (err) {
     await failRun(syncRunId, runErrorMessage(err, "vercel inventory failed"));

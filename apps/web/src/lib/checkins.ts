@@ -14,6 +14,7 @@ import { deliverToAll, matchesProject, type DeliveryResult } from "./alerts/chan
 import { alertMuted } from "./mutes";
 import { pageGithub, pagerEnabled } from "./pager";
 import { nextRun } from "./vercel-schedules";
+import { retireUrl } from "./alerts/job-links";
 import type { Probe } from "./probes";
 
 export type StoredJobStatus = "new" | "up" | "late" | "down" | "paused" | "retired";
@@ -457,6 +458,9 @@ export async function notifyJob(j: typeof schema.checkinJobs.$inferSelect, kind:
       const { shouldDeferToAgent } = await import("./agent-first");
       if (await shouldDeferToAgent(j.userId, j.project)) return hold({ deferred: "agent", text }, "alert.deferred_to_agent");
     }
+    // A job that is gone for good keeps alerting until someone retires it: let the person do it from the alert itself.
+    // A missing master key must never cost the alert itself: send it without the link.
+    if (kind === "job_quiet") { try { text += `\nJob gone for good? Retire it here: ${retireUrl(j.userId, j.id)}`; } catch { /* no link */ } }
     const results: DeliveryResult[] = await deliverToAll(j.userId, { subject: n.subject, text, link, priority: n.priority }, j.project);
     const anyOk = results.some((r) => r.ok);
     await db

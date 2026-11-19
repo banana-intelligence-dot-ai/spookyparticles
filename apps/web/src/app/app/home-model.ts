@@ -77,7 +77,7 @@ export function valueLine(input: { projects: Pick<Project, "health">[]; catches:
 /** Who has a break, in a few words, for a list row. The full line is routingStatus. */
 export function routingShort(kind: BreakKind, claim: ClaimLike | null): string {
   if (kind === "check") return "Waits for you.";
-  if (kind === "site_down" || kind === "server_errors") return "You were alerted.";
+  if (kind === "site_down" || kind.startsWith("sitemap_") || kind === "server_errors") return "You were alerted.";
   if (!claim) return "Sent to your agents.";
   if (!claim.apiKeyId) return "You claimed it.";
   if (claim.agent && /fixer/i.test(claim.agent)) return "Your fixer is on it.";

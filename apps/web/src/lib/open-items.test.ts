@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Catch } from "./catches";
 import { buildOpenItems, preventFor, type OpenInput } from "./open-items";
+import { pushAlertKey } from "./push-no-deploy";
 
 const now = Date.parse("2026-11-12T12:00:00Z");
 const at = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
@@ -65,11 +66,11 @@ describe("buildOpenItems", () => {
     expect(buildOpenItems(input({ jobs, mutes: [muted("job")] })).summary.open).toBe(0);
   });
 
-  it("shows a stale push on you unless cleared or muted for deploys", () => {
-    const stalePush = { pushedAt: at(60), lastDeployAt: at(120), host: "Vercel" };
+  it("routes a missing Vercel deployment to agents unless cleared or muted", () => {
+    const stalePush = { pushedAt: at(60), lastDeployAt: at(120), host: "Vercel", sha: "abcdef123456", message: "Ship", branch: "main" };
     const projects = [{ ...project(), stalePush }];
-    const key = `stale:me/app@${stalePush.pushedAt}`;
-    expect(buildOpenItems(input({ projects })).onYou[0]).toMatchObject({ kind: "stale_push", clearKeys: [key] });
+    const key = pushAlertKey("me/app", stalePush.sha);
+    expect(buildOpenItems(input({ projects })).withAgents[0]).toMatchObject({ kind: "push_not_deployed", clearKeys: [key], owner: "agents" });
     expect(buildOpenItems(input({ projects, cleared: new Set([key]) })).summary.open).toBe(0);
     expect(buildOpenItems(input({ projects, mutes: [muted("deploy")] })).summary.open).toBe(0);
   });

@@ -5,7 +5,7 @@ import { LegalPage } from "../terms/legal-page";
 
 const TITLE = "How to automate fixes for failed Vercel deploys and scheduled jobs with your own coding agent";
 const DESCRIPTION =
-  "Connect Vercel and GitHub, add one workflow per repo, and each failed deploy or missed scheduled job goes to your coding agent with what failed and why, when the logs say. Fixes arrive as pull requests unless your repo's rules allow shipping.";
+  "Connect Vercel and GitHub, add one workflow per repo, and each failed deploy or missed job goes to your own coding agent, which writes the fix as a pull request.";
 const BASE = "https://spookyparticles.com";
 
 export const metadata: Metadata = {

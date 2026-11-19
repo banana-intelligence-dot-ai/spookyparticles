@@ -22,6 +22,8 @@ import { ProjectPageScreen } from "@/app/app/project-page-view";
 import { PROJECT_PAGE } from "./project-page-fixture";
 import { RailView } from "@/app/app/rail";
 import { CheckScreen } from "@/app/app/check/check-view";
+import { AgentViewScreen } from "@/app/app/check/agent-view-panel";
+import { AGENT_VIEW } from "./check-fixtures";
 import { CHECK_CLEAR, CHECK_FULL, CHECK_NONE, CHECK_NOT_READY } from "./check-fixtures";
 import { PageHeader, SectionTitle, buttonStyles } from "@/components/ui";
 import type { NowFixture } from "./now-fixture";
@@ -199,7 +201,10 @@ export function Preview({ only, view, fixture }: { only: string | null; view: Vi
 
           {/* many: findings open. done: all clear. empty: no Vercel yet. Any other state: before the table exists. */}
           {view === "check" ? (
-            <CheckScreen report={f.key === "many" ? CHECK_FULL : f.key === "done" ? CHECK_CLEAR : f.list.length ? CHECK_NOT_READY : CHECK_NONE} error={null} now={NOW} onDismiss={noop} onRestore={noop} />
+            <>
+              <CheckScreen report={f.key === "many" ? CHECK_FULL : f.key === "done" ? CHECK_CLEAR : f.list.length ? CHECK_NOT_READY : CHECK_NONE} error={null} now={NOW} onDismiss={noop} onRestore={noop} />
+              <AgentViewScreen report={f.key === "many" ? AGENT_VIEW : null} error={null} busy={false} onRun={noop} />
+            </>
           ) : null}
 
           {view === "settings" ? (

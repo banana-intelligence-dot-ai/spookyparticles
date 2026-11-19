@@ -1,9 +1,10 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Footer, Wordmark } from "@/components/brand";
 import { LegalDocument } from "@/lib/legal-markdown";
 
 /** Shared frame for /privacy and /terms: wordmark, the document, footer. */
-export function LegalPage({ markdown }: { markdown: string }) {
+export function LegalPage({ markdown, above }: { markdown: string; above?: ReactNode }) {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 sm:px-8">
       <header className="flex h-16 items-center justify-between">
@@ -14,6 +15,7 @@ export function LegalPage({ markdown }: { markdown: string }) {
         </nav>
       </header>
       <main className="flex-1 py-12">
+        {above ? <div className="mb-10">{above}</div> : null}
         <LegalDocument markdown={markdown} />
       </main>
       <footer className="flex min-h-16 items-center border-t border-line-1 py-2">

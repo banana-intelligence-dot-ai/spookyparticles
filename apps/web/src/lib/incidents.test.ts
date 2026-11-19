@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatIncidentsText, jobReachesSession, matchesIncidentProject, type Incident } from "./incidents";
+import { formatIncidentsText, jobReachesSession, matchesIncidentProject, pushIncident, type Incident } from "./incidents";
 
 describe("incident project matching", () => {
   it("matches the full repo or its final name", () => {
@@ -19,6 +19,11 @@ describe("incident project matching", () => {
 });
 
 describe("agent inbox text", () => {
+  it("names the missing commit, branch, age, and Vercel Git settings", () => {
+    const incident = pushIncident({ project: "owner/repo", sha: "ABCDEF123", at: "2026-11-19T11:00:00Z", message: "Ship", branch: "main", minutesSince: 60, lastDeployAt: null });
+    expect(incident).toEqual({ kind: "push_not_deployed", key: "push_not_deployed:owner/repo:abcdef123", project: "owner/repo", commit: { sha: "ABCDEF123", message: "Ship", at: "2026-11-19T11:00:00Z" }, minutesSince: 60, cause: "Pushed to main 60 minutes ago and Vercel has no deployment for it. The Git link may be broken: check the project's Git settings in Vercel." });
+    expect(formatIncidentsText({ incidents: [incident] }, "owner/repo", "https://spooky.example")).toContain("Push not deployed: owner/repo");
+  });
   it("returns an empty body when nothing is open", () => {
     expect(formatIncidentsText({ incidents: [] }, "owner/repo", "https://spooky.example")).toBe("");
   });

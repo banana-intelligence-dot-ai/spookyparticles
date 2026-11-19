@@ -7,6 +7,7 @@ import { PastePrompt } from "./_landing/paste-prompt";
 import { SignInNotice } from "./_landing/signin-notice";
 import { SignIn } from "./sign-in";
 import { vercelSignInConfig } from "@/lib/env";
+import { VERCEL_ERROR_PAGES } from "@/lib/vercel-error-pages";
 
 /**
  * Every line of homepage copy lives here, so the headline can change in one edit.
@@ -233,6 +234,12 @@ export default function Landing() {
           <a href="/automate-fixes" className="hover:text-fg">Automate fixes</a>
           <a href="/releases" className="hover:text-fg">Releases</a>
           <a href="/vibeops" className="hover:text-fg">VibeOps</a>
+        </nav>
+        <nav aria-label="Vercel errors" className="flex flex-wrap gap-x-4 gap-y-1 sm:basis-full">
+          <span className="text-fg-3">Vercel errors</span>
+          {VERCEL_ERROR_PAGES.map((p) => (
+            <a key={p.slug} href={`/${p.slug}`} className="hover:text-fg">{p.label}</a>
+          ))}
         </nav>
         <p>Not affiliated with Vercel.</p>
       </footer>

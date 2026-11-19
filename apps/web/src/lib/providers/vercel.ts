@@ -10,10 +10,11 @@
  * and the raw body is never logged or stored.
  */
 
-import { pickSchedules } from "@/lib/vercel-schedules";
+import { mergeSchedules, pickSchedules, pickVercelSchedules, type Schedule } from "@/lib/vercel-schedules";
 import { agentFromCommit, type CommitAgent } from "@/lib/commit-agent";
 
 export const VERCEL_API = "https://api.vercel.com";
+export const VERCEL_SCHEDULES_API = "https://vercel-schedules.com/v1/schedules";
 
 export class VercelApiError extends Error {
   constructor(
@@ -177,7 +178,9 @@ export type VercelProject = {
   production: VercelDeployment | null;
   /** The newest deployment of any target, from latestDeployments. */
   latest: VercelDeployment | null;
-  schedules?: import("@/lib/vercel-schedules").Schedule[];
+  schedules?: Schedule[];
+  /** False when the separate Schedules API failed. Legacy crons in schedules are still usable. */
+  schedulesKnown?: boolean;
   cronDeploymentId?: string | null;
   protection?: { ssoProtection: { deploymentType: string | null } | null; passwordProtection: boolean; trustedIps: boolean } | null;
   env?: { key: string; targets: string[]; type: string }[] | null;
@@ -262,6 +265,7 @@ export function pickProject(raw: Record<string, unknown>): VercelProject {
     production: production ? { ...production, target: "production" } : null,
     latest,
     schedules: pickSchedules(raw),
+    schedulesKnown: false,
     cronDeploymentId: raw.crons && typeof raw.crons === "object" ? str((raw.crons as Record<string, unknown>).deploymentId) : null,
     protection: hasProtection ? {
       ssoProtection: raw.ssoProtection && typeof raw.ssoProtection === "object" ? { deploymentType: str((raw.ssoProtection as Record<string, unknown>).deploymentType) } : null,
@@ -273,9 +277,9 @@ export function pickProject(raw: Record<string, unknown>): VercelProject {
 }
 
 /** Settings may be absent from list responses. Read one project for its check inputs. */
-export async function getProjectChecksInput(token: string, scope: VercelScope, projectId: string): Promise<Pick<VercelProject, "protection" | "env" | "schedules">> {
+export async function getProjectChecksInput(token: string, scope: VercelScope, projectId: string): Promise<Pick<VercelProject, "protection" | "env" | "schedules" | "schedulesKnown">> {
   const raw = await vercelGet<Record<string, unknown>>(token, `/v9/projects/${encodeURIComponent(projectId)}`, teamQuery(scope));
-  const picked = pickProject(raw);
+  const picked = await withProjectSchedules(token, scope, pickProject(raw), { value: false });
   // Vercel leaves the variable list off a project that has none. Ask the list itself, so an empty
   // project reads as "nothing to check" and only a refusal reads as "not readable".
   let env = picked.env;
@@ -286,7 +290,47 @@ export async function getProjectChecksInput(token: string, scope: VercelScope, p
       // Refused or failed: the rules answer "unknown" for the variables and still judge protection.
     }
   }
-  return { protection: picked.protection, env, schedules: picked.schedules };
+  return { protection: picked.protection, env, schedules: picked.schedules, schedulesKnown: picked.schedulesKnown };
+}
+
+type RawSchedulesPage = { data?: unknown; cursor?: string | null };
+
+/** Active path cron schedules for one project, following at most five cursor pages. */
+export async function listProjectSchedules(token: string, scope: VercelScope, projectId: string, maxPages = 5): Promise<Schedule[]> {
+  const schedules: Schedule[] = [];
+  let cursor: string | undefined;
+  for (let page = 1; page <= Math.min(5, maxPages); page++) {
+    const body = await vercelGet<RawSchedulesPage>(token, VERCEL_SCHEDULES_API, {
+      projectId,
+      ...teamQuery(scope),
+      namespace: "default",
+      limit: 100,
+      cursor,
+    });
+    schedules.push(...pickVercelSchedules(body.data));
+    if (!body.cursor) break;
+    cursor = body.cursor;
+  }
+  return schedules;
+}
+
+/**
+ * A failed schedules read makes absence unknown while preserving project crons. A 401 or 403
+ * means this token cannot read Schedules at all, so the caller stops asking for the rest of
+ * the scope (each refused call cost about a second and a half per project).
+ */
+async function withProjectSchedules(token: string, scope: VercelScope, project: VercelProject, refused: { value: boolean }): Promise<VercelProject> {
+  if (refused.value) return { ...project, schedulesKnown: false };
+  try {
+    const schedules = await listProjectSchedules(token, scope, project.id);
+    return { ...project, schedules: mergeSchedules(project.schedules ?? [], schedules), schedulesKnown: true };
+  } catch (err) {
+    // Status only: the response body and the token never reach the log.
+    const status = err instanceof VercelApiError ? err.status : null;
+    if (status === 401 || status === 403) refused.value = true;
+    console.warn("[vercel] schedules read failed", project.id, status ?? (err as Error).name);
+    return { ...project, schedulesKnown: false };
+  }
 }
 
 type RawProjectsPage = Record<string, unknown>[] | { projects: Record<string, unknown>[]; pagination?: { next?: number | string | null } };
@@ -294,11 +338,12 @@ type RawProjectsPage = Record<string, unknown>[] | { projects: Record<string, un
 /** Every project in a scope, 100 per page, following pagination.next. Stops at maxPages and says so. */
 export async function listProjects(token: string, scope: VercelScope, maxPages = 50): Promise<{ projects: VercelProject[]; truncated: boolean }> {
   const projects: VercelProject[] = [];
+  const refused = { value: false };
   let until: number | string | undefined;
   for (let page = 1; page <= maxPages; page++) {
     const body = await vercelGet<RawProjectsPage>(token, "/v10/projects", { ...teamQuery(scope), limit: 100, until });
     const list = Array.isArray(body) ? body : body.projects;
-    for (const p of list) projects.push(pickProject(p));
+    for (const p of list) projects.push(await withProjectSchedules(token, scope, pickProject(p), refused));
     const next = Array.isArray(body) ? null : (body.pagination?.next ?? null);
     if (!next || list.length === 0) return { projects, truncated: false };
     until = next;

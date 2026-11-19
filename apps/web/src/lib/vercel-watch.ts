@@ -36,6 +36,11 @@ export function scheduleSyncStatus(prior: StoredJobStatus | undefined, shouldPau
   return shouldPause ? "paused" : restart ? "up" : prior ?? "up";
 }
 
+/** Missing means removed only after every schedule source was read successfully. */
+export function shouldPauseMissingSchedule(job: { status: string; externalRef: string | null }, refs: Set<string>, schedulesKnown: boolean): boolean {
+  return schedulesKnown && job.status !== "retired" && job.externalRef !== null && !refs.has(job.externalRef);
+}
+
 /** Marks a pause the sync made, so the sync may lift it and never lifts a person's. */
 const AUTO_NOTE = "auto:";
 
@@ -48,7 +53,7 @@ export function mustWaitForCheckIn(job: { lastPingAt: Date | null; lastEvidenceC
   return !job.lastPingAt || !job.lastEvidenceCheckedAt || job.lastPingAt.getTime() <= job.lastEvidenceCheckedAt.getTime();
 }
 
-export async function syncScheduleJobs(input: { userId: string; connectionId: string; projectId: string; projectName: string; scopeId: string; deploymentId: string | null; hasProduction: boolean; schedules: Schedule[] }) {
+export async function syncScheduleJobs(input: { userId: string; connectionId: string; projectId: string; projectName: string; scopeId: string; deploymentId: string | null; hasProduction: boolean; schedules: Schedule[]; schedulesKnown: boolean }) {
   const db = getDb();
   const existing = await db.select().from(schema.checkinJobs).where(and(eq(schema.checkinJobs.userId, input.userId), eq(schema.checkinJobs.source, "vercel"), eq(schema.checkinJobs.vercelProjectId, input.projectId)));
   const activeConnections = await db.select({ id: schema.connections.id }).from(schema.connections).where(and(
@@ -59,12 +64,13 @@ export async function syncScheduleJobs(input: { userId: string; connectionId: st
   for (const s of input.schedules) {
     const externalRef = `${input.projectId}:${s.path}:${s.name}`;
     refs.add(externalRef);
-    const first = nextRun(s.schedule, Date.now());
-    const second = first === null ? null : nextRun(s.schedule, first);
+    const timeZone = s.timeZone ?? "UTC";
+    const first = nextRun(s.schedule, Date.now(), timeZone);
+    const second = first === null ? null : nextRun(s.schedule, first, timeZone);
     const periodMinutes = first !== null && second !== null ? Math.max(1, Math.round((second - first) / 60_000)) : 1440;
-    const graceMinutes = periodMinutes >= 1440 ? 65 : 10;
+    const graceMinutes = (periodMinutes >= 1440 ? 65 : 10) + s.jitterMinutes;
     const prior = existing.find((j) => j.externalRef === externalRef);
-    const changed = prior?.schedule !== s.schedule || prior?.path !== s.path;
+    const changed = prior?.schedule !== s.schedule || prior?.path !== s.path || prior?.timeZone !== s.timeZone;
     // Only a pause the sync made itself is lifted by the sync. A person's pause stays a pause.
     const shouldPause = first === null || !input.hasProduction;
     const autoPaused = prior?.status === "paused" && (prior.lastNote ?? "").startsWith(AUTO_NOTE);
@@ -76,6 +82,7 @@ export async function syncScheduleJobs(input: { userId: string; connectionId: st
       project: input.projectName,
       path: s.path,
       schedule: s.schedule,
+      timeZone: s.timeZone,
       requestMethod: s.method,
       periodMinutes,
       graceMinutes,
@@ -96,7 +103,7 @@ export async function syncScheduleJobs(input: { userId: string; connectionId: st
     await db.insert(schema.checkinJobs).values({ userId: input.userId, source: "vercel", externalRef, token: randomToken(18), ...values })
       .onConflictDoUpdate({ target: [schema.checkinJobs.userId, schema.checkinJobs.externalRef], set: values });
   }
-  for (const j of existing) if (j.status !== "retired" && j.externalRef && !refs.has(j.externalRef)) {
+  for (const j of existing) if (shouldPauseMissingSchedule(j, refs, input.schedulesKnown)) {
     await db.update(schema.checkinJobs).set({ status: "paused", lastNote: `${AUTO_NOTE} schedule removed from the project`, updatedAt: new Date() }).where(eq(schema.checkinJobs.id, j.id));
   }
 }
@@ -155,23 +162,23 @@ export async function sweepVercelSchedules(nowMs = Date.now()): Promise<{ checke
     for (const job of group) {
       // History just became readable (first read, or a token was added): start clean from the next run.
       if ((job.evidenceState && job.evidenceState !== "ok") || !job.nextDueAt) {
-        const next = nextRun(job.schedule!, nowMs);
+        const next = nextRun(job.schedule!, nowMs, job.timeZone ?? "UTC");
         await db.update(schema.checkinJobs).set({ nextDueAt: next === null ? null : new Date(next), lastEvidenceCheckedAt: new Date(nowMs), evidenceState: "ok", status: "up", missCount: 0, updatedAt: new Date(nowMs) }).where(eq(schema.checkinJobs.id, job.id));
         continue;
       }
       let cursor = job.nextDueAt!.getTime();
       if (cursor < nowMs - 6 * 60 * 60_000 + 2 * 60_000) {
-        const safeDue = nextRun(job.schedule!, fromMs + 2 * 60_000 - 1);
+        const safeDue = nextRun(job.schedule!, fromMs + 2 * 60_000 - 1, job.timeZone ?? "UTC");
         if (safeDue === null) continue;
         cursor = safeDue;
         await db.update(schema.checkinJobs).set({ nextDueAt: new Date(cursor), updatedAt: new Date(nowMs) }).where(eq(schema.checkinJobs.id, job.id));
       }
-      const expected = expectedRuns(job.schedule!, cursor - 60_000, nowMs, 21);
+      const expected = expectedRuns(job.schedule!, cursor - 60_000, nowMs, 21, job.timeZone ?? "UTC");
       if (expected === null) continue;
       for (const decision of decideRuns(expected, evidence, job.path!, job.graceMinutes * 60_000, nowMs).slice(0, 20)) {
         if (decision.kind === "missed") await sweepQuietJobs(nowMs, [job.id]);
         else await recordPing(job.token, decision.kind, decision.kind === "fail" ? `HTTP ${decision.status}` : null, decision.atMs!);
-        const next = nextRun(job.schedule!, decision.dueMs);
+        const next = nextRun(job.schedule!, decision.dueMs, job.timeZone ?? "UTC");
         await db.update(schema.checkinJobs).set({ nextDueAt: next === null ? null : new Date(next), updatedAt: new Date(nowMs) }).where(eq(schema.checkinJobs.id, job.id));
         checked++;
       }

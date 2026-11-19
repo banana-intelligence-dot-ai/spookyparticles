@@ -27,6 +27,9 @@ const KIND_LABEL: Record<CatchKind, [string, string]> = {
   deploy: ["Deploy", "Deploys"],
   job: ["Job", "Jobs"],
   site: ["Site", "Sites"],
+  sitemap_page_dropped: ["Sitemap page", "Sitemap pages"],
+  sitemap_page_down: ["Sitemap page", "Sitemap pages"],
+  sitemap_unreadable: ["Sitemap", "Sitemaps"],
   server_errors: ["Errors", "Errors"],
   check: ["Check", "Checks"],
 };

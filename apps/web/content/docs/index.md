@@ -4,3 +4,5 @@ Spooky is a pager for people who ship on Vercel with coding agents. It watches d
 
 Free, requires your own coding agent.
 
+New here? [VibeOps](/vibeops) says what the work is. [Automate fixes](/automate-fixes) sets up fixes by your coding agent, step by step.
+

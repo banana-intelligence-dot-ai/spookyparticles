@@ -1,26 +1,61 @@
 /** Small, strict UTC cron reader. Unsupported syntax returns null. */
-export type Schedule = { name: string; path: string; schedule: string; method: string };
+export type Schedule = {
+  name: string;
+  path: string;
+  schedule: string;
+  method: string;
+  timeZone: string | null;
+  jitterMinutes: number;
+};
 export type RunEvidence = { atMs: number; path: string; status: number };
 export type RunDecision = { dueMs: number; kind: "ok" | "fail" | "missed"; atMs: number | null; status: number | null };
 
-export function pickSchedules(project: { crons?: unknown; schedules?: unknown }): Schedule[] {
+/** Legacy cron definitions still live on the project response. Vercel Schedules do not. */
+export function pickSchedules(project: { crons?: unknown }): Schedule[] {
   const out: Schedule[] = [];
   const crons = project.crons as { definitions?: unknown } | undefined;
   if (Array.isArray(crons?.definitions)) for (const raw of crons.definitions) {
     if (!raw || typeof raw !== "object") continue;
     const x = raw as Record<string, unknown>;
     if (typeof x.path === "string" && x.path.startsWith("/") && typeof x.schedule === "string")
-      out.push({ name: x.path, path: x.path, schedule: x.schedule, method: "GET" });
-  }
-  if (project.schedules && typeof project.schedules === "object" && !Array.isArray(project.schedules)) {
-    for (const [name, raw] of Object.entries(project.schedules)) {
-      if (!raw || typeof raw !== "object") continue;
-      const x = raw as Record<string, unknown>;
-      if (typeof x.path === "string" && x.path.startsWith("/") && typeof x.schedule === "string")
-        out.push({ name, path: x.path, schedule: x.schedule, method: typeof x.requestMethod === "string" ? x.requestMethod.toUpperCase() : "GET" });
-    }
+      out.push({ name: x.path, path: x.path, schedule: x.schedule, method: "GET", timeZone: null, jitterMinutes: 0 });
   }
   return out;
+}
+
+/** Reduce the Schedules API's objects to the active path crons the watcher can observe. */
+export function pickVercelSchedules(list: unknown): Schedule[] {
+  if (!Array.isArray(list)) return [];
+  const out: Schedule[] = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    const x = raw as Record<string, unknown>;
+    const expression = x.expression && typeof x.expression === "object" ? x.expression as Record<string, unknown> : null;
+    const target = x.target && typeof x.target === "object" ? x.target as Record<string, unknown> : null;
+    if (x.state !== "active" || expression?.type !== "cron" || target?.type !== "path") continue;
+    if (typeof x.name !== "string" || !x.name || typeof expression.cron !== "string" || typeof target.path !== "string" || !target.path.startsWith("/")) continue;
+    const zone = typeof x.timezone === "string" && x.timezone !== "UTC" && validTimeZone(x.timezone) ? x.timezone : null;
+    out.push({
+      name: x.name,
+      path: target.path,
+      schedule: expression.cron,
+      method: typeof target.requestMethod === "string" ? target.requestMethod.toUpperCase() : "POST",
+      timeZone: zone,
+      jitterMinutes: typeof x.jitter === "number" && Number.isFinite(x.jitter) ? Math.max(0, Math.min(15, Math.round(x.jitter))) : 1,
+    });
+  }
+  return out;
+}
+
+/** Keep the first definition when both APIs describe the same named path. */
+export function mergeSchedules(...lists: Schedule[][]): Schedule[] {
+  const seen = new Set<string>();
+  return lists.flat().filter((schedule) => {
+    const key = `${schedule.name}\0${schedule.path}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function field(raw: string, low: number, high: number): Set<number> | null {

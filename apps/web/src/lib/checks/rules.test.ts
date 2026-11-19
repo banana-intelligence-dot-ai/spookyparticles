@@ -35,12 +35,12 @@ describe("project check rules", () => {
     expect(publicNameRule(project({ env: undefined }))).toBeNull();
   });
   it("checks scheduled routes without calling them", () => {
-    const schedules = { daily: { path: "/api/daily", schedule: "0 0 * * *" } };
+    const schedules = { crons: { definitions: [{ path: "/api/daily", schedule: "0 0 * * *" }] } };
     expect(cronRule(project())).toMatchObject({ state: "not_applicable", reason: "no_schedules" });
-    expect(cronRule(project({ schedules, env: undefined }))).toMatchObject({ state: "unknown", reason: "needs_read_token" });
-    expect(cronRule(project({ schedules }))).toMatchObject({ state: "open", evidence: { paths: ["/api/daily"] } });
-    expect(cronRule(project({ schedules, env: [env("CRON_SECRET", "sensitive", "production")] })).state).toBe("ok");
-    expect(cronRule(project({ schedules, env: [env("CRON_SECRET", "sensitive", "preview")] })).state).toBe("open");
+    expect(cronRule(project({ ...schedules, env: undefined }))).toMatchObject({ state: "unknown", reason: "needs_read_token" });
+    expect(cronRule(project(schedules))).toMatchObject({ state: "open", evidence: { paths: ["/api/daily"] } });
+    expect(cronRule(project({ ...schedules, env: [env("CRON_SECRET", "sensitive", "production")] })).state).toBe("ok");
+    expect(cronRule(project({ ...schedules, env: [env("CRON_SECRET", "sensitive", "preview")] })).state).toBe("open");
   });
   it("covers every dependency branch", () => {
     expect(depsRule({ linked: false })).toMatchObject({ state: "not_applicable", reason: "no_repo" });

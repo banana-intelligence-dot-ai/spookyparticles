@@ -1,6 +1,17 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [{ "path": "/api/cron/watch", "schedule": "*/5 * * * *" }],
-  "git": { "deploymentEnabled": { "*": false, "master": true } },
+  "schedules": {
+    "watch": {
+      "schedule": "*/5 * * * *",
+      "path": "/api/cron/watch",
+      "requestMethod": "GET"
+    }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "*": false,
+      "master": true
+    }
+  },
   "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- . ../../packages ../../package.json ../../package-lock.json"
 }

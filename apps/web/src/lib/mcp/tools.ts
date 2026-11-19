@@ -6,6 +6,7 @@ import { createJobFromBody } from "@/lib/checkin-create";
 import { updateJobFromBody } from "@/lib/checkin-update";
 import { deleteJob, jobIssue, listJobs, updateJob, type JobView } from "@/lib/checkins";
 import { activityReport } from "@/lib/activity-report";
+import { agentViewFor } from "@/lib/agent-view";
 import { getConnection, revokeConnection } from "@/lib/connections";
 import { setCheckDismissed } from "@/lib/checks/dismiss";
 import { deviceHandlers } from "@/lib/device-auth-db";
@@ -30,6 +31,7 @@ import { startSync } from "@/lib/sync";
 import { recordInboxRead } from "@/lib/agent-listening";
 import { catchesFor, recordDeploys } from "@/lib/catches";
 import { commitOutcomeFor } from "@/lib/commit-outcome";
+import { pushCheckFor, pushCheckInput } from "@/lib/push-check";
 import { clampDays, manualInputFor } from "@/lib/manual-input";
 import { claimBreak, claimsFor } from "@/lib/claims";
 import { sendToAgent } from "@/lib/send-to-agent";
@@ -134,6 +136,12 @@ export function toolsFor(actor: Actor): ToolRegistry {
       validate: (input) => validate(input, [], []),
       run: async () => marketingFor(userId),
     }),
+    agent_view: tool({
+      description: "What an AI agent gets from each Vercel site: bytes read against visible words on the home page, whether a Markdown version answers to Accept: text/markdown, and whether /llms.txt answers. Runs live, read-only, up to about 20 seconds. How to add a Markdown version: https://spookyparticles.com/docs/markdown-for-agents",
+      inputSchema: empty,
+      validate: (input) => validate(input, [], []),
+      run: async () => agentViewFor(userId),
+    }),
     list_expirations: tool({
       description: "List every known expiry date, including Vercel runtimes, domains, tracked credentials and Spooky agent keys, soonest first, plus domains whose date is unknown.",
       inputSchema: empty,
@@ -141,7 +149,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
       run: async () => expirationsFor(userId),
     }),
     whats_broken: tool({
-      description: "Check current failed deployments, failed scheduled runs, jobs that have gone quiet, and jobs that never checked in, with known causes. claims shows which agent is already fixing which project; leave those alone.",
+      description: "Check current failed deployments, pushes with no Vercel deployment, failed scheduled runs, jobs that have gone quiet, and jobs that never checked in, with known causes. claims shows which agent is already fixing which project; leave those alone.",
       inputSchema: empty,
       validate: (input) => validate(input, [], []),
       run: async () => {
@@ -150,6 +158,7 @@ export function toolsFor(actor: Actor): ToolRegistry {
           checkedAt: report.checkedAt,
           claims,
           failedDeploys: report.incidents.filter((incident) => incident.kind === "deploy_failed"),
+          pushesNotDeployed: report.incidents.filter((incident) => incident.kind === "push_not_deployed"),
           failedRuns: jobs.filter((job) => jobIssue(job) === "failed").map((job) => ({
             name: job.name, project: job.project, at: job.lastPingAt, cause: job.lastNote,
           })),
@@ -163,43 +172,26 @@ export function toolsFor(actor: Actor): ToolRegistry {
       },
     }),
     did_my_push_land: tool({
-      description: "After pushing a repo, check its newest deployment in each environment and whether a commit SHA is live in production.",
+      description: "After pushing a repo, check its newest deployment in each environment, whether a commit SHA is live in production, and, with expectText, whether the production page (path, default /) answers 200 and shows that text. live is true only when every check you asked for passed.",
       inputSchema: {
         type: "object", additionalProperties: false,
         properties: {
           repo: { type: "string", minLength: 3, maxLength: 120, pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", description: "GitHub owner/repo full name" },
           sha: { type: "string", minLength: 7, maxLength: 40, pattern: "^[a-fA-F0-9]+$", description: "Optional full or abbreviated commit SHA" },
+          path: { type: "string", minLength: 1, maxLength: 300, description: "Optional page path on the production site, like /pricing. Needs expectText." },
+          expectText: { type: "string", minLength: 1, maxLength: 200, description: "Optional text the production page must show after this push, like a new headline" },
         },
         required: ["repo"],
       },
       validate: (input) => {
-        const basic = validate(input, ["repo"], ["repo", "sha"]);
+        const basic = validate(input, ["repo"], ["repo", "sha", "path", "expectText"]);
         if (basic) return basic;
-        if (typeof input.repo !== "string" || input.repo.length > 120 || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input.repo)) return "repo must be owner/repo";
-        if (input.sha !== undefined && (typeof input.sha !== "string" || !/^[a-fA-F0-9]{7,40}$/.test(input.sha))) return "sha must be a 7 to 40 character commit hash";
-        return null;
+        try { pushCheckInput(input); return null; } catch (error) { return (error as Error).message; }
       },
       run: async (input) => {
-        const repo = input.repo as string;
-        const sha = input.sha as string | undefined;
-        const [incidentReport] = await Promise.all([incidentsFor(userId, repo), heard(repo)]);
-        const project = (await projectsFor(userId)).projects.find((p) => p.name.toLowerCase() === repo.toLowerCase() && p.kind === "repo");
-        if (!project) throw new Error("Unknown repo");
-        const latest = new Map<string, typeof project.deployments[number]>();
-        for (const deploy of project.deployments) {
-          const environment = deploy.environment.toLowerCase();
-          const current = latest.get(environment);
-          if (!current || (deploy.at ?? "") > (current.at ?? "")) latest.set(environment, deploy);
-        }
-        const deployments = [...latest.values()].map((d) => ({ environment: d.environment, host: d.provider, state: d.state, at: d.at, url: d.url, sha: d.sha ?? null, message: d.message ?? null }));
-        const production = latest.get("production");
-        const match = (a: string, b: string) => a.toLowerCase().startsWith(b.toLowerCase()) || b.toLowerCase().startsWith(a.toLowerCase());
-        return {
-          repo: project.name,
-          repoRefreshed: incidentReport.repoRefreshed,
-          deployments,
-          ...(sha ? { sha, shaLive: Boolean(production?.state === "success" && production.sha && match(production.sha, sha)) } : {}),
-        };
+        const clean = pushCheckInput(input);
+        await heard(clean.repo);
+        return pushCheckFor(userId, clean);
       },
     }),
     manual_input: tool({

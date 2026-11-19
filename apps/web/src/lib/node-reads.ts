@@ -3,7 +3,7 @@
  * watcher reads every project and domain every few minutes, so whole rows cost real database
  * transfer. These reads bring back the plain columns and only the attribute keys a pass uses.
  */
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 
 export type SlimNode = Pick<typeof schema.nodes.$inferSelect, "id" | "userId" | "kind" | "externalKey" | "name" | "status" | "attributes">;
@@ -22,11 +22,12 @@ export function dropNulls(attributes: Record<string, unknown> | null): Record<st
   return Object.fromEntries(Object.entries(attributes ?? {}).filter(([, v]) => v !== null));
 }
 
-export async function readNodes(kind: SlimNode["kind"], keys: readonly string[]): Promise<SlimNode[]> {
+/** Every user's nodes of a kind, or one user's when userId is given. */
+export async function readNodes(kind: SlimNode["kind"], keys: readonly string[], userId?: string): Promise<SlimNode[]> {
   const n = schema.nodes;
   const rows = await getDb()
     .select({ id: n.id, userId: n.userId, kind: n.kind, externalKey: n.externalKey, name: n.name, status: n.status, attributes: pickAttributes(keys) })
     .from(n)
-    .where(eq(n.kind, kind));
+    .where(userId ? and(eq(n.kind, kind), eq(n.userId, userId)) : eq(n.kind, kind));
   return rows.map((r) => ({ ...r, attributes: dropNulls(r.attributes) }));
 }

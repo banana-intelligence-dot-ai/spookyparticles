@@ -1,8 +1,9 @@
 /**
  * GET /api/cron/watch: Vercel Cron calls this on a schedule (apps/web/vercel.json) so host
- * failures reach the map and the alert email without anyone looking. It starts a resync
- * for every active Vercel connection older than five minutes and GitHub connection older than ten, that
- * has no sync running, and once a day re-reads each inbox's new mail. Protected by CRON_SECRET, which Vercel sends as a bearer token.
+ * failures reach the map and the alert email without anyone looking. It checks active
+ * Vercel connections every five minutes, starts full inventories on changes and hourly,
+ * checks GitHub every fifteen minutes, and re-reads each inbox daily. Protected by
+ * CRON_SECRET, which Vercel sends as a bearer token.
  */
 import { and, eq, inArray } from "drizzle-orm";
 import { connection } from "next/server";
@@ -12,7 +13,10 @@ import { runDueProbes } from "@/lib/probes";
 import { executeDueDeletions, purgeRevokedConnectionData } from "@/lib/purge";
 import { json } from "@/lib/http";
 import { rereadMailDaily, resyncHostsQuietly } from "@/lib/sync";
+import { pushNoDeployFor } from "@/lib/push-no-deploy-store";
+import { notifyPushNotDeployed } from "@/lib/alerts/push-not-deployed";
 import { sweepServerErrors, sweepUptime } from "@/lib/vercel-monitor";
+import { sweepSitemaps } from "@/lib/sitemap-check";
 import { sweepVercelSchedules } from "@/lib/vercel-watch";
 import { sweepChecks } from "@/lib/checks/sweep";
 import { sendDigests } from "@/lib/alerts/digest";
@@ -38,6 +42,7 @@ export async function GET(req: Request) {
   let jobs: Awaited<ReturnType<typeof sweepQuietJobs>> | null = null;
   let errors: Awaited<ReturnType<typeof sweepServerErrors>> | null = null;
   let uptime: Awaited<ReturnType<typeof sweepUptime>> | null = null;
+  let sitemaps: Awaited<ReturnType<typeof sweepSitemaps>> | null = null;
   let checks: Awaited<ReturnType<typeof sweepChecks>> | null = null;
   let outages: Forgiven[] = [];
   try {
@@ -64,9 +69,17 @@ export async function GET(req: Request) {
   };
   try { errors = await sweepServerErrors(); } catch (err) { note("error rate sweep", err); }
   try { uptime = await sweepUptime(); } catch (err) { note("uptime sweep", err); }
+  try { sitemaps = await sweepSitemaps(); } catch (err) { note("sitemap sweep", err); }
   // Its work is dated in days (expiry notices, weekly scans, daily dependency reads), so once an hour is enough.
   if (new Date().getUTCMinutes() < 5) { try { checks = await sweepChecks(); } catch (err) { note("check sweep", err); } }
   try { await resyncHostsQuietly(rows); } catch (err) { note("host resync", err); }
+  // Keep the push-with-no-deploy alert on its five-minute cadence when an unchanged
+  // Vercel deployment fingerprint skips the inventory workflow.
+  try {
+    for (const userId of new Set(rows.filter((row) => row.provider === "vercel").map((row) => row.userId))) {
+      for (const finding of await pushNoDeployFor(userId)) await notifyPushNotDeployed(userId, finding);
+    }
+  } catch (err) { note("push with no deploy", err); }
   // Mail, once a day per inbox: only what arrived since the last read.
   let mail: Awaited<ReturnType<typeof rereadMailDaily>> | null = null;
   try { mail = await rereadMailDaily(); } catch (err) { note("mail re-read", err); }
@@ -91,5 +104,5 @@ export async function GET(req: Request) {
     // A missing table (migration not applied yet) must not fail the sweep that just ran.
     console.error("[watch] heartbeat not written", (err as Error).message.slice(0, 120));
   }
-  return json({ ok, connections: rows.length, mail, jobs, outages, schedules, probes, errors, uptime, checks, digest, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
+  return json({ ok, connections: rows.length, mail, jobs, outages, schedules, probes, errors, uptime, sitemaps, checks, digest, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
 }

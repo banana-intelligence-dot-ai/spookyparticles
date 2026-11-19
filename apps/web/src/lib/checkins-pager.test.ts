@@ -3,6 +3,7 @@ import { getDb, schema } from "@/db";
 import { deliverToAll } from "./alerts/channels";
 import { pageGithub, pagerEnabled } from "./pager";
 import { notifyJob } from "./checkins";
+import { retireUrl } from "./alerts/job-links";
 
 vi.mock("@/db", async (original) => ({ ...await original(), getDb: vi.fn() }));
 vi.mock("./pager", () => ({ pagerEnabled: vi.fn(), pageGithub: vi.fn() }));
@@ -16,6 +17,7 @@ vi.mock("./agent-first", () => ({ shouldDeferToAgent: vi.fn().mockResolvedValue(
 
 const job = { id: "job-1", userId: "user-1", name: "Daily check", project: "owner/repo", missCount: 1 };
 const notice = { subject: "Daily check: quiet", text: "Daily check is down", priority: "high" as const, key: "job_quiet:job-1:1" };
+const retireLine = () => `\nJob gone for good? Retire it here: ${retireUrl("user-1", "job-1")}`;
 let channelReads = 0;
 let updates: unknown[] = [];
 const db = {
@@ -31,6 +33,7 @@ beforeEach(() => {
   channelReads = 0;
   updates = [];
   vi.clearAllMocks();
+  vi.stubEnv("SP_MASTER_KEY", Buffer.alloc(32, 7).toString("base64"));
   vi.mocked(getDb).mockReturnValue(db as never);
   vi.mocked(deliverToAll).mockResolvedValue([{ kind: "email", label: "account email", ok: true }]);
 });
@@ -48,7 +51,7 @@ describe("notifyJob GitHub pager", () => {
     vi.mocked(pagerEnabled).mockReturnValue(true);
     vi.mocked(pageGithub).mockResolvedValue({ ok: false, reason: "http 500" });
     await notifyJob(job as never, "job_quiet", notice);
-    expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: `${notice.text}\nSpooky couldn't start the GitHub fix job: http 500` }), "owner/repo");
+    expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: `${notice.text}\nSpooky couldn't start the GitHub fix job: http 500${retireLine()}` }), "owner/repo");
   });
   it("does not start the fix job when an agent already claimed the project, and tells people instead", async () => {
     const { claimFor } = await import("./claims");
@@ -56,13 +59,19 @@ describe("notifyJob GitHub pager", () => {
     vi.mocked(pagerEnabled).mockReturnValue(true);
     await notifyJob(job as never, "job_quiet", notice);
     expect(pageGithub).not.toHaveBeenCalled();
-    expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: `${notice.text}\nNo new fix started: an agent is already working on owner/repo.` }), "owner/repo");
+    expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: `${notice.text}\nNo new fix started: an agent is already working on owner/repo.${retireLine()}` }), "owner/repo");
   });
   it("keeps the old human delivery path when the pager is off", async () => {
     vi.mocked(pagerEnabled).mockReturnValue(false);
     await notifyJob(job as never, "job_quiet", notice);
     expect(channelReads).toBe(0);
     expect(pageGithub).not.toHaveBeenCalled();
+    expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: `${notice.text}${retireLine()}` }), "owner/repo");
+  });
+  it("still alerts, without the retire link, when the master key is missing", async () => {
+    vi.mocked(pagerEnabled).mockReturnValue(false);
+    vi.stubEnv("SP_MASTER_KEY", "");
+    await notifyJob(job as never, "job_quiet", notice);
     expect(deliverToAll).toHaveBeenCalledWith("user-1", expect.objectContaining({ text: notice.text }), "owner/repo");
   });
 });

@@ -33,7 +33,7 @@ const WINDOW_DAYS = 30;
 const WINDOW_MS = WINDOW_DAYS * 86_400_000;
 const MAX = 200;
 
-export type CatchKind = "deploy" | "job" | "site" | "server_errors" | "check";
+export type CatchKind = "deploy" | "job" | "site" | "sitemap_page_dropped" | "sitemap_page_down" | "sitemap_unreadable" | "server_errors" | "check";
 /**
  * Where a catch stands. Fixed: it works again. Open: still broken. Waiting: nothing has run since
  * it broke, so there is nothing to judge yet. Retired and ignored are closed without a fix: the
@@ -165,13 +165,16 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
   const pairs: [string, string, CatchKind, string][] = [
     ["site_down", "site_recovered", "site", "Site down"],
     ["server_errors", "server_errors_recovered", "server_errors", "Server errors"],
+    ["sitemap_page_dropped", "sitemap_resolved", "sitemap_page_dropped", "Page left sitemap"],
+    ["sitemap_page_down", "sitemap_resolved", "sitemap_page_down", "Sitemap page down"],
+    ["sitemap_unreadable", "sitemap_resolved", "sitemap_unreadable", "Sitemap unreadable"],
   ];
   for (const [downKind, backKind, kind, what] of pairs) {
     const backs = new Map(alerts.filter((a) => a.kind === backKind).map((a) => [episode(a.key), a]));
     for (const a of alerts.filter((x) => x.kind === downKind)) {
       const back = backs.get(episode(a.key));
       const project = str(a.payload.project);
-      out.push({ id: a.key, kind, project, what, caughtAt: a.createdAt.toISOString(), alertedAt: alertAt(a), heardAt: null, agent: null, fixedAt: back ? back.createdAt.toISOString() : null, fixedBy: null, status: "open", note: null, clearKey: a.key });
+      out.push({ id: a.key, kind, project, what: str(a.payload.url) ? `${what}: ${str(a.payload.url)}` : what, caughtAt: a.createdAt.toISOString(), alertedAt: alertAt(a), heardAt: null, agent: null, fixedAt: back ? back.createdAt.toISOString() : null, fixedBy: null, status: "open", note: null, clearKey: a.key });
     }
   }
 
@@ -314,7 +317,7 @@ export async function recordDeploys(userId: string, nowMs = Date.now()) {
   }
 }
 
-const MUTE_WORDS: Record<CatchKind, string> = { deploy: "failed deploys", job: "job alerts", site: "site-down alerts", server_errors: "server-error alerts", check: "check suggestions" };
+const MUTE_WORDS: Record<CatchKind, string> = { deploy: "failed deploys", job: "job alerts", site: "site-down alerts", sitemap_page_dropped: "sitemap page-drop alerts", sitemap_page_down: "sitemap page-down alerts", sitemap_unreadable: "sitemap unreadable alerts", server_errors: "server-error alerts", check: "check suggestions" };
 
 export async function catchesFor(userId: string, options: { record?: boolean } = {}): Promise<Catches> {
   if (options.record !== false) await recordDeploys(userId);
@@ -323,7 +326,7 @@ export async function catchesFor(userId: string, options: { record?: boolean } =
   const since = new Date(now.getTime() - WINDOW_MS);
   const [alerts, events, checkRows, attempts] = await Promise.all([
     db.select({ kind: schema.alerts.kind, key: schema.alerts.key, payload: schema.alerts.payload, createdAt: schema.alerts.createdAt, sentAt: schema.alerts.sentAt }).from(schema.alerts)
-      .where(and(eq(schema.alerts.userId, userId), gte(schema.alerts.createdAt, new Date(since.getTime() - WINDOW_MS)), inArray(schema.alerts.kind, ["deploy_failed", "job_quiet", "job_failed", "job_recovered", "site_down", "site_recovered", "server_errors", "server_errors_recovered"]))),
+      .where(and(eq(schema.alerts.userId, userId), gte(schema.alerts.createdAt, new Date(since.getTime() - WINDOW_MS)), inArray(schema.alerts.kind, ["deploy_failed", "job_quiet", "job_failed", "job_recovered", "site_down", "site_recovered", "sitemap_page_dropped", "sitemap_page_down", "sitemap_unreadable", "sitemap_resolved", "server_errors", "server_errors_recovered"]))),
     db.select({ name: schema.events.name, properties: schema.events.properties, createdAt: schema.events.createdAt }).from(schema.events)
       .where(and(eq(schema.events.userId, userId), inArray(schema.events.name, [CAUGHT, FIXED, INBOX_READ, FIX_CONFIRMED]), gte(schema.events.createdAt, new Date(since.getTime() - WINDOW_MS)))),
     db.select({ check: schema.projectChecks, name: schema.nodes.name, attributes: pickAttributes(["repo_provider", "repo"]) }).from(schema.projectChecks).innerJoin(schema.nodes, eq(schema.nodes.id, schema.projectChecks.nodeId))

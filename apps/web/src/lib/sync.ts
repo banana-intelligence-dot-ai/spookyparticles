@@ -8,6 +8,7 @@ import { githubInventory } from "@/workflows/github-inventory";
 import { vercelInventory } from "@/workflows/vercel-inventory";
 import { appendAudit } from "./audit";
 import { ApiError } from "./http";
+import { VERCEL_FULL_SYNC_MS, currentVercelFingerprints, shouldSkipVercelSync, storedVercelScopes } from "./vercel-change-gate";
 
 /** A run that has not written progress for this long is treated as dead. */
 const STALE_MS = 15 * 60 * 1000;
@@ -88,24 +89,48 @@ export async function startSync(c: Connection, actor: string) {
 
 /** Hosts are re-read this often while someone (a person or their agent) is looking, or by the cron. */
 const HOST_RESYNC_MS = 5 * 60_000;
-/** GitHub repos: slower, since a run costs API calls and workflow steps per repo. Failed deploys come from Vercel, every 5 minutes. */
-const GITHUB_RESYNC_MS = 30 * 60_000;
+/** GitHub repos: slower than hosts, since a run costs API calls per repo; 15 minutes keeps the push-with-no-deploy alert within about 35 minutes. */
+const GITHUB_RESYNC_MS = 15 * 60_000;
 const lastHostKick = new Map<string, number>();
 
 /**
- * Keep host connections fresh without a scheduler: any read of the map kicks a Vercel
- * resync for each active connection whose last sync is older than HOST_RESYNC_MS, at most
- * once per interval per connection per server instance. Failures are logged, never raised:
+ * Keep host connections fresh without a scheduler: any read of the map checks active
+ * connections at most once per interval per server instance. An unchanged Vercel scope
+ * skips its full inventory until the next hourly read. Failures are logged, never raised:
  * a read must not fail because a resync could not start.
  */
 export async function resyncHostsQuietly(connections: Connection[]) {
   const now = Date.now();
   for (const c of connections) {
     if ((c.provider !== "vercel" && c.provider !== "github") || c.status !== "active") continue;
-    const last = lastHostKick.get(c.id) ?? c.lastSyncedAt?.getTime() ?? 0;
-    if (now - last < (c.provider === "github" ? GITHUB_RESYNC_MS : HOST_RESYNC_MS)) continue;
+    const kickedAt = lastHostKick.get(c.id) ?? 0;
+    const last = kickedAt || c.lastSyncedAt?.getTime() || 0;
+    // A read just before the hour must not consume the hourly billing window.
+    const hourStart = Math.floor(now / VERCEL_FULL_SYNC_MS) * VERCEL_FULL_SYNC_MS;
+    const hourlyDue = c.provider === "vercel" && new Date(now).getUTCMinutes() < 5 &&
+      (c.lastSyncedAt?.getTime() ?? 0) < hourStart && kickedAt < hourStart;
+    if (!hourlyDue && now - last < (c.provider === "github" ? GITHUB_RESYNC_MS : HOST_RESYNC_MS)) continue;
     lastHostKick.set(c.id, now);
     try {
+      if (c.provider === "vercel") {
+        let saved: string | null = null;
+        let current: string | null = null;
+        let gateError = false;
+        let lastRunSucceeded = false;
+        try {
+          const [latest] = await getDb().select({ phase: schema.syncRuns.phase, error: schema.syncRuns.error, finishedAt: schema.syncRuns.finishedAt })
+            .from(schema.syncRuns).where(eq(schema.syncRuns.connectionId, c.id)).orderBy(desc(schema.syncRuns.startedAt)).limit(1);
+          lastRunSucceeded = latest?.phase === "done" && latest.error === null && latest.finishedAt !== null;
+          if (lastRunSucceeded && !hourlyDue && c.lastSyncedAt && now - c.lastSyncedAt.getTime() < VERCEL_FULL_SYNC_MS) {
+            const scopes = await storedVercelScopes(c);
+            if (scopes.length && scopes.every((s) => s.fingerprint !== null)) {
+              saved = JSON.stringify(scopes.map((s) => [s.nodeId, s.fingerprint]));
+              current = JSON.stringify((await currentVercelFingerprints(c.id, scopes)).map((fingerprint, i) => [scopes[i].nodeId, fingerprint]));
+            }
+          }
+        } catch { gateError = true; }
+        if (shouldSkipVercelSync({ actor: "system:watch", saved, current, lastSyncedAt: c.lastSyncedAt, nowMs: now, lastRunSucceeded, gateError, hourlyDue })) continue;
+      }
       await startSync(c, "system:watch");
     } catch (err) {
       // A sync already running is the usual reason; anything else is logged by message only.

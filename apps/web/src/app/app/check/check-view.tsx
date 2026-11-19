@@ -18,6 +18,7 @@ import { ago } from "../project-model";
 import { CheckMatrix } from "./check-matrix";
 import { checkPrompt, findingAnchor } from "./check-prompt";
 import { ExpirationsPanel, type ExpirationReport } from "./expirations-panel";
+import { AgentViewPanel } from "./agent-view-panel";
 
 export type Check = {
   id: string | null;
@@ -455,6 +456,7 @@ export function CheckView() {
   return (
     <div className="max-w-4xl">
       <CheckScreen report={report.data} error={report.error} now={now} actionError={actionError} busy={busy} onDismiss={(c) => void change(c, false)} onRestore={(c) => void change(c, true)} />
+      <AgentViewPanel />
     </div>
   );
 }

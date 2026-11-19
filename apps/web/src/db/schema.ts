@@ -571,7 +571,7 @@ export const alerts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
-    kind: text("kind").$type<"deploy_failed" | "job_quiet" | "job_failed" | "job_recovered" | "channel_test" | "server_errors" | "server_errors_recovered" | "site_down" | "site_recovered" | "expiration" | "daily_digest">().notNull(),
+    kind: text("kind").$type<"deploy_failed" | "push_not_deployed" | "job_quiet" | "job_failed" | "job_recovered" | "channel_test" | "server_errors" | "server_errors_recovered" | "site_down" | "site_recovered" | "sitemap_page_dropped" | "sitemap_page_down" | "sitemap_unreadable" | "sitemap_resolved" | "expiration" | "daily_digest">().notNull(),
     /** Stable per event, e.g. deploy_failed:<deployment id>. Unique per user. */
     key: text("key").notNull(),
     channel: text("channel").$type<"email" | "ntfy" | "slack" | "teams" | "channels">().notNull(),

@@ -272,7 +272,7 @@ function Group({ id, title, count, children }: { id: string; title: string; coun
 }
 
 /** Red when something is down or failing; amber when it only needs a decision. */
-const toneOf = (item: OpenItem): "red" | "amber" => (item.kind === "check" || item.kind === "connection" || item.kind === "stale_push" || item.kind === "job_never" ? "amber" : "red");
+const toneOf = (item: OpenItem): "red" | "amber" => (item.kind === "check" || item.kind === "connection" || item.kind === "job_never" ? "amber" : "red");
 const link = "underline decoration-line-3 underline-offset-4 hover:decoration-fg";
 const DASH = "pair-open bg-[repeating-linear-gradient(to_right,var(--fg-3)_0_4px,transparent_4px_8px)]";
 

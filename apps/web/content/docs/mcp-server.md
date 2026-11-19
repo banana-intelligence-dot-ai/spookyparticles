@@ -22,6 +22,7 @@ Every change is recorded in the audit log. Call `help` to see the tools your key
 
 **What is broken**
 - `whats_broken`, `open_items`, `did_my_push_land`, `commit_outcome`
+- After a push, `did_my_push_land` with `sha` and `expectText` (and `path`, default `/`) says whether the commit is live and the production page shows the text. `live` is true only when both pass. REST: `GET /api/v1/push-check`.
 - `claim_break` and `confirm_fix`: claim a break so a second session leaves it alone, then ask Spooky to check production.
 
 **Projects and jobs**
@@ -36,7 +37,7 @@ Every change is recorded in the audit log. Call `help` to see the tools your key
 - Write: `add_alert_channel`, `update_alert_channel`, `remove_alert_channel`, `test_alert_channel`, `send_test_alert`, `mute`, `unmute`
 
 **Findings and services**
-- `list_findings`, `list_services`, `list_expirations`
+- `list_findings`, `list_services`, `list_expirations`, `agent_view` (what an AI agent gets from each site)
 - Write: `next_finding`, `report_finding`, `record_service`, `add_expiration`
 
 **Keys and account**

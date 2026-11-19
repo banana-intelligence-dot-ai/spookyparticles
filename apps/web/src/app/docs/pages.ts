@@ -50,6 +50,13 @@ export const DOCS_PAGES: DocsPage[] = [
     checked: "2026-11-16",
   },
   {
+    slug: "markdown-for-agents",
+    title: "Markdown for agents",
+    description: "See what an AI agent gets from each of your sites, and serve a plain Markdown version from Next.js or a static site.",
+    published: "2026-11-18",
+    checked: "2026-11-18",
+  },
+  {
     slug: "api",
     title: "REST API",
     description: "Keys, scopes, endpoints and the error shape for the Spooky API.",

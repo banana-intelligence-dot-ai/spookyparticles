@@ -9,6 +9,15 @@ Covers Standard item 4: every scheduled job is watched, and a missed or failed r
 
 Spooky reads Vercel cron jobs and their run history on its own, with no code change, when the team is connected with a pasted token. With Sign in with Vercel alone, Vercel does not share run history, so a Vercel cron route needs a check-in too (see "A Vercel cron route" below). Jobs that run anywhere else (GitHub Actions, another host, a machine under a desk) need a check-in: a link the job calls when it finishes. If the call does not arrive on time, Spooky alerts.
 
+## Requirements and network calls
+
+- `SPOOKY_API_KEY`: a Spooky Particles key, set in the environment by the person. Never ask for it in chat, print it or write it to a file. Listing jobs needs a read key. Creating a job needs a write key. If it is not set, stop and tell the person to make one on the Agents page at https://spookyparticles.com/app/agents.
+- Every call goes to `spookyparticles.com` over HTTPS. There are no other hosts and nothing is installed except the optional `spooky-checkin` npm package.
+  - `GET https://spookyparticles.com/api/v1/checkins` (or the MCP tool `list_jobs`) reads the job list. It writes nothing.
+  - `POST https://spookyparticles.com/api/v1/checkins` creates one check-in job. This writes to the person's Spooky account.
+  - The job's ping link (`https://spookyparticles.com/api/ping/<token>`) is called by the person's job itself, on each run. A call to it records a run, and a failure ending can alert the owner. Never call it while testing.
+- Ask the person to confirm before each `POST`: the job name, the period and the project it will watch.
+
 ## Check
 
 1. List every schedule in the project:
@@ -22,7 +31,7 @@ Spooky reads Vercel cron jobs and their run history on its own, with no code cha
 
 For each schedule off Vercel that is not watched:
 
-1. Create a check-in job. This needs a Spooky key with the write scope:
+1. After the person confirms, create a check-in job. This needs a Spooky key with the write scope:
 
    ```bash
    printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -fsS -X POST https://spookyparticles.com/api/v1/checkins \
@@ -46,7 +55,7 @@ For each schedule off Vercel that is not watched:
 Use the `spooky-checkin` package on npm, one file with no dependencies. Guide: https://spookyparticles.com/docs/npm-package.
 
 1. Create the job and have the person store the link as `SPOOKY_PING_URL` in the Vercel project's environment variables (Production), as in steps 1 and 2 above.
-2. Add the package: `npm i spooky-checkin`. If the project avoids new dependencies, copy `packages/checkin/src/index.ts` into it instead, for example as `lib/spooky-checkin.ts`.
+2. Add the package: `npm i spooky-checkin`. If the project avoids new dependencies, copy the single file `packages/checkin/src/index.ts` from https://github.com/banana-intelligence-dot-ai/spookyparticles into it instead, for example as `lib/spooky-checkin.ts`.
 3. Wrap the route's handler, keeping any existing `CRON_SECRET` check inside it:
 
    ```ts

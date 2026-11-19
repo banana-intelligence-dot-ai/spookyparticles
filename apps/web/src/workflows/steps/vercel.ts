@@ -17,8 +17,11 @@ import { projectDecisions, slimForSync, type SyncProject } from "@/lib/checks/ru
 import { readChecks, saveCheck } from "@/lib/checks/store";
 import type { Connection } from "@/db/schema";
 import { notifyDeployFailed } from "@/lib/alerts/deploy-failed";
+import { notifyPushNotDeployed } from "@/lib/alerts/push-not-deployed";
+import { pushNoDeployFor } from "@/lib/push-no-deploy-store";
 import { registrationAttributes } from "@/lib/expirations/domains";
 import { getAccessToken, getConnection, markConnectionErrored } from "@/lib/connections";
+import { vercelScopeFingerprints, withFingerprint } from "@/lib/vercel-change-gate";
 import { installDisplayName, isPlaceholderDisplay, readVercelInstallMeta } from "@/lib/vercel-integration";
 import { upsertEdge, upsertNode } from "@/lib/graph";
 import { syncScheduleJobs } from "@/lib/vercel-watch";
@@ -117,7 +120,11 @@ export async function ensureVercelAccounts(connectionId: string) {
     });
     accounts.push({ scope, nodeId });
   }
-  return { userId: c.userId, accounts };
+  // Sample before reading projects. A deployment arriving mid-sync will differ at the
+  // next watch, rather than being hidden by a snapshot taken after its project was read.
+  let fingerprints: string[] | null = null;
+  try { fingerprints = await vercelScopeFingerprints(token, accounts); } catch { /* Fail open on the next watch. */ }
+  return { userId: c.userId, accounts, fingerprints };
 }
 
 /** Every project in one scope. */
@@ -196,7 +203,7 @@ async function syncOneVercelProject(input: ProjectSyncInput) {
   const recent = await guarded(c, () => listDeployments(token, scope, project.id, 20));
   const { production, latest, lastFailure, newestPreview } = chooseDeployments(project, recent);
   if (project.repo) await recordProductionDeploys(userId, `${project.repo.org}/${project.repo.repo}`, recent.filter((d) => d.target === "production").map((d) => ({ id: d.id, state: d.state, createdAt: d.createdAt, sha: d.commit?.sha ?? null })));
-  await syncScheduleJobs({ userId, connectionId: c.id, projectId: project.id, projectName: project.name, scopeId: `${scope.kind}:${scope.id}`, deploymentId: project.cronDeploymentId ?? production?.id ?? null, hasProduction: Boolean(production), schedules: project.schedules ?? [] });
+  await syncScheduleJobs({ userId, connectionId: c.id, projectId: project.id, projectName: project.name, scopeId: `${scope.kind}:${scope.id}`, deploymentId: project.cronDeploymentId ?? production?.id ?? null, hasProduction: Boolean(production), schedules: project.schedules ?? [], schedulesKnown: project.schedulesKnown === true });
   const lastActivity = latest?.createdAt ?? project.updatedAt;
   const [previous] = await db.select({ attributes: schema.nodes.attributes }).from(schema.nodes).where(and(eq(schema.nodes.userId, userId), eq(schema.nodes.kind, "project"), eq(schema.nodes.externalKey, `vercel:project:${project.id}`))).limit(1);
 
@@ -221,6 +228,7 @@ async function syncOneVercelProject(input: ProjectSyncInput) {
       production_deployment_id: production?.id ?? null,
       recent_failure_at: lastFailure?.createdAt ?? null,
       recent_failure_code: lastFailure?.errorCode ?? null,
+      recent_deployments: recent.map((d) => ({ sha: d.commit?.sha ?? null, at: d.createdAt })),
       scope_id: scope.id,
       scope_slug: scope.slug,
       scope_kind: scope.kind,
@@ -237,9 +245,9 @@ async function syncOneVercelProject(input: ProjectSyncInput) {
   let services = project.services;
   if (!decisions) {
     // The list did not carry settings. Read this one project; if that is refused the rules answer "unknown".
-    let settings: Pick<VercelProject, "protection" | "env"> = { protection: null, env: null };
+    let settings: Pick<VercelProject, "protection" | "env" | "schedules" | "schedulesKnown"> = { protection: null, env: null, schedules: project.schedules, schedulesKnown: project.schedulesKnown };
     try { settings = await getProjectChecksInput(token, scope, project.id); } catch { /* not readable with this connection */ }
-    decisions = projectDecisions({ ...settings, schedules: project.schedules });
+    decisions = projectDecisions(settings);
     if (settings.env) services = detectServices(settings.env.map((v) => v.key));
   }
   if (services) await syncProjectServices(userId, projectNodeId, services, at);
@@ -392,7 +400,7 @@ export async function syncVercelBilling(input: { connectionId: string; userId: s
 }
 
 /**
- * Several projects in one step. The watcher re-reads every project every 5 minutes, and each
+ * Several projects in one step. Each full inventory re-reads every project, and each
  * workflow step is billed as events, so one step per project cost far more than the reads.
  * A failure retries the batch; every write is an upsert, so a retry is safe.
  */
@@ -400,13 +408,26 @@ export async function syncVercelProjects(input: Omit<ProjectSyncInput, "project"
   "use step";
   const { projects, syncRunId, scannedBefore, ...rest } = input;
   for (const project of projects) await syncOneVercelProject({ ...rest, project });
+  for (const finding of await pushNoDeployFor(rest.userId)) await notifyPushNotDeployed(rest.userId, finding);
   await getDb().update(schema.syncRuns).set({ scanned: scannedBefore + projects.length, updatedAt: new Date() }).where(eq(schema.syncRuns.id, syncRunId));
   return projects.length;
 }
 
 /** Done. When a scope had more projects than the run read, the run says so instead of claiming the whole account. */
-export async function markVercelSynced(connectionId: string, syncRunId: string, projects: number, truncated: boolean) {
+export async function markVercelSynced(connectionId: string, syncRunId: string, projects: number, truncated: boolean, accounts: { scope: VercelScope; nodeId: string }[], fingerprints: string[] | null) {
   "use step";
+  // Save only after all project steps succeeded. Missing snapshots leave the next watch
+  // due for a full sync; a failed run never commits its fingerprint.
+  // A failed save only costs the next watch a full sync; it must never fail the run.
+  if (!truncated && fingerprints?.length === accounts.length) {
+    try {
+      for (let i = 0; i < accounts.length; i++) {
+        await getDb().update(schema.nodes).set({ attributes: withFingerprint(fingerprints[i]) }).where(eq(schema.nodes.id, accounts[i].nodeId));
+      }
+    } catch (err) {
+      console.error("[vercel] fingerprint not saved", connectionId, (err as Error).message);
+    }
+  }
   const now = new Date();
   await getDb().update(schema.connections).set({ lastSyncedAt: now }).where(eq(schema.connections.id, connectionId));
   await getDb()

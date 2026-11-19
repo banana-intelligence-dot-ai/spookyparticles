@@ -1,5 +1,51 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LOG_TAIL_LINES, chooseDeployments, getProjectChecksInput, githubStateOf, listAccountDomains, logTailAndCause, looksLikeVercelToken, pickDeployment, pickProject, scopesOf, scrubLogLine, teamQuery } from "./vercel";
+import { LOG_TAIL_LINES, chooseDeployments, getProjectChecksInput, githubStateOf, listAccountDomains, listProjectSchedules, listProjects, logTailAndCause, looksLikeVercelToken, pickDeployment, pickProject, scopesOf, scrubLogLine, teamQuery } from "./vercel";
+
+describe("listProjectSchedules", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("GETs up to the final cursor with project, team, and namespace scope", async () => {
+    const calls: { url: URL; init: RequestInit }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: URL, init: RequestInit) => {
+      calls.push({ url: new URL(url), init });
+      return new Response(JSON.stringify(calls.length === 1
+        ? { data: [{ name: "daily", timezone: "UTC", expression: { type: "cron", cron: "0 0 * * *" }, target: { type: "path", path: "/api/daily" }, state: "active" }], cursor: "next" }
+        : { data: [{ name: "hourly", timezone: "UTC", expression: { type: "cron", cron: "0 * * * *" }, target: { type: "path", path: "/api/hourly", requestMethod: "get" }, state: "active" }], cursor: null }), { status: 200 });
+    }));
+    const got = await listProjectSchedules("token", { kind: "team", id: "team_1", slug: "team", name: "Team" }, "prj_1");
+    expect(got.map((schedule) => schedule.name)).toEqual(["daily", "hourly"]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].url.origin).toBe("https://vercel-schedules.com");
+    expect(Object.fromEntries(calls[0].url.searchParams)).toEqual({ projectId: "prj_1", teamId: "team_1", namespace: "default", limit: "100" });
+    expect(calls[1].url.searchParams.get("cursor")).toBe("next");
+    expect(calls.every((call) => call.init.method === "GET")).toBe(true);
+  });
+
+  it("caps cursor reads at five pages and omits teamId for personal scopes", async () => {
+    const fetcher = vi.fn(async (_url: URL) => new Response(JSON.stringify({ data: [], cursor: "again" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+    await listProjectSchedules("token", { kind: "user", id: "user_1", slug: "person", name: "Person" }, "prj_1");
+    expect(fetcher).toHaveBeenCalledTimes(5);
+    expect(new URL(fetcher.mock.calls[0][0] as URL).searchParams.has("teamId")).toBe(false);
+  });
+});
+
+describe("listProjects schedules refusal", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it("stops asking for Schedules in a scope after the first 403, and marks every project unknown", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetcher = vi.fn(async (url: URL) => {
+      const u = new URL(url);
+      if (u.origin === "https://vercel-schedules.com") return new Response("{}", { status: 403 });
+      return new Response(JSON.stringify({ projects: [{ id: "prj_1", name: "a" }, { id: "prj_2", name: "b" }, { id: "prj_3", name: "c" }], pagination: { next: null } }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const { projects } = await listProjects("token", { kind: "team", id: "team_1", slug: "team", name: "Team" });
+    expect(projects.map((p) => p.schedulesKnown)).toEqual([false, false, false]);
+    expect(fetcher.mock.calls.filter(([url]) => new URL(url as URL).origin === "https://vercel-schedules.com")).toHaveLength(1);
+  });
+});
 
 describe("listAccountDomains", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -225,38 +271,46 @@ describe("getProjectChecksInput", () => {
   it("reads a project with no variables as an empty list, not as unreadable", async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(project), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [], cursor: null }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ envs: [] }), { status: 200 }));
     vi.stubGlobal("fetch", fetcher);
     const got = await getProjectChecksInput("tok", scope, "prj_1");
     expect(got.env).toEqual([]);
     expect(got.protection?.ssoProtection?.deploymentType).toBe("all_except_custom_domains");
-    expect(String(fetcher.mock.calls[1][0])).toBe("https://api.vercel.com/v10/projects/prj_1/env?teamId=team_1");
-    expect(fetcher.mock.calls[1][1].method).toBe("GET");
+    expect(String(fetcher.mock.calls[2][0])).toBe("https://api.vercel.com/v10/projects/prj_1/env?teamId=team_1");
+    expect(fetcher.mock.calls[2][1].method).toBe("GET");
+    expect(got.schedulesKnown).toBe(true);
   });
 
   it("drops values from the list and keeps names, targets and types", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(project), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [], cursor: null }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ envs: [{ key: "API_KEY", value: "do-not-keep", type: "encrypted", target: ["production"] }] }), { status: 200 })));
     const got = await getProjectChecksInput("tok", scope, "prj_1");
     expect(got.env).toEqual([{ key: "API_KEY", targets: ["production"], type: "encrypted" }]);
     expect(JSON.stringify(got)).not.toContain("do-not-keep");
   });
 
-  it("keeps unreadable when the list is refused, and still returns protection", async () => {
+  it("keeps schedules unknown and preserves crons when the schedules read fails", async () => {
     vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(project), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...project, crons: { definitions: [{ path: "/api/daily", schedule: "0 0 * * *" }] } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("denied", { status: 403 }))
       .mockResolvedValueOnce(new Response("denied", { status: 403 })));
     const got = await getProjectChecksInput("tok", scope, "prj_1");
     expect(got.env).toBeNull();
     expect(got.protection).not.toBeNull();
+    expect(got.schedulesKnown).toBe(false);
+    expect(got.schedules?.map((schedule) => schedule.path)).toEqual(["/api/daily"]);
   });
 
-  it("does not ask twice when the project already carries its list", async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ ...project, env: [{ key: "A", type: "plain", target: "preview" }] }), { status: 200 }));
+  it("does not ask for env twice when the project already carries its list", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...project, env: [{ key: "A", type: "plain", target: "preview" }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [], cursor: null }), { status: 200 }));
     vi.stubGlobal("fetch", fetcher);
     const got = await getProjectChecksInput("tok", scope, "prj_1");
     expect(got.env).toEqual([{ key: "A", targets: ["preview"], type: "plain" }]);
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

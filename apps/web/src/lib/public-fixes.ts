@@ -31,6 +31,9 @@ const WHAT: Record<CatchKind, string> = {
   deploy: "Deploy failed",
   job: "Scheduled job went quiet",
   site: "Site stopped answering",
+  sitemap_page_dropped: "Page left sitemap",
+  sitemap_page_down: "Sitemap page stopped answering",
+  sitemap_unreadable: "Sitemap became unreadable",
   server_errors: "Site threw server errors",
   check: "Project check failed",
 };
