@@ -196,6 +196,7 @@ export type DeviceDeps = {
   mintKey: (userId: string, name: string, access: DeviceAccess) => Promise<MintedKey>;
   countRecentWriteApprovals: (userId: string, since: Date) => Promise<number>;
   audit: (entry: { actor: string; userId: string; action: string; target: string; after?: unknown }) => Promise<void>;
+  trackStart: (client: string, access: DeviceAccess) => Promise<void>;
   track: (userId: string, scopes: string[]) => Promise<void>;
   allowStart: (ip: string) => boolean;
 };
@@ -283,6 +284,7 @@ export function createDeviceHandlers(deps: DeviceDeps) {
         { identifier: `device:${hash}`, value: JSON.stringify(record), expiresAt },
         { identifier: userCodeIdentifier(userCode), value: hash, expiresAt },
       ]);
+      await deps.trackStart(client, access);
       const verificationUri = `${deps.origin()}/link`;
       return json({
         deviceCode,

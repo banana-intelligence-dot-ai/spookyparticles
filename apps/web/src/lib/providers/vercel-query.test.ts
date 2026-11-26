@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildErrorRateQuery, buildExternalApiQuery, buildRequestCountQuery, parseRequestCounts, queryExternalApis, queryRequestCounts, summariseStatusCounts } from "./vercel-query";
+import { buildErrorRateQuery, buildExternalApiQuery, buildRequestCountQuery, parseRequestCounts, queryErrorRate, queryExternalApis, queryRequestCounts, summariseStatusCounts } from "./vercel-query";
 
 const scope = { kind: "team" as const, id: "team_1", slug: "team", name: "Team" };
 
@@ -18,6 +18,14 @@ describe("Vercel request history query", () => {
   it("builds the second read-only request-count shape and summarizes 5xx", () => {
     expect(buildErrorRateQuery(scope, "p", 0, 60 * 60_000)).toMatchObject({ metric: "vercel.request.count", aggregation: "sum", groupBy: ["http_status"], granularity: { minutes: 5 }, limit: 500, startTime: new Date(45 * 60_000).toISOString() });
     expect(summariseStatusCounts({ data: [{ http_status: "200", vercel_request_count_sum: 40 }, { http_status: "500", vercel_request_count_sum: 10 }, { http_status: "599", vercel_request_count_sum: 2 }, { http_status: "bad", vercel_request_count_sum: 99 }] })).toEqual({ total: 52, serverErrors: 12 });
+  });
+  it("carries denied observability statuses to callers", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response("denied", { status: 403 }))
+      .mockResolvedValueOnce(new Response("missing", { status: 404 })));
+
+    expect(await queryErrorRate("token", scope, "p", 0, 60 * 60_000)).toEqual({ ok: false, reason: "not_readable", status: 403 });
+    expect(await queryExternalApis("token", scope, "p", 0, 60 * 60_000)).toEqual({ ok: false, reason: "not_readable", status: 404 });
   });
   it("builds the external API request-count shape", () => {
     expect(buildExternalApiQuery(scope, "p", 0, 60 * 60_000)).toEqual({
@@ -64,7 +72,7 @@ describe("Vercel request history query", () => {
         { timestamp: "2026-11-26T10:15:00Z", request_hostname: "other.example", http_status: "429", vercel_external_api_request_count_sum: 6 },
         { timestamp: "2026-11-26T10:15:00Z", request_hostname: "other.example", http_status: "200", vercel_external_api_request_count_sum: 8 },
       ] }), { status: 200 }))
-      .mockResolvedValueOnce(new Response("denied", { status: 403 }));
+      .mockResolvedValueOnce(new Response("denied", { status: 404 }));
     vi.stubGlobal("fetch", fetcher);
 
     expect(await queryExternalApis("token", scope, "p", 0, 60 * 60_000)).toEqual({ ok: true, hosts: [
@@ -74,7 +82,7 @@ describe("Vercel request history query", () => {
     expect(await queryExternalApis("token", scope, "p", 0, 60 * 60_000)).toEqual({ ok: true, hosts: [
       { host: "other.example", total: 18, byStatus: { "200": 8, "429": 10 } },
     ] });
-    expect(await queryExternalApis("token", scope, "p", 0, 60 * 60_000)).toEqual({ ok: false, reason: "not_readable" });
+    expect(await queryExternalApis("token", scope, "p", 0, 60 * 60_000)).toEqual({ ok: false, reason: "not_readable", status: 404 });
   });
   it("aborts a stalled query after eight seconds", async () => {
     vi.useFakeTimers();

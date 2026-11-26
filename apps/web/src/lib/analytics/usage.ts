@@ -74,26 +74,61 @@ export async function arrivalFor(userId: string): Promise<Arrival | null> {
 }
 
 export type StatsRow = { event: string; ref: string; count: number; people: number };
+export type DailyStatsRow = { day: string; agent_signin_started: number; device_approved: number };
+
+export function mergeDailyStats(starts: { day: string; count: number }[], approvals: { day: string; count: number }[]): DailyStatsRow[] {
+  const byDay = new Map<string, DailyStatsRow>();
+  const row = (day: string) => {
+    const existing = byDay.get(day);
+    if (existing) return existing;
+    const created = { day, agent_signin_started: 0, device_approved: 0 };
+    byDay.set(day, created);
+    return created;
+  };
+  for (const item of starts) row(item.day).agent_signin_started = Number(item.count);
+  for (const item of approvals) row(item.day).device_approved = Number(item.count);
+  return [...byDay.values()].sort((a, b) => b.day.localeCompare(a.day));
+}
 
 /**
  * Counts per event and tag over a window: the table to read after a launch. A server
  * event with no tag of its own is credited to the person's first tag. "direct" is no tag.
  */
-export async function usageStats(days = 30): Promise<{ since: string; rows: StatsRow[]; funnel: { step: string; count: number; people: number }[]; moves: { move_to_vercel_clicked: number; moved_to_vercel: number } }> {
+export async function usageStats(days = 30): Promise<{
+  since: string;
+  rows: StatsRow[];
+  daily: DailyStatsRow[];
+  funnel: { step: string; count: number; people: number }[];
+  moves: { move_to_vercel_clicked: number; moved_to_vercel: number };
+}> {
   const since = new Date(Date.now() - days * 86_400_000);
   const db = getDb();
-  const rows = await db
-    .select({
-      event: schema.usageEvents.event,
-      ref: sql<string>`coalesce(${schema.usageEvents.ref}, ${schema.userRefs.ref}, ${schema.usageEvents.utmCampaign}, ${schema.userRefs.utmCampaign}, 'direct')`,
-      count: sql<number>`count(*)::int`,
-      people: sql<number>`count(distinct ${schema.usageEvents.userId})::int`,
-    })
-    .from(schema.usageEvents)
-    .leftJoin(schema.userRefs, eq(schema.userRefs.userId, schema.usageEvents.userId))
-    .where(gte(schema.usageEvents.createdAt, since))
-    .groupBy(schema.usageEvents.event, sql`2`)
-    .orderBy(desc(sql`3`));
+  const usageDay = sql<string>`to_char(${schema.usageEvents.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+  const approvalDay = sql<string>`to_char(${schema.auditLog.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+  const [rows, starts, approvals] = await Promise.all([
+    db
+      .select({
+        event: schema.usageEvents.event,
+        ref: sql<string>`coalesce(${schema.usageEvents.ref}, ${schema.userRefs.ref}, ${schema.usageEvents.utmCampaign}, ${schema.userRefs.utmCampaign}, 'direct')`,
+        count: sql<number>`count(*)::int`,
+        people: sql<number>`count(distinct ${schema.usageEvents.userId})::int`,
+      })
+      .from(schema.usageEvents)
+      .leftJoin(schema.userRefs, eq(schema.userRefs.userId, schema.usageEvents.userId))
+      .where(gte(schema.usageEvents.createdAt, since))
+      .groupBy(schema.usageEvents.event, sql`2`)
+      .orderBy(desc(sql`3`)),
+    db
+      .select({ day: usageDay, count: sql<number>`count(*)::int` })
+      .from(schema.usageEvents)
+      .where(and(gte(schema.usageEvents.createdAt, since), eq(schema.usageEvents.event, "agent_signin_started")))
+      .groupBy(usageDay),
+    db
+      .select({ day: approvalDay, count: sql<number>`count(*)::int` })
+      .from(schema.auditLog)
+      .where(and(gte(schema.auditLog.createdAt, since), eq(schema.auditLog.action, "device.approved")))
+      .groupBy(approvalDay),
+  ]);
   const totals = new Map<string, { count: number; people: number }>();
   for (const r of rows) {
     const t = totals.get(r.event) ?? { count: 0, people: 0 };
@@ -104,6 +139,7 @@ export async function usageStats(days = 30): Promise<{ since: string; rows: Stat
   return {
     since: since.toISOString(),
     rows: rows.map((r) => ({ event: r.event, ref: r.ref, count: Number(r.count), people: Number(r.people) })),
+    daily: mergeDailyStats(starts, approvals),
     funnel: FUNNEL.map((step) => ({ step, count: totals.get(step)?.count ?? 0, people: totals.get(step)?.people ?? 0 })),
     moves: { move_to_vercel_clicked: totals.get("move_to_vercel_clicked")?.count ?? 0, moved_to_vercel: totals.get("moved_to_vercel")?.count ?? 0 },
   };

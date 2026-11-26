@@ -20,6 +20,8 @@ export type AnalyticsEvents = {
   m2_action_requested: { action: string };
   /** A new account: the first server-side funnel step after a click. */
   signed_up: { provider: string | null };
+  /** A coding agent began the device sign-in flow. */
+  agent_signin_started: { client: string; access: "read" | "write" };
   /** A key for a coding agent was made. */
   agent_key_created: { scopes: string; via?: "device" };
   /** An alert email went out (deploy failed, and later kinds). */
@@ -43,6 +45,7 @@ export const ANALYTICS_EVENT_NAMES = [
   "finding_wrong_tapped",
   "m2_action_requested",
   "signed_up",
+  "agent_signin_started",
   "agent_key_created",
   "alert_sent",
   "moved_to_vercel",

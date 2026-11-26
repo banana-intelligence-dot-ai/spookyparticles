@@ -75,6 +75,9 @@ export const deviceHandlers = createDeviceHandlers({
     return row?.total ?? 0;
   },
   audit: appendAudit,
+  async trackStart(client, access) {
+    await track("anon:device", "agent_signin_started", { client, access });
+  },
   async track(userId, scopes) {
     await track(userId, "agent_key_created", { scopes: scopes.join(","), via: "device" });
   },

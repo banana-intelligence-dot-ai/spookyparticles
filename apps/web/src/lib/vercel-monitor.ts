@@ -10,13 +10,13 @@ import { byPublicName } from "@/lib/hosts";
 import { pinnedGet, resolvePublic } from "@/lib/net-safety";
 import { classifyOutsideApis } from "@/lib/outside-apis";
 import type { VercelScope } from "@/lib/providers/vercel";
-import { queryErrorRate, queryExternalApis } from "@/lib/providers/vercel-query";
+import { readProjectObservability } from "@/lib/vercel-observability";
+import { EXTERNAL_APIS_REFUSED_AT, OBSERVABILITY_REFUSED_AT } from "@/lib/vercel-refusals";
 import { nextErrorRate, nextUptime, type ErrorRateState, type UptimeState } from "@/lib/vercel-health";
 import { historyChoice } from "@/lib/vercel-watch";
 import { readNodes, type SlimNode } from "@/lib/node-reads";
 
 type ProjectNode = SlimNode;
-const unreadableUntil = new Map<string, number>();
 export const attrs = (p: ProjectNode) => p.attributes as Record<string, unknown>;
 const priorError = (p: ProjectNode): ErrorRateState | null => {
   const v = attrs(p).errorRate;
@@ -50,7 +50,7 @@ export async function save(p: ProjectNode, field: "errorRate" | "uptime" | "site
 export async function sweepServerErrors(nowMs = Date.now()): Promise<{ queried: number; alerts: number; unavailable: number }> {
   const db = getDb();
   const [projects, connections, jobs, domains, links] = await Promise.all([
-    readNodes("project", ["connection_id", "scope_id", "scope_kind", "production_url", "errorRate"]),
+    readNodes("project", ["connection_id", "scope_id", "scope_kind", "production_url", "errorRate", OBSERVABILITY_REFUSED_AT, EXTERNAL_APIS_REFUSED_AT]),
     db.select({ id: schema.connections.id, userId: schema.connections.userId, scopes: schema.connections.scopes, status: schema.connections.status, encryptedAccessToken: schema.connections.encryptedAccessToken })
       .from(schema.connections).where(and(eq(schema.connections.provider, "vercel"), eq(schema.connections.status, "active"))),
     db.select({ userId: schema.checkinJobs.userId, vercelProjectId: schema.checkinJobs.vercelProjectId, vercelConnectionId: schema.checkinJobs.vercelConnectionId, evidenceState: schema.checkinJobs.evidenceState }).from(schema.checkinJobs).where(eq(schema.checkinJobs.source, "vercel")),
@@ -67,7 +67,7 @@ export async function sweepServerErrors(nowMs = Date.now()): Promise<{ queried: 
     const proven = jobs.find((j) => j.userId === p.userId && j.vercelProjectId === projectId && j.evidenceState === "ok" && candidates.some((c) => c.id === j.vercelConnectionId))?.vercelConnectionId;
     const recorded = typeof a.connection_id === "string" && candidates.some((c) => c.id === a.connection_id) ? a.connection_id : null;
     const current = proven ?? recorded ?? candidates[0]?.id;
-    if (!current || (unreadableUntil.get(p.id) ?? 0) > nowMs) continue;
+    if (!current) continue;
     const choice = historyChoice(current, candidates, []);
     if (choice.kind !== "try") continue;
     const scopeId = typeof a.scope_id === "string" ? a.scope_id : "scoped";
@@ -75,20 +75,15 @@ export async function sweepServerErrors(nowMs = Date.now()): Promise<{ queried: 
     let token = "";
     try { token = await getAccessToken(choice.id); }
     catch { /* handled as unavailable below */ }
-    let result: Awaited<ReturnType<typeof queryErrorRate>>;
-    try { result = token ? await queryErrorRate(token, scope, projectId, nowMs - 15 * 60_000, nowMs) : { ok: false, reason: "unavailable" }; }
-    catch { result = { ok: false, reason: "unavailable" }; }
-    if (result.ok) try {
-      const outside = await queryExternalApis(token, scope, projectId, nowMs - 15 * 60_000, nowMs);
-      if (outside.ok) for (const finding of classifyOutsideApis(outside.hosts, ownHosts.get(p.id) ?? [])) console.info(`outside-api would-alert ${p.name} ${finding.host} ${finding.kind} ${finding.failing}/${finding.total}`);
-    } catch { /* log-only outside API checks never interrupt the watcher */ }
+    const read = token ? await readProjectObservability(p, token, scope, projectId, nowMs - 15 * 60_000, nowMs) : null;
+    if (read?.skipped) continue;
+    const result = read?.errorRate ?? { ok: false as const, reason: "unavailable" as const };
+    if (read?.outside?.ok) for (const finding of classifyOutsideApis(read.outside.hosts, ownHosts.get(p.id) ?? [])) console.info(`outside-api would-alert ${p.name} ${finding.host} ${finding.kind} ${finding.failing}/${finding.total}`);
     queried++;
     if (!result.ok) {
       unavailable++;
-      if (result.reason === "not_readable") unreadableUntil.set(p.id, nowMs + 60 * 60_000);
       continue;
     }
-    unreadableUntil.delete(p.id);
     const prior = priorError(p);
     const at = new Date(nowMs).toISOString();
     const next = nextErrorRate(prior, result.counts, at);

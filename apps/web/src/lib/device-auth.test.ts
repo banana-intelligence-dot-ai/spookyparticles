@@ -213,6 +213,7 @@ beforeEach(() => {
     }),
     countRecentWriteApprovals: vi.fn(async () => 0),
     audit: vi.fn(async () => undefined),
+    trackStart: vi.fn(async () => undefined),
     track: vi.fn(async () => undefined),
     allowStart: () => true,
   };
@@ -257,6 +258,8 @@ describe("POST /api/v1/device/start", () => {
     expect(store.rows.map((r) => r.identifier).sort()).toEqual([`device-user:${body.userCode}`, `device:${sha256Hex(body.deviceCode)}`].sort());
     expect(store.rows[0].expiresAt.getTime() - clock.getTime()).toBe(DEVICE_TTL_SEC * 1000);
     expect(JSON.parse(store.rows[0].value).access).toBe("read");
+    expect(deps.trackStart).toHaveBeenCalledOnce();
+    expect(deps.trackStart).toHaveBeenCalledWith("claude-code", "read");
   });
 
   it("stores a requested write access level", async () => {
@@ -272,6 +275,7 @@ describe("POST /api/v1/device/start", () => {
       expect((await res.json()).error.code).toBe("invalid_access");
     }
     expect(store.rows).toHaveLength(0);
+    expect(deps.trackStart).not.toHaveBeenCalled();
   });
 
   it("refuses a bad client or a missing machine", async () => {
@@ -291,6 +295,7 @@ describe("POST /api/v1/device/start", () => {
     expect((await go()).status).toBe(200);
     expect((await go()).status).toBe(200);
     expect((await go()).status).toBe(429);
+    expect(deps.trackStart).toHaveBeenCalledTimes(2);
   });
 });
 

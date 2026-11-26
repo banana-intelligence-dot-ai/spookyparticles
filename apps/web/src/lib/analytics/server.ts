@@ -30,7 +30,8 @@ export async function track<E extends AnalyticsEventName>(
   const name = SPLIT_BY_PROVIDER.has(event) && typeof p.provider === "string" ? `${event}:${p.provider}` : event;
   const small: Record<string, string | number | boolean | null> = {};
   for (const [k, v] of Object.entries(p)) if (typeof v === "string" || typeof v === "number" || typeof v === "boolean" || v === null) small[k] = typeof v === "string" ? v.slice(0, 120) : v;
-  await recordUsage({ event: name, userId: distinctId.startsWith("user:") ? distinctId.slice(5) : distinctId, props: small });
+  const userId = distinctId.startsWith("anon:") ? null : distinctId.startsWith("user:") ? distinctId.slice(5) : distinctId;
+  await recordUsage({ event: name, userId, props: small });
   const c = getClient();
   if (!c) return;
   try {

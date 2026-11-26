@@ -89,7 +89,7 @@ export function summariseStatusCounts(body: unknown): { total: number; serverErr
   return { total, serverErrors };
 }
 
-export async function queryErrorRate(token: string, scope: VercelScope, projectId: string, sinceMs: number, untilMs: number): Promise<{ ok: true; counts: { total: number; serverErrors: number } } | { ok: false; reason: "not_readable" | "unavailable" }> {
+export async function queryErrorRate(token: string, scope: VercelScope, projectId: string, sinceMs: number, untilMs: number): Promise<{ ok: true; counts: { total: number; serverErrors: number } } | { ok: false; reason: "not_readable"; status: number } | { ok: false; reason: "unavailable" }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
@@ -97,7 +97,7 @@ export async function queryErrorRate(token: string, scope: VercelScope, projectI
     const url = new URL(QUERY_URL);
     if (scope.kind === "team" && scope.id !== "scoped") url.searchParams.set("teamId", scope.id);
     const response = await fetch(url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body), signal: controller.signal });
-    if ([401, 403, 404].includes(response.status)) return { ok: false, reason: "not_readable" };
+    if ([401, 403, 404].includes(response.status)) return { ok: false, reason: "not_readable", status: response.status };
     if (!response.ok) return { ok: false, reason: "unavailable" };
     const result: unknown = await response.json();
     if (!result || typeof result !== "object" || !Array.isArray((result as { data?: unknown }).data)) return { ok: false, reason: "unavailable" };
@@ -106,7 +106,7 @@ export async function queryErrorRate(token: string, scope: VercelScope, projectI
   finally { clearTimeout(timeout); }
 }
 
-export async function queryExternalApis(token: string, scope: VercelScope, projectId: string, sinceMs: number, untilMs: number): Promise<{ ok: true; hosts: ExternalApiHost[] } | { ok: false; reason: "not_readable" | "unavailable" }> {
+export async function queryExternalApis(token: string, scope: VercelScope, projectId: string, sinceMs: number, untilMs: number): Promise<{ ok: true; hosts: ExternalApiHost[] } | { ok: false; reason: "not_readable"; status: number } | { ok: false; reason: "unavailable" }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
@@ -114,7 +114,7 @@ export async function queryExternalApis(token: string, scope: VercelScope, proje
     const url = new URL(QUERY_URL);
     if (scope.kind === "team" && scope.id !== "scoped") url.searchParams.set("teamId", scope.id);
     const response = await fetch(url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body), signal: controller.signal });
-    if ([401, 403, 404].includes(response.status)) return { ok: false, reason: "not_readable" };
+    if ([401, 403, 404].includes(response.status)) return { ok: false, reason: "not_readable", status: response.status };
     if (!response.ok) return { ok: false, reason: "unavailable" };
     const result: unknown = await response.json();
     if (!result || typeof result !== "object") return { ok: false, reason: "unavailable" };

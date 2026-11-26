@@ -1,5 +1,5 @@
 /**
- * GET /api/v1/stats?days=30: site-wide usage counts per event and link tag, plus the funnel.
+ * GET /api/v1/stats?days=30: site-wide usage counts per event and link tag, UTC daily device starts and approvals, plus the funnel.
  * Counts only, no people. Admins only (SP_ADMIN_EMAILS); read it with an admin API key.
  */
 import { isAdmin, usageStats } from "@/lib/analytics/usage";

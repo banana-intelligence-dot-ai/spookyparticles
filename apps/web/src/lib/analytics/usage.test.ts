@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLIENT_EVENTS, FUNNEL, cleanArrival, cleanRef } from "./usage";
+import { CLIENT_EVENTS, FUNNEL, cleanArrival, cleanRef, mergeDailyStats } from "./usage";
 
 describe("cleanRef", () => {
   it("accepts valid link tags and rejects anything else", () => {
@@ -38,5 +38,26 @@ describe("CLIENT_EVENTS", () => {
 describe("FUNNEL", () => {
   it("orders the agent path before the existing sign-in path", () => {
     expect(FUNNEL.slice(0, 5)).toEqual(["landed", "setup_prompt_copied", "setup_md_read", "agent_signin_started", "signin_clicked"]);
+  });
+});
+
+describe("mergeDailyStats", () => {
+  it("combines UTC start and approval counts with zeroes for missing days", () => {
+    expect(
+      mergeDailyStats(
+        [
+          { day: "2026-11-24", count: 5 },
+          { day: "2026-11-25", count: 3 },
+        ],
+        [
+          { day: "2026-11-23", count: 1 },
+          { day: "2026-11-24", count: 2 },
+        ],
+      ),
+    ).toEqual([
+      { day: "2026-11-25", agent_signin_started: 3, device_approved: 0 },
+      { day: "2026-11-24", agent_signin_started: 5, device_approved: 2 },
+      { day: "2026-11-23", agent_signin_started: 0, device_approved: 1 },
+    ]);
   });
 });

@@ -29,7 +29,7 @@ import { recordProductionDeploys } from "@/lib/commit-outcome";
 import { detectServices } from "@/lib/services/catalog";
 import { billedServices, billingWindow, parseJsonLines, rowsForAccount } from "@/lib/services/billing";
 import { setAccountBilling, syncBilledServices, syncProjectBills, syncProjectServices } from "@/lib/services/store";
-import { advanceRefusalProgress, ENV_LIST_REFUSED_AT, isFreshRefusal, refusalPersistence, SCHEDULES_REFUSED_AT, type RefusalProgress } from "@/lib/vercel-refusals";
+import { advanceRefusalProgress, ENV_LIST_REFUSED_AT, EXTERNAL_APIS_REFUSED_AT, isFreshRefusal, OBSERVABILITY_REFUSED_AT, persistNodeRefusal, SCHEDULES_REFUSED_AT, WEB_ANALYTICS_REFUSED_AT, type RefusalProgress } from "@/lib/vercel-refusals";
 import {
   VercelApiError,
   VercelNoReadableScope,
@@ -54,27 +54,10 @@ const SOURCE = "vercel" as const;
 
 type RefusalOutcomes = { schedulesRefused: boolean; schedulesRead: boolean; envListRefused: boolean; envListRead: boolean };
 
-/** attributes = attributes || patch, so refusal timestamps do not rewrite the account node. */
-function sqlMergeAttr(patch: Record<string, unknown>) {
-  return sql`${schema.nodes.attributes} || ${JSON.stringify(patch)}::jsonb`;
-}
-
 async function persistRefusalOutcomes(accountNodeId: string, outcomes: RefusalOutcomes) {
-  const refused: Record<string, string> = {};
-  const now = new Date().toISOString();
-  const schedules = refusalPersistence({ refused: outcomes.schedulesRefused, read: outcomes.schedulesRead });
-  const envList = refusalPersistence({ refused: outcomes.envListRefused, read: outcomes.envListRead });
-  if (schedules === "refuse") refused[SCHEDULES_REFUSED_AT] = now;
-  if (envList === "refuse") refused[ENV_LIST_REFUSED_AT] = now;
-  if (Object.keys(refused).length) {
-    await getDb().update(schema.nodes).set({ attributes: sqlMergeAttr(refused) }).where(eq(schema.nodes.id, accountNodeId));
-  }
-  if (schedules === "clear") {
-    await getDb().update(schema.nodes).set({ attributes: sql`${schema.nodes.attributes} - ${SCHEDULES_REFUSED_AT}::text` }).where(eq(schema.nodes.id, accountNodeId));
-  }
-  if (envList === "clear") {
-    await getDb().update(schema.nodes).set({ attributes: sql`${schema.nodes.attributes} - ${ENV_LIST_REFUSED_AT}::text` }).where(eq(schema.nodes.id, accountNodeId));
-  }
+  const nowMs = Date.now();
+  await persistNodeRefusal(accountNodeId, SCHEDULES_REFUSED_AT, { refused: outcomes.schedulesRefused, read: outcomes.schedulesRead }, nowMs);
+  await persistNodeRefusal(accountNodeId, ENV_LIST_REFUSED_AT, { refused: outcomes.envListRefused, read: outcomes.envListRead }, nowMs);
 }
 
 /** A 401 or 403 means Vercel no longer honors the token: the connection needs a new one. Rate limits retry. */
@@ -269,6 +252,9 @@ async function syncOneVercelProject(input: ProjectSyncInput) {
       connection_id: c.id,
       web_analytics: project.webAnalytics === true,
       ...(previous?.attributes.web_analytics_read ? { web_analytics_read: previous.attributes.web_analytics_read } : {}),
+      ...(previous?.attributes[OBSERVABILITY_REFUSED_AT] ? { [OBSERVABILITY_REFUSED_AT]: previous.attributes[OBSERVABILITY_REFUSED_AT] } : {}),
+      ...(previous?.attributes[EXTERNAL_APIS_REFUSED_AT] ? { [EXTERNAL_APIS_REFUSED_AT]: previous.attributes[EXTERNAL_APIS_REFUSED_AT] } : {}),
+      ...(previous?.attributes[WEB_ANALYTICS_REFUSED_AT] ? { [WEB_ANALYTICS_REFUSED_AT]: previous.attributes[WEB_ANALYTICS_REFUSED_AT] } : {}),
       ...(previous?.attributes.uptime ? { uptime: previous.attributes.uptime } : {}),
       ...(previous?.attributes.errorRate ? { errorRate: previous.attributes.errorRate } : {}),
       ...(previous?.attributes.vercel_bill ? { vercel_bill: previous.attributes.vercel_bill } : {}),

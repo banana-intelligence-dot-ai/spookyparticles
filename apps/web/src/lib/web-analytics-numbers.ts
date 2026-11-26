@@ -10,6 +10,7 @@ import { getAccessToken } from "@/lib/connections";
 import { countWebAnalytics, type VercelScope, type WebAnalyticsCounts } from "@/lib/providers/vercel";
 import type { LatestNumber } from "@/lib/checkin-stats";
 import { PRODUCT_CLICK_APP_NAMES } from "@/lib/x-posts/private-terms";
+import { isFreshRefusal, persistNodeRefusal, WEB_ANALYTICS_REFUSED_AT } from "@/lib/vercel-refusals";
 
 /**
  * Sites whose main number is product clicks rather than visitors. A stopgap until the main number
@@ -49,6 +50,10 @@ export async function webAnalyticsNumbers(userId: string, nowMs: number): Promis
     const scopeId = typeof a.scope_id === "string" ? a.scope_id : null;
     const projectId = p.externalKey?.startsWith("vercel:project:") ? p.externalKey.slice("vercel:project:".length) : null;
     if (!connectionId || !scopeId || !projectId) continue;
+    if (isFreshRefusal(a[WEB_ANALYTICS_REFUSED_AT], nowMs)) {
+      refused += 1;
+      continue;
+    }
     const scope: VercelScope = { kind: a.scope_kind === "user" ? "user" : "team", id: scopeId, slug: typeof a.scope_slug === "string" ? a.scope_slug : "", name: "" };
     let result: Awaited<ReturnType<typeof countWebAnalytics>>;
     try {
@@ -61,8 +66,16 @@ export async function webAnalyticsNumbers(userId: string, nowMs: number): Promis
       .set({ attributes: sql`${schema.nodes.attributes} || ${JSON.stringify({ web_analytics_read: { day, ok: result.ok, reason: result.ok ? null : result.reason, status: result.ok ? null : (result.status ?? null), at: new Date(nowMs).toISOString() } })}::jsonb` })
       .where(eq(schema.nodes.id, p.id));
     if (!result.ok) {
-      if (result.reason === "not_readable") refused += 1;
+      if (result.reason === "not_readable") {
+        refused += 1;
+        if (result.status === 404) {
+          await persistNodeRefusal(p.id, WEB_ANALYTICS_REFUSED_AT, { refused: true, read: false }, nowMs);
+        }
+      }
       continue;
+    }
+    if (typeof a[WEB_ANALYTICS_REFUSED_AT] === "string") {
+      await persistNodeRefusal(p.id, WEB_ANALYTICS_REFUSED_AT, { refused: false, read: true }, nowMs);
     }
     rows.push(webAnalyticsRow(p.name, day, result.counts));
   }
