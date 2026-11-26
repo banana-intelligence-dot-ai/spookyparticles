@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildErrorRateQuery, buildRequestCountQuery, parseRequestCounts, queryRequestCounts, summariseStatusCounts } from "./vercel-query";
+import { buildErrorRateQuery, buildExternalApiQuery, buildRequestCountQuery, parseRequestCounts, queryExternalApis, queryRequestCounts, summariseStatusCounts } from "./vercel-query";
 
 const scope = { kind: "team" as const, id: "team_1", slug: "team", name: "Team" };
 
@@ -19,6 +19,20 @@ describe("Vercel request history query", () => {
     expect(buildErrorRateQuery(scope, "p", 0, 60 * 60_000)).toMatchObject({ metric: "vercel.request.count", aggregation: "sum", groupBy: ["http_status"], granularity: { minutes: 5 }, limit: 500, startTime: new Date(45 * 60_000).toISOString() });
     expect(summariseStatusCounts({ data: [{ http_status: "200", vercel_request_count_sum: 40 }, { http_status: "500", vercel_request_count_sum: 10 }, { http_status: "599", vercel_request_count_sum: 2 }, { http_status: "bad", vercel_request_count_sum: 99 }] })).toEqual({ total: 52, serverErrors: 12 });
   });
+  it("builds the external API request-count shape", () => {
+    expect(buildExternalApiQuery(scope, "p", 0, 60 * 60_000)).toEqual({
+      metric: "vercel.external_api_request.count",
+      scope: { type: "project", ownerId: "team_1", projectIds: ["p"] },
+      aggregation: "sum",
+      groupBy: ["request_hostname", "http_status"],
+      granularity: { minutes: 15 },
+      startTime: new Date(45 * 60_000).toISOString(),
+      endTime: new Date(60 * 60_000).toISOString(),
+      limit: 500,
+    });
+    expect(() => buildExternalApiQuery(scope, "", 0, 1000)).toThrow();
+    expect(() => buildExternalApiQuery(scope, "p", 1000, 1000)).toThrow();
+  });
   it("ignores zero and malformed buckets", () => {
     expect(parseRequestCounts({ data: [
       { timestamp: "2026-11-10T18:10:00Z", vercel_request_count_sum: 1, request_path: "/api/a", http_status: "200" },
@@ -35,6 +49,32 @@ describe("Vercel request history query", () => {
     expect(await queryRequestCounts("token", scope, "p", ["/a"], 0, 1000)).toEqual({ ok: false, reason: "not_readable", status: 403 });
     expect(await queryRequestCounts("token", scope, "p", ["/a"], 0, 1000)).toEqual({ ok: false, reason: "unavailable" });
     expect(await queryRequestCounts("token", scope, "p", ["/a"], 0, 1000)).toEqual({ ok: false, reason: "unavailable" });
+  });
+  it("parses external API summaries, falls back to data, and maps denied history", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [{ request_hostname: "ignored.example", http_status: "500", vercel_external_api_request_count_sum: 99 }],
+        summary: [
+          { request_hostname: "api.example.com", http_status: "200", vercel_external_api_request_count_sum: 12 },
+          { request_hostname: "api.example.com", http_status: "503", vercel_external_api_request_count_sum: 10 },
+        ],
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [
+        { timestamp: "2026-11-26T10:00:00Z", request_hostname: "other.example", http_status: "429", vercel_external_api_request_count_sum: 4 },
+        { timestamp: "2026-11-26T10:15:00Z", request_hostname: "other.example", http_status: "429", vercel_external_api_request_count_sum: 6 },
+        { timestamp: "2026-11-26T10:15:00Z", request_hostname: "other.example", http_status: "200", vercel_external_api_request_count_sum: 8 },
+      ] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("denied", { status: 403 }));
+    vi.stubGlobal("fetch", fetcher);
+
+    expect(await queryExternalApis("token", scope, "p", 0, 60 * 60_000)).toEqual({ ok: true, hosts: [
+      { host: "api.example.com", total: 22, byStatus: { "200": 12, "503": 10 } },
+    ] });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ metric: "vercel.external_api_request.count", granularity: { minutes: 15 }, limit: 500 });
+    expect(await queryExternalApis("token", scope, "p", 0, 60 * 60_000)).toEqual({ ok: true, hosts: [
+      { host: "other.example", total: 18, byStatus: { "200": 8, "429": 10 } },
+    ] });
+    expect(await queryExternalApis("token", scope, "p", 0, 60 * 60_000)).toEqual({ ok: false, reason: "not_readable" });
   });
   it("aborts a stalled query after eight seconds", async () => {
     vi.useFakeTimers();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLIENT_EVENTS, cleanArrival, cleanRef } from "./usage";
+import { CLIENT_EVENTS, FUNNEL, cleanArrival, cleanRef } from "./usage";
 
 describe("cleanRef", () => {
   it("accepts valid link tags and rejects anything else", () => {
@@ -26,8 +26,17 @@ describe("cleanArrival", () => {
 
 describe("CLIENT_EVENTS", () => {
   it("never lets the browser claim a server-side funnel step", () => {
+    expect(CLIENT_EVENTS.has("setup_prompt_copied")).toBe(true);
+    expect(CLIENT_EVENTS.has("setup_md_read")).toBe(false);
+    expect(CLIENT_EVENTS.has("agent_signin_started")).toBe(false);
     expect(CLIENT_EVENTS.has("signed_up")).toBe(false);
     expect(CLIENT_EVENTS.has("consent_granted")).toBe(false);
     expect(CLIENT_EVENTS.has("landed")).toBe(true);
+  });
+});
+
+describe("FUNNEL", () => {
+  it("orders the agent path before the existing sign-in path", () => {
+    expect(FUNNEL.slice(0, 5)).toEqual(["landed", "setup_prompt_copied", "setup_md_read", "agent_signin_started", "signin_clicked"]);
   });
 });

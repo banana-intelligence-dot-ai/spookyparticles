@@ -30,7 +30,13 @@ Two different failures need two different signals. A run that fails shows up as 
 
 Spooky finds your Vercel cron jobs and alerts when a run is missed or fails, and again when it recovers. Where it can't read the project's request history on Vercel, one check-in line in the job turns watching on.
 
+For both monitoring paths in one place, see [Cron job monitoring tool for Vercel and other jobs](/cron-job-monitoring-tool-for-vercel).
+
+For the wider set of signals to watch, see [Vercel monitoring](/vercel-monitoring).
+
 The [spooky-checkin package](/docs/npm-package) sends that line for a Vercel cron route, and [check-ins](/docs/check-ins) explains how a late or failed run is caught.
+
+If the job never starts, check the [Vercel cron job not running fixes](/vercel-cron-job-not-running).
 
 ## How do I turn it on?
 

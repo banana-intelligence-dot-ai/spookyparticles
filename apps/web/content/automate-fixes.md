@@ -4,6 +4,18 @@ To automate fixes, connect Vercel and GitHub to Spooky Particles and add one Git
 
 The agent gets what failed, with the cause when Spooky can find it. It ships directly only where your repo's own rules allow. This is one part of [VibeOps](/vibeops), the work of keeping shipped apps running.
 
+For the plain review flow, see [bug fixing for Vercel apps](/automatic-bug-fixing-vercel).
+
+If a deployment stays queued or initializing, use the [Vercel deployment stuck fixes](/vercel-deployment-stuck).
+
+To choose where Vercel sends failure alerts, set up [Vercel deployment notifications](/vercel-deployment-notifications).
+
+For what Vercel's own alerts cover, see [Vercel Alerts](/vercel-alerts).
+
+If the build reaches Vercel's time or memory limit, use the [Vercel build timeout and out of memory fixes](/vercel-build-timeout-and-out-of-memory).
+
+See [where Vercel stores logs](/vercel-error-log) before routing a failure to your agent.
+
 ## How do I set it up?
 
 1. Give your coding agent [setup.md](/setup.md). Claude Code and Codex can both read it. The [quickstart](/docs/quickstart) has the same steps.
@@ -18,7 +30,7 @@ The agent gets what failed, with the cause when Spooky can find it. It ships dir
 - The cause when Spooky can find it: the build log line for a deploy (see [how to read a failed Vercel deployment](/vercel-deployment-failed) by hand, [a failed Vercel build](/vercel-build-failed), [a failed deploy that started from GitHub](/vercel-deployment-failed-github), [the Root Directory error](/vercel-root-directory-does-not-exist), or [a missing environment variable](/vercel-env-var-not-found-build)), or the missed or failed run for a scheduled job.
 - One rule, every time: fix the cause, never make a check pass by weakening it. No lower thresholds, no skipped or deleted checks, tests or alerts. See [alarm checks](/docs/alarms).
 
-If a scheduled job is still failing 15 minutes later, Spooky alerts your people on ntfy or email.
+If a scheduled job is still failing 15 minutes later, Spooky alerts your people on ntfy or email. For a site that stops answering, see [Vercel uptime monitoring](/vercel-uptime-monitoring).
 
 ## What does Spooky never do?
 
@@ -44,3 +56,6 @@ Vercel Agent, in public beta, reviews code and investigates production issues in
 **What counts as a failure?** A failed production deploy, a page that stops answering, or a scheduled job that misses or reports an error.
 
 **Do I need to change my code?** With a Vercel read token, Vercel cron jobs are watched with no code change. With the Vercel integration alone, and for jobs on other hosts, add a one-line check-in.
+
+To have Claude Code look at your Vercel projects when you ask, see [Claude Code with Vercel](/claude-code-vercel).
+Using Codex? See [how to deploy to Vercel with Codex](/codex-vercel-deploy).

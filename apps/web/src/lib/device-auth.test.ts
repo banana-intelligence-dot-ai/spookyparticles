@@ -14,6 +14,7 @@ import {
   generateUserCode,
   keyName,
   normalizeUserCode,
+  parseAccess,
   parseClient,
   parseMachine,
   pollTransition,
@@ -58,6 +59,13 @@ describe("user codes", () => {
 });
 
 describe("client and machine", () => {
+  it("accepts only device-flow access levels", () => {
+    expect(parseAccess("read")).toBe("read");
+    expect(parseAccess("write")).toBe("write");
+    expect(parseAccess("approve")).toBeNull();
+    expect(parseAccess(undefined)).toBeNull();
+  });
+
   it("accepts agent kinds and refuses odd ones", () => {
     expect(parseClient(" claude-code ")).toBe("claude-code");
     expect(parseClient("Codex 2.1_beta")).toBe("Codex 2.1_beta");
@@ -165,8 +173,8 @@ function memoryStore(): DeviceStore & { rows: Row[] } {
   };
 }
 
-const session: Actor = { userId: "u_nate", via: "session", scopes: ["read", "write", "approve"], label: "user:u_nate" };
-const keyActor: Actor = { userId: "u_nate", via: "api_key", scopes: ["read", "write", "approve"], apiKeyId: "k1", label: "api_key:k1" };
+const session: Actor = { userId: "u_test", via: "session", scopes: ["read", "write", "approve"], label: "user:u_test" };
+const keyActor: Actor = { userId: "u_test", via: "api_key", scopes: ["read", "write", "approve"], apiKeyId: "k1", label: "api_key:k1" };
 
 let clock: Date;
 let store: ReturnType<typeof memoryStore>;
@@ -176,7 +184,7 @@ let routes: ReturnType<typeof wire>;
 
 function wire(d: DeviceDeps) {
   const h = createDeviceHandlers(d);
-  return { start: api(h.start), token: api(h.token), lookup: api(h.lookup), approve: api(h.approve) };
+  return { decide: h.decide, start: api(h.start), token: api(h.token), lookup: api(h.lookup), approve: api(h.approve) };
 }
 
 beforeEach(() => {
@@ -192,10 +200,18 @@ beforeEach(() => {
       if (!actor) throw new ApiError(401, "unauthenticated", "Sign in or send an API key");
       return actor;
     }),
-    mintKey: vi.fn(async (_userId: string, name: string) => {
+    mintKey: vi.fn(async (_userId: string, name: string, access: "read" | "write") => {
       n++;
-      return { id: `key${n}`, key: `sp_minted_${n}`, name, prefix: "sp_mint", scopes: ["read"] };
+      return {
+        id: `key${n}`,
+        key: `sp_minted_${n}`,
+        name,
+        prefix: "sp_mint",
+        scopes: access === "write" ? ["read", "write"] : ["read"],
+        expiresAt: access === "write" ? new Date(clock.getTime() + 90 * 86_400_000) : null,
+      };
     }),
+    countRecentWriteApprovals: vi.fn(async () => 0),
     audit: vi.fn(async () => undefined),
     track: vi.fn(async () => undefined),
     allowStart: () => true,
@@ -210,8 +226,8 @@ const tick = (ms: number) => {
   clock = new Date(clock.getTime() + ms);
 };
 
-async function start(client = "claude-code", machine = "studio") {
-  const res = await routes.start(post("/api/v1/device/start", { client, machine }), undefined);
+async function start(client = "claude-code", machine = "studio", access?: "read" | "write") {
+  const res = await routes.start(post("/api/v1/device/start", { client, machine, ...(access ? { access } : {}) }), undefined);
   return { res, body: await res.json() };
 }
 
@@ -240,6 +256,22 @@ describe("POST /api/v1/device/start", () => {
     expect(all).not.toContain(body.deviceCode);
     expect(store.rows.map((r) => r.identifier).sort()).toEqual([`device-user:${body.userCode}`, `device:${sha256Hex(body.deviceCode)}`].sort());
     expect(store.rows[0].expiresAt.getTime() - clock.getTime()).toBe(DEVICE_TTL_SEC * 1000);
+    expect(JSON.parse(store.rows[0].value).access).toBe("read");
+  });
+
+  it("stores a requested write access level", async () => {
+    const { res } = await start("codex", "studio", "write");
+    expect(res.status).toBe(200);
+    expect(JSON.parse(store.rows[0].value)).toMatchObject({ client: "codex", machine: "studio", access: "write", status: "pending" });
+  });
+
+  it("rejects an invalid access level, including full control", async () => {
+    for (const access of ["approve", "full", null]) {
+      const res = await routes.start(post("/api/v1/device/start", { client: "codex", machine: "studio", access }), undefined);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.code).toBe("invalid_access");
+    }
+    expect(store.rows).toHaveLength(0);
   });
 
   it("refuses a bad client or a missing machine", async () => {
@@ -278,15 +310,36 @@ describe("POST /api/v1/device/token", () => {
     tick(5000);
     const first = await poll(body.deviceCode);
     expect(first.status).toBe(200);
-    expect(first.body).toEqual({ key: "sp_minted_1", name: "Claude Code on studio", prefix: "sp_mint", scopes: ["read"] });
-    expect(deps.mintKey).toHaveBeenCalledWith("u_nate", "Claude Code on studio");
+    expect(first.body).toEqual({ key: "sp_minted_1", name: "Claude Code on studio", prefix: "sp_mint", scopes: ["read"], expiresAt: null });
+    expect(deps.mintKey).toHaveBeenCalledWith("u_test", "Claude Code on studio", "read");
     expect(deps.audit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "api_key.created", target: "api_key:key1", after: { scopes: ["read"], via: "device", client: "claude-code", machine: "studio" } }),
+      expect.objectContaining({ action: "api_key.created", target: "api_key:key1", after: expect.objectContaining({ scopes: ["read"], expiresOn: null, via: "device" }) }),
     );
-    expect(deps.track).toHaveBeenCalledWith("u_nate");
+    expect(deps.track).toHaveBeenCalledWith("u_test", ["read"]);
     tick(5000);
     expect((await poll(body.deviceCode)).body.error).toBe("expired_token");
     expect(deps.mintKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("a write approval mints read and write scopes with a 90 day expiry and audit row", async () => {
+    const { body } = await start("codex", "studio", "write");
+    expect(await decide(body.userCode, true)).toEqual({ status: 200, body: { status: "approved" } });
+    tick(5000);
+    const mintedAt = clock;
+    const result = await poll(body.deviceCode);
+    expect(result.status).toBe(200);
+    expect(result.body.scopes).toEqual(["read", "write"]);
+    expect(result.body.scopes).not.toContain("approve");
+    expect(Date.parse(result.body.expiresAt) - mintedAt.getTime()).toBe(90 * 86_400_000);
+    expect(deps.mintKey).toHaveBeenCalledWith("u_test", "Codex on studio", "write");
+    expect(deps.audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "api_key.created",
+        target: "api_key:key1",
+        after: expect.objectContaining({ scopes: ["read", "write"], expiresOn: "2027-02-11", via: "device" }),
+      }),
+    );
+    expect(deps.track).toHaveBeenCalledWith("u_test", ["read", "write"]);
   });
 
   it("two concurrent polls on an approved code mint one key", async () => {
@@ -328,7 +381,7 @@ describe("approve and lookup", () => {
     const res = await routes.lookup(new Request(`https://spookyparticles.com/api/v1/device/approve?userCode=${body.userCode}`), undefined);
     const got = await res.json();
     expect(res.status).toBe(200);
-    expect(got).toMatchObject({ userCode: body.userCode, client: "codex", clientLabel: "Codex", machine: "build-box", status: "pending" });
+    expect(got).toMatchObject({ userCode: body.userCode, client: "codex", clientLabel: "Codex", machine: "build-box", access: "read", status: "pending" });
     expect(JSON.stringify(got)).not.toContain(body.deviceCode);
     expect(JSON.stringify(got)).not.toContain(sha256Hex(body.deviceCode));
   });
@@ -341,6 +394,31 @@ describe("approve and lookup", () => {
     expect(deps.audit).toHaveBeenCalledWith(expect.objectContaining({ actor: "api_key:k1", action: "device.approved" }));
     const look = await routes.lookup(new Request(`https://spookyparticles.com/api/v1/device/approve?userCode=${body.userCode}`), undefined);
     expect(look.status).toBe(200);
+  });
+
+  it("returns the agent label and access to an approving tool", async () => {
+    const { body } = await start("codex", "studio");
+    await expect(routes.decide(keyActor, body.userCode, true)).resolves.toEqual({ status: "approved", agent: "Codex", access: "read" });
+  });
+
+  it("requires a signed-in person to approve write access", async () => {
+    const { body } = await start("codex", "studio", "write");
+    actor = keyActor;
+    const r = await decide(body.userCode, true);
+    expect(r.status).toBe(403);
+    expect(r.body.error).toMatchObject({
+      code: "write_needs_screen",
+      message: "Write access must be approved by a signed-in person at spookyparticles.com/link.",
+    });
+    expect(deps.countRecentWriteApprovals).not.toHaveBeenCalled();
+    tick(5000);
+    expect((await poll(body.deviceCode)).body.error).toBe("authorization_pending");
+  });
+
+  it("lets a signed-in person approve write access", async () => {
+    const { body } = await start("codex", "studio", "write");
+    expect(await decide(body.userCode, true)).toEqual({ status: 200, body: { status: "approved" } });
+    expect(deps.audit).toHaveBeenCalledWith(expect.objectContaining({ actor: "user:u_test", after: expect.objectContaining({ access: "write" }) }));
   });
 
   it("refuses a write-only key", async () => {
@@ -387,7 +465,25 @@ describe("approve and lookup", () => {
     const { body } = await start();
     await decide(body.userCode, true);
     expect((await decide(body.userCode, false)).status).toBe(409);
-    expect(deps.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "device.approved", actor: "user:u_nate" }));
+    expect(deps.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "device.approved", actor: "user:u_test" }));
+  });
+
+  it("a write request can be approved only once", async () => {
+    const { body } = await start("codex", "studio", "write");
+    expect((await decide(body.userCode, true)).status).toBe(200);
+    expect((await decide(body.userCode, true)).status).toBe(409);
+  });
+
+  it("limits a user to ten write device keys per 24 hours", async () => {
+    vi.mocked(deps.countRecentWriteApprovals).mockResolvedValue(10);
+    const { body } = await start("codex", "studio", "write");
+    const r = await decide(body.userCode, true);
+    expect(r.status).toBe(429);
+    expect(r.body.error.code).toBe("too_many_write_keys");
+    expect(deps.countRecentWriteApprovals).toHaveBeenCalledWith("u_test", new Date("2026-11-12T10:00:00.000Z"));
+    tick(5000);
+    expect((await poll(body.deviceCode)).body.error).toBe("authorization_pending");
+    expect(deps.mintKey).not.toHaveBeenCalled();
   });
 
   it("approve binds the key to the approving user", async () => {
@@ -396,7 +492,7 @@ describe("approve and lookup", () => {
     await decide(body.userCode, true);
     tick(5000);
     await poll(body.deviceCode);
-    expect(deps.mintKey).toHaveBeenCalledWith("u_other", expect.any(String));
+    expect(deps.mintKey).toHaveBeenCalledWith("u_other", expect.any(String), "read");
   });
 
   it("approve still lands when a poll rewrote the row in between", async () => {

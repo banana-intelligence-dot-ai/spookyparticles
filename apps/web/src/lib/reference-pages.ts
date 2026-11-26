@@ -57,8 +57,9 @@ export function referencePage(slug: string): ReferencePage {
   return parseReference(slug, readFileSync(path.join(DIR, `${slug}.md`), "utf8"));
 }
 
-export function listReferencePages(dir = DIR): ReferencePage[] {
+/** Reads only content/reference. A path from a parameter would make the build trace the whole project into every function. */
+export function listReferencePages(): ReferencePage[] {
   let files: string[] = [];
-  try { files = readdirSync(dir).filter((f) => f.endsWith(".md")); } catch { return []; }
-  return files.sort().map((f) => parseReference(f.slice(0, -3), readFileSync(path.join(dir, f), "utf8")));
+  try { files = readdirSync(DIR).filter((f) => f.endsWith(".md")); } catch { return []; }
+  return files.sort().map((f) => parseReference(f.slice(0, -3), readFileSync(path.join(DIR, f), "utf8")));
 }

@@ -1,16 +1,17 @@
 /** Agent sign-in wired to the real database, session store, audit log and analytics. */
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, like, lt, or } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, like, lt, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { API_KEY_PREFIX } from "./actor";
 import { appendAudit } from "./audit";
 import { track } from "./analytics/server";
 import { randomToken, sha256Hex } from "./crypto";
-import { createDeviceHandlers, createIpLimiter, START_LIMIT, type DeviceStore } from "./device-auth";
+import { createDeviceHandlers, createIpLimiter, START_LIMIT, type DeviceAccess, type DeviceStore } from "./device-auth";
 import { appUrl } from "./env";
 import { requireActor } from "./require-actor";
 
 const v = schema.verification;
+const WRITE_KEY_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 const store: DeviceStore = {
   async insert(rows) {
@@ -48,17 +49,33 @@ export const deviceHandlers = createDeviceHandlers({
   origin: appUrl,
   requireActor,
   allowStart: createIpLimiter(START_LIMIT),
-  async mintKey(userId, name) {
-    // Same shape as POST /api/v1/api-keys: shown once, stored only as a hash, read only, no expiry.
+  async mintKey(userId, name, access: DeviceAccess) {
+    // Same shape as POST /api/v1/api-keys: shown once and stored only as a hash.
     const key = `${API_KEY_PREFIX}${randomToken(32)}`;
+    const scopes: ("read" | "write")[] = access === "write" ? ["read", "write"] : ["read"];
+    const expiresAt = access === "write" ? new Date(Date.now() + WRITE_KEY_TTL_MS) : null;
     const [row] = await getDb()
       .insert(schema.apiKeys)
-      .values({ userId, name, hashedKey: sha256Hex(key), prefix: key.slice(0, 7), scopes: ["read"], expiresAt: null })
-      .returning({ id: schema.apiKeys.id, name: schema.apiKeys.name, prefix: schema.apiKeys.prefix, scopes: schema.apiKeys.scopes });
+      .values({ userId, name, hashedKey: sha256Hex(key), prefix: key.slice(0, 7), scopes, expiresAt })
+      .returning({ id: schema.apiKeys.id, name: schema.apiKeys.name, prefix: schema.apiKeys.prefix, scopes: schema.apiKeys.scopes, expiresAt: schema.apiKeys.expiresAt });
     return { ...row, key };
   },
+  async countRecentWriteApprovals(userId, since) {
+    const [row] = await getDb()
+      .select({ total: count() })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.userId, userId),
+          eq(schema.auditLog.action, "device.approved"),
+          gte(schema.auditLog.createdAt, since),
+          sql`${schema.auditLog.after} @> ${JSON.stringify({ access: "write" })}::jsonb`,
+        ),
+      );
+    return row?.total ?? 0;
+  },
   audit: appendAudit,
-  async track(userId) {
-    await track(userId, "agent_key_created", { scopes: "read", via: "device" });
+  async track(userId, scopes) {
+    await track(userId, "agent_key_created", { scopes: scopes.join(","), via: "device" });
   },
 });

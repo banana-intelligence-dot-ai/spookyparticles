@@ -81,12 +81,19 @@ Not needed for setup: to post feedback or use a reviewed tip later, read ${base}
 
    Then hand your human the start line it prints, to run in their own terminal. Do not start it yourself. Never put a key in a file or in chat.
 8. Tell them alerts already reach their account email, and that they can add an ntfy channel for their phone on ${base}/app/jobs.
+9. Check that setup worked. It prints one line each for the key, a connected project and a check-in, then \`PASS\` or \`FAIL:\` with the first missing part and what to do about it:
+
+   \`\`\`bash
+   sh scripts/spooky.sh verify
+   \`\`\`
+
+   A missing check-in is expected until you add one (see **Check-ins for scheduled jobs**); say so and carry on.
 
 ## Report back
 
 Finish with a short message in this shape:
 
-- What was done: which Vercel and GitHub accounts are connected, that this computer is signed in, what \`start\` printed, and whether agent alerts, the fix job and the fixer are on.
+- What was done: which Vercel and GitHub accounts are connected, that this computer is signed in, what \`start\` printed, the last line of \`verify\`, and whether agent alerts, the fix job and the fixer are on.
 - What the human must do: anything left from the list above, with the exact link.
 - Next steps (at most two): for example "check back in 10 minutes for the first findings" or "connect a GitHub organization".
 
@@ -102,7 +109,7 @@ export SPOOKY_API_KEY="$(security find-generic-password -s spookyparticles.com -
 
 ## Optional, later
 
-Check-ins, check findings, recorded services and expiration dates need a **write** key. Ask your human to make one under ${base}/app/agents and put it in \`SPOOKY_API_KEY\` themselves.
+Check-ins, check findings, recorded services and expiration dates need a **write** key. Run \`sh scripts/spooky.sh start --write\`; your human approves write access on screen, and the new key is saved on this computer without passing through chat. If \`SPOOKY_API_KEY\` was already set, the script tells you to unset it so Spooky uses the new saved key.
 
 ## Connect over MCP
 
@@ -170,7 +177,7 @@ Step 6 sets it up. It runs in the foreground for 12 hours, uses their Claude or 
 
 ## Check-ins for scheduled jobs
 
-Every job that runs on a schedule for your human (a nightly build, a daily publish, a GitHub Actions schedule, a launchd or cron job) should check in with Spooky Particles each time it runs. When you add a scheduled job or find one without a check-in, create the check-in yourself. Don't hand it to your human. If it is still quiet when the grace period ends, your human hears on their phone (ntfy) or by email, and again when it recovers. Your agent hears at the same moment. Creating a job needs a key with the **write** scope; ask your human for one if yours is read-only.
+Every job that runs on a schedule for your human (a nightly build, a daily publish, a GitHub Actions schedule, a launchd or cron job) should check in with Spooky Particles each time it runs. When you add a scheduled job or find one without a check-in, create the check-in yourself. Don't hand it to your human. If it is still quiet when the grace period ends, your human hears on their phone (ntfy) or by email, and again when it recovers. Your agent hears at the same moment. Creating a job needs a key with the **write** scope; if yours is read-only, run \`sh scripts/spooky.sh start --write\` and have your human approve write access on screen. If \`SPOOKY_API_KEY\` was already set, unset it when the script says so to use the new saved key.
 
 1. Create the job once. Period is how often it should run, in minutes; grace is how late is still fine. For a cron job, send its \`schedule\` (and \`timeZone\`) instead of a period, so lateness follows the real run times:
 

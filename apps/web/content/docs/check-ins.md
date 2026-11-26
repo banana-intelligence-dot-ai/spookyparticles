@@ -2,6 +2,8 @@
 
 A check-in tells Spooky that a scheduled job ran. If a run is late or fails, you and your coding agent hear about it. Use one for a nightly build, a daily publish, a GitHub Actions schedule, or a cron or launchd job.
 
+For Vercel jobs and jobs on other systems, see [Cron job monitoring tool for Vercel and other jobs](/cron-job-monitoring-tool-for-vercel).
+
 Creating a job needs a key with the write scope. The examples read the key from `SPOOKY_API_KEY`.
 
 ## Create a job
@@ -71,6 +73,18 @@ curl -fsS -m 10 --retry 3 "<pingUrl>/$?"      # exit code: 0 is ok, 1 to 255 is 
 The first 2,000 characters of a POST body on any of these are kept as the run's note.
 
 In a Vercel cron route or a Node, Bun or Deno job, the [spooky-checkin package](/docs/npm-package) sends these pings for you. For the Vercel side, see [Vercel cron job monitoring](/vercel-cron-job-monitoring).
+
+If a Vercel job never starts, use the [Vercel cron job not running fixes](/vercel-cron-job-not-running).
+
+## Send a daily number
+
+Post a number to the same check-in link with `/stats` at the end.
+
+```bash
+curl -X POST https://spookyparticles.com/api/ping/<token>/stats -H 'content-type: application/json' -d '{"main":{"name":"signups","value":12},"counts":{"users":340}}'
+```
+
+The day defaults to yesterday Pacific. You can send up to 3 counts. Values must be whole numbers. Text fields are not accepted. Sending the same day again replaces its numbers. This records no run. The numbers appear in the morning message.
 
 ## Read a job's own status
 

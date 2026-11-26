@@ -92,7 +92,7 @@ if [ -z "$base_url" ]; then
 fi
 
 # The key goes in on stdin, so it never shows in a process list.
-response=$(printf 'Authorization: Bearer %s\n' "$api_key" | curl -sS -m 3 -G \
+response=$(printf 'Authorization: Bearer %s\n' "$api_key" | curl -q -sS -m 3 -G \
   -H @- \
   --data-urlencode "project=$project" \
   --data-urlencode "format=text" \

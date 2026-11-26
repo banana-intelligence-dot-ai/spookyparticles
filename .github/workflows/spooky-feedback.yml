@@ -44,6 +44,7 @@ jobs:
           github_token: ${{ github.token }}
           allowed_bots: spooky-particles
           claude_args: >-
+            --model claude-sonnet-5-5
             --max-turns 40
             --allowedTools "Read,Edit,Write,Grep,Glob"
             --disallowedTools "Bash,WebFetch,WebSearch,Task,NotebookEdit,mcp__github__*,mcp__github_comment__*,mcp__github_file_ops__*"

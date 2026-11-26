@@ -159,7 +159,7 @@ function AgentRow({ a, now, onRevoke }: { a: AgentView; now: number; onRevoke?: 
         </p>
         <p className="mt-0.5 text-[13px] text-fg-3">
           key <span className="font-mono">{a.prefix}…</span> · {scopeWords(a.scopes)} · made <span title={absoluteTime(a.createdAt)}>{ago(a.createdAt, now)}</span>
-          {a.expiresAt && a.state === "live" ? ` · expires ${new Date(a.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}` : ""}
+          {a.expiresAt ? ` · expires ${new Date(a.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}` : ""}
         </p>
 
         {a.claims.length ? (

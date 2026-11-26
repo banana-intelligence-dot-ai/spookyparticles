@@ -35,11 +35,32 @@ Spooky Particles is for people who deploy on Vercel. It is made by Banana Intell
 - [Home](https://spookyparticles.com/)
 - [VibeOps](https://spookyparticles.com/vibeops)
 - [Automate fixes for failed Vercel deploys and scheduled jobs](https://spookyparticles.com/automate-fixes): route each failure to your own coding agent
+- [Automatic bug fixing for Vercel apps](https://spookyparticles.com/automatic-bug-fixing-vercel): Spooky reports what broke, then your coding agent proposes a fix for you to review
+- [Deploy to Vercel with Codex](https://spookyparticles.com/codex-vercel-deploy): deploy a Vercel preview with Codex, and what to do when the deploy fails
 - [Vercel deployment failed? How to read the log and fix it](https://spookyparticles.com/vercel-deployment-failed): find the error line in the build log, fix it, push again
+- [Vercel error log: where to find it](https://spookyparticles.com/vercel-error-log): find build and runtime logs, query production 5xx requests, and inspect deployment build logs
+- [Vercel deployment notifications: how to set up](https://spookyparticles.com/vercel-deployment-notifications): choose web or email for deployment failures, use push, SMS, webhooks, or Spooky where each one fits
+- [Vercel Alerts: what they cover and how to set up](https://spookyparticles.com/vercel-alerts): what Vercel Alerts watch, which plans include them, and how Spooky covers failed deploys and quiet cron jobs
 - [Vercel build failed? Find the cause and fix it](https://spookyparticles.com/vercel-build-failed): read the log, run the build locally, check devDependencies, limits and cache
+- [Vercel Build Timeout and Out of Memory: Fixes](https://spookyparticles.com/vercel-build-timeout-and-out-of-memory): move checks out of the build, reduce generated work and dependencies, or use a larger build machine
+- [Vercel 500 internal server error: fixes](https://spookyparticles.com/vercel-500-internal-server-error): use the error code and function logs to check environment variables, unhandled errors, or an unexpected internal error
+- [Vercel function timeout: fixes](https://spookyparticles.com/vercel-function-timeout): diagnose 504 FUNCTION_INVOCATION_TIMEOUT, slow calls, missing responses, loops, maxDuration and Edge runtime behavior
+- [Vercel 502 bad gateway: fixes](https://spookyparticles.com/vercel-502-bad-gateway): read the ROUTER_EXTERNAL_TARGET error code, then check rewrites, the external target, firewall rules, SSL and logs
+- [Vercel deployment stuck in queued: fixes](https://spookyparticles.com/vercel-deployment-stuck): check build concurrency, project settings, the deployment list and Vercel's status page
 - [Vercel cron job monitoring: catch a missed run](https://spookyparticles.com/vercel-cron-job-monitoring): where to see cron runs, why they go missing, how to get alerted
+- [Cron job monitoring tool for Vercel and other jobs](https://spookyparticles.com/cron-job-monitoring-tool-for-vercel): compare request history monitoring with check-ins for other scheduled jobs
+- [Vercel cron job not running: fixes](https://spookyparticles.com/vercel-cron-job-not-running): check the production deployment, route path, schedule limits, CRON_SECRET, logs, firewall rules and build output
+- [Claude Code with Vercel: MCP, CLI and plugin](https://spookyparticles.com/claude-code-vercel): connect Claude Code to Vercel, and how a failed deploy reaches it
+- [Vercel "Module not found" error and fix](https://spookyparticles.com/vercel-module-not-found): check file name capitals, a missing package and the relative path, then redeploy
+- [Vercel "A commit author is required" error and fix](https://spookyparticles.com/vercel-commit-author-is-required): match your git email to your git provider and Vercel account, then push a new commit
+- [Vercel 404 NOT_FOUND error and fix](https://spookyparticles.com/vercel-404-not-found): check the URL, deployment, logs, permissions, route, output directory and domain, then redeploy
+- [Vercel monitoring: what to watch and how](https://spookyparticles.com/vercel-monitoring): watch deploys, cron jobs, whether the site answers, and server errors
+- [Vercel uptime monitoring: get alerted when your site is down](https://spookyparticles.com/vercel-uptime-monitoring): what an outside check does, when Spooky alerts, why it waits for two failed checks
+- [Vercel deployment error? Find yours in the list](https://spookyparticles.com/vercel-deployment-errors): common Vercel deployment errors from Vercel's own error list, what each means and what to change
 - [Vercel deployment failed from GitHub? Find the cause and fix it](https://spookyparticles.com/vercel-deployment-failed-github): read the build log, or check the GitHub App, role and commit author if no deploy started
 - [Vercel "Root Directory does not exist" error and fix](https://spookyparticles.com/vercel-root-directory-does-not-exist): set the Root Directory to the folder that holds your app, save, redeploy
+- [Vercel DEPLOYMENT_PAUSED (503): what to check](https://spookyparticles.com/vercel-deployment-paused): check spend management, account status and the email from Vercel
+- [Vercel 404 on page refresh: why it happens and the fix](https://spookyparticles.com/vercel-404-on-refresh): add a single page app rewrite or use the framework's routing, then redeploy
 - [Vercel environment variable not found in build? Fix it](https://spookyparticles.com/vercel-env-var-not-found-build): set the variable for the building environment, save, redeploy
 - [How the map works](https://spookyparticles.com/how/apps-across-hosts-and-logins)
 - [Optional email](https://spookyparticles.com/how/email-into-an-ops-record)
@@ -53,6 +74,7 @@ Spooky Particles is for people who deploy on Vercel. It is made by Banana Intell
 - [REST API](https://spookyparticles.com/docs/api): Keys, scopes, endpoints and errors.
 - Every developer docs page above is also plain Markdown at its address plus .md, for example https://spookyparticles.com/docs/quickstart.md
 - These pages are also plain Markdown, at the address plus .md or with Accept: text/markdown: [Vercel deployment failed](https://spookyparticles.com/vercel-deployment-failed.md), [Vercel environment variable not found in build](https://spookyparticles.com/vercel-env-var-not-found-build.md), [Automate fixes](https://spookyparticles.com/automate-fixes.md), [How the map works](https://spookyparticles.com/how/apps-across-hosts-and-logins.md)
+- [Example project: monitor a Vercel cron job with a check-in (Next.js, GitHub)](https://github.com/n8peace/vercel-cron-monitoring-example): one guarded cron route that checks in after each run, with a quick start you can run locally
 - [Releases](https://spookyparticles.com/releases)
 - [Agent setup](https://spookyparticles.com/setup.md)
 - [For agents: say it, do, never](https://spookyparticles.com/agents.md)

@@ -11,8 +11,10 @@ usage() {
 Usage: sh scripts/spooky.sh COMMAND
 
 Commands:
-  start [--sign-in-again]  Sign in if needed, then wait for GitHub and Vercel
+  start [--write] [--sign-in-again]
+                           Sign in if needed, then wait for GitHub and Vercel
   status                   Show setup status
+  verify                   Verify the key, a project connection, and a check-in
   problems                 Show the incidents inbox
   alerts [ARGS...]         Install agent alerts
   fixer [ARGS...]          Set up the automatic fixer
@@ -62,11 +64,11 @@ need_key() {
 }
 
 authorized_get() {
-  printf 'Authorization: Bearer %s\n' "$key" | curl -fsS -H @- "$1"
+  printf 'Authorization: Bearer %s\n' "$key" | curl -q -fsS -H @- "$1"
 }
 
 verify_key() {
-  me_status=$(printf 'Authorization: Bearer %s\n' "$key" | curl -fsS -o /dev/null -w '%{http_code}' -H @- "$base_url/api/v1/me" 2>/dev/null)
+  me_status=$(printf 'Authorization: Bearer %s\n' "$key" | curl -q -fsS -o /dev/null -w '%{http_code}' -H @- "$base_url/api/v1/me" 2>/dev/null)
   case "$me_status" in
     200) return 0 ;;
     401) printf 'The key was revoked or is wrong. Run: sh scripts/spooky.sh start --sign-in-again\n' >&2 ;;
@@ -85,21 +87,155 @@ status_field() {
   printf '%s' "$1" | sed -n "s/.*\"$2\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
 }
 
+verify_json() {
+  mode=$1
+  if command -v jq >/dev/null 2>&1; then
+    case "$mode" in
+      setup) jq -r 'if type == "object" then [(.github // ""), (.vercel // "")] | @tsv else error("object expected") end' ;;
+      checkins) jq -r 'if (.jobs | type) == "array" then [(.jobs | length), ([.jobs[] | select(.lastPingAt != null)] | length), ([.jobs[] | select(.lastPingAt == null) | .name] | join(", "))] | @tsv else error("jobs expected") end' ;;
+    esac
+    return $?
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -I -c '
+import json, sys
+mode = sys.argv[1]
+value = json.load(sys.stdin)
+if not isinstance(value, dict): raise ValueError("object expected")
+if mode == "setup":
+    print(str(value.get("github") or "") + "\t" + str(value.get("vercel") or ""))
+else:
+    jobs = value.get("jobs")
+    if not isinstance(jobs, list): raise ValueError("jobs expected")
+    pinged = [job for job in jobs if isinstance(job, dict) and job.get("lastPingAt") is not None]
+    waiting = [str(job.get("name") or "unnamed job") for job in jobs if isinstance(job, dict) and job.get("lastPingAt") is None]
+    print(str(len(jobs)) + "\t" + str(len(pinged)) + "\t" + ", ".join(waiting))
+' "$mode"
+    return $?
+  fi
+  return 127
+}
+
+verify_get() {
+  verify_url=$1
+  verify_body=$2
+  verify_status=$(printf 'Authorization: Bearer %s\n' "$key" | curl -q -sS -o "$verify_body" -w '%{http_code}' -H @- "$verify_url" 2>/dev/null)
+  verify_curl_status=$?
+  [ "$verify_curl_status" -eq 0 ] || return 2
+  return 0
+}
+
+verify() {
+  [ $# -eq 0 ] || { usage >&2; exit 2; }
+  key=$(load_key) || key=
+  first_missing=
+  network_error=false
+  verify_dir=$(mktemp -d "${TMPDIR:-/tmp}/spooky-verify.XXXXXX") || {
+    printf 'Key: FAIL - Could not make a temporary directory.\n'
+    printf 'Project: FAIL - Could not run this check.\n'
+    printf 'Check-in: FAIL - Could not run this check.\n'
+    printf 'FAIL: Key\n'
+    return 1
+  }
+  trap 'rm -rf "$verify_dir"' 0 HUP INT TERM
+
+  if [ -z "$key" ]; then
+    printf 'Key: FAIL - No stored key. Run sh scripts/spooky.sh start --sign-in-again.\n'
+    printf 'Project: FAIL - Cannot check until the key works.\n'
+    printf 'Check-in: FAIL - Cannot check until the key works.\n'
+    printf 'FAIL: Key\n'
+    return 1
+  fi
+
+  if ! verify_get "$base_url/api/v1/setup" "$verify_dir/setup.json"; then
+    printf 'Key: FAIL - Could not reach %s.\n' "$base_url"
+    printf 'Project: FAIL - Could not check because Spooky could not be reached.\n'
+    printf 'Check-in: FAIL - Could not check because Spooky could not be reached.\n'
+    printf 'FAIL: Key\n'
+    return 2
+  fi
+  if [ "$verify_status" != 200 ]; then
+    printf 'Key: FAIL - The stored key was rejected. Run sh scripts/spooky.sh start --sign-in-again.\n'
+    printf 'Project: FAIL - Cannot check until the key works.\n'
+    printf 'Check-in: FAIL - Cannot check until the key works.\n'
+    printf 'FAIL: Key\n'
+    return 1
+  fi
+  printf 'Key: OK\n'
+
+  setup_values=$(verify_json setup < "$verify_dir/setup.json" 2>/dev/null) || setup_values=
+  IFS="$(printf '\t')" read -r github_status vercel_status <<EOF
+$setup_values
+EOF
+  if [ "$github_status" = synced ] || [ "$vercel_status" = synced ]; then
+    printf 'Project: OK\n'
+  else
+    printf 'Project: FAIL - No connected project. Finish connecting GitHub or Vercel at https://spookyparticles.com/app.\n'
+    first_missing=Project
+  fi
+
+  if ! verify_get "$base_url/api/v1/checkins" "$verify_dir/checkins.json"; then
+    printf 'Check-in: FAIL - Could not reach %s.\n' "$base_url"
+    network_error=true
+    [ -n "$first_missing" ] || first_missing=Check-in
+  elif [ "$verify_status" != 200 ]; then
+    printf 'Check-in: FAIL - Spooky returned HTTP %s.\n' "$verify_status"
+    [ -n "$first_missing" ] || first_missing=Check-in
+  else
+    checkin_values=$(verify_json checkins < "$verify_dir/checkins.json" 2>/dev/null) || checkin_values=
+    IFS="$(printf '\t')" read -r job_count pinged_count waiting_jobs <<EOF
+$checkin_values
+EOF
+    if [ "${pinged_count:-0}" -gt 0 ] 2>/dev/null; then
+      printf 'Check-in: OK\n'
+    elif [ "${job_count:-0}" -eq 0 ] 2>/dev/null; then
+      printf 'Check-in: FAIL - No check-in jobs. See "Check-ins for scheduled jobs" at https://spookyparticles.com/setup.md.\n'
+      [ -n "$first_missing" ] || first_missing=Check-in
+    elif [ -n "$waiting_jobs" ]; then
+      printf 'Check-in: FAIL - Waiting for %s.\n' "$waiting_jobs"
+      [ -n "$first_missing" ] || first_missing=Check-in
+    else
+      printf 'Check-in: FAIL - Could not read the check-in response.\n'
+      [ -n "$first_missing" ] || first_missing=Check-in
+    fi
+  fi
+
+  if [ -z "$first_missing" ]; then
+    printf 'PASS\n'
+    return 0
+  fi
+  printf 'FAIL: %s\n' "$first_missing"
+  [ "$network_error" = false ] || return 2
+  return 1
+}
+
 start() {
   sign_in_again=false
+  access=read
+  environment_key_was_set=false
+  [ -z "${SPOOKY_API_KEY:-}" ] || environment_key_was_set=true
   # SPOOKY_SIGN_IN_AGAIN=1 in the environment does the same as the flag, so a person can try
   # setup from scratch on a machine that already has a saved key, without telling the agent.
   if [ "${SPOOKY_SIGN_IN_AGAIN:-}" = 1 ]; then sign_in_again=true; fi
-  if [ "${1:-}" = "--sign-in-again" ]; then sign_in_again=true; shift; fi
-  if [ $# -gt 0 ]; then usage >&2; exit 2; fi
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --sign-in-again) sign_in_again=true ;;
+      --write) access=write; sign_in_again=true ;;
+      *) usage >&2; exit 2 ;;
+    esac
+    shift
+  done
 
   key=$(load_key) || key=
   if [ "$sign_in_again" = true ] || [ -z "$key" ]; then
     if [ "$sign_in_again" = true ]; then
-      SPOOKY_SIGN_IN_AGAIN=1 sh "$here/agent-inbox/spooky-fixer.sh" --sign-in || exit $?
+      SPOOKY_DEVICE_ACCESS=$access SPOOKY_SIGN_IN_AGAIN=1 sh "$here/agent-inbox/spooky-fixer.sh" --sign-in || exit $?
       key=$(load_saved_key) || key=
+      if [ "$environment_key_was_set" = true ] && [ -n "$key" ] && [ "$key" != "$SPOOKY_API_KEY" ]; then
+        printf 'This shell still has the old SPOOKY_API_KEY. Run: unset SPOOKY_API_KEY\n'
+      fi
     else
-      sh "$here/agent-inbox/spooky-fixer.sh" --sign-in || exit $?
+      SPOOKY_DEVICE_ACCESS=$access sh "$here/agent-inbox/spooky-fixer.sh" --sign-in || exit $?
       key=$(load_key) || key=
     fi
   fi
@@ -154,6 +290,9 @@ case "$command" in
     [ $# -eq 0 ] || { usage >&2; exit 2; }
     need_key
     setup_text
+    ;;
+  verify)
+    verify "$@"
     ;;
   problems)
     [ $# -eq 0 ] || { usage >&2; exit 2; }

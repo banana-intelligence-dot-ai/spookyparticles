@@ -63,6 +63,9 @@ export function looksLikeVercelToken(raw: string): boolean {
 
 const isDenied = (err: unknown) => err instanceof VercelApiError && (err.status === 401 || err.status === 403 || err.status === 404);
 
+export type VercelReadOptions = { skipSchedules?: boolean; skipEnvList?: boolean };
+type ReadTracker = { refused: boolean; read: boolean };
+
 // ---------- Who the token is ----------
 
 export type VercelScope = { kind: "user" | "team"; id: string; slug: string; name: string };
@@ -184,6 +187,8 @@ export type VercelProject = {
   cronDeploymentId?: string | null;
   protection?: { ssoProtection: { deploymentType: string | null } | null; passwordProtection: boolean; trustedIps: boolean } | null;
   env?: { key: string; targets: string[]; type: string }[] | null;
+  /** Web Analytics is on for the project (enabled and not disabled since). */
+  webAnalytics?: boolean;
 };
 
 export type VercelDeployment = {
@@ -239,6 +244,46 @@ function pickEnv(list: unknown): VercelProject["env"] {
   }).filter((v) => v.key);
 }
 
+/** Pure: is Web Analytics on, from the project's webAnalytics object (enabledAt, disabledAt). */
+export function webAnalyticsOn(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const w = raw as Record<string, unknown>;
+  const enabled = typeof w.enabledAt === "number" ? w.enabledAt : null;
+  const disabled = typeof w.disabledAt === "number" ? w.disabledAt : null;
+  return enabled !== null && (disabled === null || disabled < enabled);
+}
+
+export type WebAnalyticsCounts = { visitors: number; pageviews: number; clicks: number; weekVisitors: number | null };
+
+/** The custom event counted as a product click: a click through to a product (outbound link). */
+export const PRODUCT_CLICK_EVENT = "outbound_click";
+
+const whole = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null);
+
+/**
+ * One UTC day of Web Analytics counts for a project (production only). Vercel works in whole UTC
+ * days: since and until name the first and last day, both included (checked live 2026-11-19).
+ * Three GETs: the day's visitors and page views, the day's product clicks (the outbound_click
+ * custom event only, so other events such as campaign arrivals are not counted), and the 7 days' visitors.
+ */
+export async function countWebAnalytics(token: string, scope: VercelScope, projectId: string, day: string, weekStart: string):
+  Promise<{ ok: true; counts: WebAnalyticsCounts } | { ok: false; reason: "not_readable" | "unavailable"; status?: number }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) throw new Error("invalid day");
+  const q = (since: string) => ({ ...teamQuery(scope), projectId, since, until: day });
+  try {
+    const visits = await vercelGet<{ data?: Record<string, unknown> }>(token, "/v1/query/web-analytics/visits/count", q(day));
+    const events = await vercelGet<{ data?: Record<string, unknown> }>(token, "/v1/query/web-analytics/events/count", { ...q(day), filter: `eventName eq '${PRODUCT_CLICK_EVENT}'` });
+    const week = await vercelGet<{ data?: Record<string, unknown> }>(token, "/v1/query/web-analytics/visits/count", q(weekStart));
+    const visitors = whole(visits.data?.visitors);
+    const pageviews = whole(visits.data?.pageviews);
+    const count = whole(events.data?.count);
+    if (visitors === null || pageviews === null || count === null) return { ok: false, reason: "unavailable" };
+    return { ok: true, counts: { visitors, pageviews, clicks: count, weekVisitors: whole(week.data?.visitors) } };
+  } catch (err) {
+    return { ok: false, reason: isDenied(err) ? "not_readable" : "unavailable", ...(err instanceof VercelApiError ? { status: err.status } : {}) };
+  }
+}
+
 /** Reduce a raw project before it can reach storage. Values are discarded here. */
 export function pickProject(raw: Record<string, unknown>): VercelProject {
   const link = raw.link && typeof raw.link === "object" ? (raw.link as Record<string, unknown>) : null;
@@ -266,6 +311,7 @@ export function pickProject(raw: Record<string, unknown>): VercelProject {
     latest,
     schedules: pickSchedules(raw),
     schedulesKnown: false,
+    webAnalytics: webAnalyticsOn(raw.webAnalytics),
     cronDeploymentId: raw.crons && typeof raw.crons === "object" ? str((raw.crons as Record<string, unknown>).deploymentId) : null,
     protection: hasProtection ? {
       ssoProtection: raw.ssoProtection && typeof raw.ssoProtection === "object" ? { deploymentType: str((raw.ssoProtection as Record<string, unknown>).deploymentType) } : null,
@@ -277,20 +323,25 @@ export function pickProject(raw: Record<string, unknown>): VercelProject {
 }
 
 /** Settings may be absent from list responses. Read one project for its check inputs. */
-export async function getProjectChecksInput(token: string, scope: VercelScope, projectId: string): Promise<Pick<VercelProject, "protection" | "env" | "schedules" | "schedulesKnown">> {
+export async function getProjectChecksInput(token: string, scope: VercelScope, projectId: string, options: VercelReadOptions = {}): Promise<Pick<VercelProject, "protection" | "env" | "schedules" | "schedulesKnown"> & { schedulesRefused: boolean; schedulesRead: boolean; envListRefused: boolean; envListRead: boolean }> {
   const raw = await vercelGet<Record<string, unknown>>(token, `/v9/projects/${encodeURIComponent(projectId)}`, teamQuery(scope));
-  const picked = await withProjectSchedules(token, scope, pickProject(raw), { value: false });
+  const scheduleRead = { refused: false, read: false };
+  const picked = await withProjectSchedules(token, scope, pickProject(raw), scheduleRead, options.skipSchedules === true);
   // Vercel leaves the variable list off a project that has none. Ask the list itself, so an empty
   // project reads as "nothing to check" and only a refusal reads as "not readable".
   let env = picked.env;
-  if (!env) {
+  let envListRefused = false;
+  let envListRead = false;
+  if (!env && options.skipEnvList !== true) {
     try {
       env = pickEnv((await vercelGet<{ envs?: unknown }>(token, `/v10/projects/${encodeURIComponent(projectId)}/env`, teamQuery(scope))).envs);
-    } catch {
+      envListRead = true;
+    } catch (err) {
+      envListRefused = err instanceof VercelApiError && [401, 403, 404].includes(err.status);
       // Refused or failed: the rules answer "unknown" for the variables and still judge protection.
     }
   }
-  return { protection: picked.protection, env, schedules: picked.schedules, schedulesKnown: picked.schedulesKnown };
+  return { protection: picked.protection, env, schedules: picked.schedules, schedulesKnown: picked.schedulesKnown, schedulesRefused: scheduleRead.refused, schedulesRead: scheduleRead.read, envListRefused, envListRead };
 }
 
 type RawSchedulesPage = { data?: unknown; cursor?: string | null };
@@ -319,15 +370,16 @@ export async function listProjectSchedules(token: string, scope: VercelScope, pr
  * means this token cannot read Schedules at all, so the caller stops asking for the rest of
  * the scope (each refused call cost about a second and a half per project).
  */
-async function withProjectSchedules(token: string, scope: VercelScope, project: VercelProject, refused: { value: boolean }): Promise<VercelProject> {
-  if (refused.value) return { ...project, schedulesKnown: false };
+async function withProjectSchedules(token: string, scope: VercelScope, project: VercelProject, tracker: ReadTracker, skip = false): Promise<VercelProject> {
+  if (skip || (tracker.refused && !tracker.read)) return { ...project, schedulesKnown: false };
   try {
     const schedules = await listProjectSchedules(token, scope, project.id);
+    tracker.read = true;
     return { ...project, schedules: mergeSchedules(project.schedules ?? [], schedules), schedulesKnown: true };
   } catch (err) {
     // Status only: the response body and the token never reach the log.
     const status = err instanceof VercelApiError ? err.status : null;
-    if (status === 401 || status === 403) refused.value = true;
+    if (status === 401 || status === 403) tracker.refused = true;
     console.warn("[vercel] schedules read failed", project.id, status ?? (err as Error).name);
     return { ...project, schedulesKnown: false };
   }
@@ -336,19 +388,19 @@ async function withProjectSchedules(token: string, scope: VercelScope, project: 
 type RawProjectsPage = Record<string, unknown>[] | { projects: Record<string, unknown>[]; pagination?: { next?: number | string | null } };
 
 /** Every project in a scope, 100 per page, following pagination.next. Stops at maxPages and says so. */
-export async function listProjects(token: string, scope: VercelScope, maxPages = 50): Promise<{ projects: VercelProject[]; truncated: boolean }> {
+export async function listProjects(token: string, scope: VercelScope, options: VercelReadOptions = {}, maxPages = 50): Promise<{ projects: VercelProject[]; truncated: boolean; schedulesRefused: boolean; schedulesRead: boolean }> {
   const projects: VercelProject[] = [];
-  const refused = { value: false };
+  const scheduleRead = { refused: false, read: false };
   let until: number | string | undefined;
   for (let page = 1; page <= maxPages; page++) {
     const body = await vercelGet<RawProjectsPage>(token, "/v10/projects", { ...teamQuery(scope), limit: 100, until });
     const list = Array.isArray(body) ? body : body.projects;
-    for (const p of list) projects.push(await withProjectSchedules(token, scope, pickProject(p), refused));
+    for (const p of list) projects.push(await withProjectSchedules(token, scope, pickProject(p), scheduleRead, options.skipSchedules === true));
     const next = Array.isArray(body) ? null : (body.pagination?.next ?? null);
-    if (!next || list.length === 0) return { projects, truncated: false };
+    if (!next || list.length === 0) return { projects, truncated: false, schedulesRefused: scheduleRead.refused, schedulesRead: scheduleRead.read };
     until = next;
   }
-  return { projects, truncated: true };
+  return { projects, truncated: true, schedulesRefused: scheduleRead.refused, schedulesRead: scheduleRead.read };
 }
 
 /**

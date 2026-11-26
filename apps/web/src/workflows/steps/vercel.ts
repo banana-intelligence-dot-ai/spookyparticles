@@ -10,7 +10,7 @@
  * The token is decrypted inside each step and never crosses a step boundary.
  * Every step derives the owner from the connection row, never from its input.
  */
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { FatalError, RetryableError } from "workflow";
 import { getDb, schema } from "@/db";
 import { projectDecisions, slimForSync, type SyncProject } from "@/lib/checks/rules";
@@ -29,6 +29,7 @@ import { recordProductionDeploys } from "@/lib/commit-outcome";
 import { detectServices } from "@/lib/services/catalog";
 import { billedServices, billingWindow, parseJsonLines, rowsForAccount } from "@/lib/services/billing";
 import { setAccountBilling, syncBilledServices, syncProjectBills, syncProjectServices } from "@/lib/services/store";
+import { advanceRefusalProgress, ENV_LIST_REFUSED_AT, isFreshRefusal, refusalPersistence, SCHEDULES_REFUSED_AT, type RefusalProgress } from "@/lib/vercel-refusals";
 import {
   VercelApiError,
   VercelNoReadableScope,
@@ -50,6 +51,31 @@ import {
 } from "@/lib/providers/vercel";
 
 const SOURCE = "vercel" as const;
+
+type RefusalOutcomes = { schedulesRefused: boolean; schedulesRead: boolean; envListRefused: boolean; envListRead: boolean };
+
+/** attributes = attributes || patch, so refusal timestamps do not rewrite the account node. */
+function sqlMergeAttr(patch: Record<string, unknown>) {
+  return sql`${schema.nodes.attributes} || ${JSON.stringify(patch)}::jsonb`;
+}
+
+async function persistRefusalOutcomes(accountNodeId: string, outcomes: RefusalOutcomes) {
+  const refused: Record<string, string> = {};
+  const now = new Date().toISOString();
+  const schedules = refusalPersistence({ refused: outcomes.schedulesRefused, read: outcomes.schedulesRead });
+  const envList = refusalPersistence({ refused: outcomes.envListRefused, read: outcomes.envListRead });
+  if (schedules === "refuse") refused[SCHEDULES_REFUSED_AT] = now;
+  if (envList === "refuse") refused[ENV_LIST_REFUSED_AT] = now;
+  if (Object.keys(refused).length) {
+    await getDb().update(schema.nodes).set({ attributes: sqlMergeAttr(refused) }).where(eq(schema.nodes.id, accountNodeId));
+  }
+  if (schedules === "clear") {
+    await getDb().update(schema.nodes).set({ attributes: sql`${schema.nodes.attributes} - ${SCHEDULES_REFUSED_AT}::text` }).where(eq(schema.nodes.id, accountNodeId));
+  }
+  if (envList === "clear") {
+    await getDb().update(schema.nodes).set({ attributes: sql`${schema.nodes.attributes} - ${ENV_LIST_REFUSED_AT}::text` }).where(eq(schema.nodes.id, accountNodeId));
+  }
+}
 
 /** A 401 or 403 means Vercel no longer honors the token: the connection needs a new one. Rate limits retry. */
 async function guarded<T>(c: Connection, fn: () => Promise<T>): Promise<T> {
@@ -115,7 +141,7 @@ export async function ensureVercelAccounts(connectionId: string) {
       kind: "provider_account",
       externalKey,
       name: scope.kind === "team" ? `${scope.name} (Vercel team)` : `${scope.name} (Vercel)`,
-      attributes: { provider: "vercel", scope_kind: scope.kind, slug: scope.slug, connection_id: c.id, ...(previous?.attributes.billing ? { billing: previous.attributes.billing } : {}) },
+      attributes: { ...previous?.attributes, provider: "vercel", scope_kind: scope.kind, slug: scope.slug, connection_id: c.id },
       status: "active",
     });
     accounts.push({ scope, nodeId });
@@ -128,10 +154,18 @@ export async function ensureVercelAccounts(connectionId: string) {
 }
 
 /** Every project in one scope. */
-export async function listScopeProjects(connectionId: string, scope: VercelScope) {
+export async function listScopeProjects(connectionId: string, accountNodeId: string, scope: VercelScope) {
   "use step";
   const { c, token } = await open(connectionId);
-  const list = await guarded(c, () => listProjects(token, scope));
+  const [account] = await getDb().select({ attributes: schema.nodes.attributes }).from(schema.nodes).where(eq(schema.nodes.id, accountNodeId)).limit(1);
+  const storedSchedulesRefusal = isFreshRefusal(account?.attributes[SCHEDULES_REFUSED_AT]);
+  const skipEnvList = isFreshRefusal(account?.attributes[ENV_LIST_REFUSED_AT]);
+  const list = await guarded(c, () => listProjects(token, scope, { skipSchedules: storedSchedulesRefusal }));
+  await persistRefusalOutcomes(accountNodeId, { schedulesRefused: list.schedulesRefused, schedulesRead: list.schedulesRead, envListRefused: false, envListRead: false });
+  const schedules = advanceRefusalProgress(
+    { refused: false, read: false, skip: storedSchedulesRefusal },
+    { refused: list.schedulesRefused, read: list.schedulesRead },
+  );
   // A step's result is kept by the workflow engine. Decide the settings checks here and drop the
   // list of variable names and the protection settings, so only the decisions travel on.
   // An integration may read projects but be refused the account domain list.
@@ -141,7 +175,7 @@ export async function listScopeProjects(connectionId: string, scope: VercelScope
   try { registrations = await listAccountDomains(token, scope); } catch (err) {
     if (!(err instanceof VercelApiError && [401, 403, 404].includes(err.status))) console.error("[vercel] account domains", (err as Error).message);
   }
-  return { ...list, registrations, projects: list.projects.map(slimForSync) };
+  return { ...list, registrations, projects: list.projects.map(slimForSync), skipSchedules: schedules.skip, skipEnvList, schedulesRead: schedules.read, envListRead: false };
 }
 
 const deploymentAttributes = (d: VercelDeployment, project: VercelProject) => ({
@@ -191,7 +225,7 @@ async function linkedRepoNodeId(userId: string, project: VercelProject): Promise
  * Edges from any other repo to this project or its deployments are removed, so a
  * relink on Vercel moves the project rather than leaving it under the old repo.
  */
-type ProjectSyncInput = { connectionId: string; userId: string; accountNodeId: string; scope: VercelScope; project: SyncProject; registrations: VercelRegistration[] | null };
+type ProjectSyncInput = { connectionId: string; userId: string; accountNodeId: string; scope: VercelScope; project: SyncProject; registrations: VercelRegistration[] | null; skipSchedules: boolean; skipEnvList: boolean };
 
 async function syncOneVercelProject(input: ProjectSyncInput) {
   const { project, scope } = input;
@@ -233,6 +267,8 @@ async function syncOneVercelProject(input: ProjectSyncInput) {
       scope_slug: scope.slug,
       scope_kind: scope.kind,
       connection_id: c.id,
+      web_analytics: project.webAnalytics === true,
+      ...(previous?.attributes.web_analytics_read ? { web_analytics_read: previous.attributes.web_analytics_read } : {}),
       ...(previous?.attributes.uptime ? { uptime: previous.attributes.uptime } : {}),
       ...(previous?.attributes.errorRate ? { errorRate: previous.attributes.errorRate } : {}),
       ...(previous?.attributes.vercel_bill ? { vercel_bill: previous.attributes.vercel_bill } : {}),
@@ -243,10 +279,15 @@ async function syncOneVercelProject(input: ProjectSyncInput) {
   await upsertEdge({ userId, fromNodeId: input.accountNodeId, toNodeId: projectNodeId, kind: "owns", confidence: 1, provenance: { source: SOURCE, call: "GET /v10/projects", at } });
   let decisions = project.checks;
   let services = project.services;
+  let readOutcomes: RefusalOutcomes = { schedulesRefused: false, schedulesRead: false, envListRefused: false, envListRead: false };
   if (!decisions) {
     // The list did not carry settings. Read this one project; if that is refused the rules answer "unknown".
     let settings: Pick<VercelProject, "protection" | "env" | "schedules" | "schedulesKnown"> = { protection: null, env: null, schedules: project.schedules, schedulesKnown: project.schedulesKnown };
-    try { settings = await getProjectChecksInput(token, scope, project.id); } catch { /* not readable with this connection */ }
+    try {
+      const result = await getProjectChecksInput(token, scope, project.id, { skipSchedules: input.skipSchedules, skipEnvList: input.skipEnvList });
+      settings = result;
+      readOutcomes = result;
+    } catch { /* not readable with this connection */ }
     decisions = projectDecisions(settings);
     if (settings.env) services = detectServices(settings.env.map((v) => v.key));
   }
@@ -353,7 +394,7 @@ async function syncOneVercelProject(input: ProjectSyncInput) {
     });
     await upsertEdge({ userId, fromNodeId: domainNodeId, toNodeId: projectNodeId, kind: "points_to", confidence: 1, provenance: { source: SOURCE, call: `GET /v9/projects/${project.id}/domains`, at } });
   }
-  return { deployments: picks.length, domains: domains.length };
+  return { deployments: picks.length, domains: domains.length, ...readOutcomes };
 }
 
 /**
@@ -404,13 +445,25 @@ export async function syncVercelBilling(input: { connectionId: string; userId: s
  * workflow step is billed as events, so one step per project cost far more than the reads.
  * A failure retries the batch; every write is an upsert, so a retry is safe.
  */
-export async function syncVercelProjects(input: Omit<ProjectSyncInput, "project"> & { projects: SyncProject[]; syncRunId: string; scannedBefore: number }) {
+export async function syncVercelProjects(input: Omit<ProjectSyncInput, "project"> & { projects: SyncProject[]; syncRunId: string; scannedBefore: number; schedulesRead: boolean; envListRead: boolean }) {
   "use step";
-  const { projects, syncRunId, scannedBefore, ...rest } = input;
-  for (const project of projects) await syncOneVercelProject({ ...rest, project });
+  const { projects, syncRunId, scannedBefore, schedulesRead, envListRead, ...rest } = input;
+  let schedules: RefusalProgress = { refused: false, read: schedulesRead, skip: rest.skipSchedules };
+  let envList: RefusalProgress = { refused: false, read: envListRead, skip: rest.skipEnvList };
+  for (const project of projects) {
+    const result = await syncOneVercelProject({ ...rest, project, skipSchedules: schedules.skip, skipEnvList: envList.skip });
+    schedules = advanceRefusalProgress(schedules, { refused: result.schedulesRefused, read: result.schedulesRead });
+    envList = advanceRefusalProgress(envList, { refused: result.envListRefused, read: result.envListRead });
+  }
+  await persistRefusalOutcomes(rest.accountNodeId, {
+    schedulesRefused: schedules.refused,
+    schedulesRead: schedules.read,
+    envListRefused: envList.refused,
+    envListRead: envList.read,
+  });
   for (const finding of await pushNoDeployFor(rest.userId)) await notifyPushNotDeployed(rest.userId, finding);
   await getDb().update(schema.syncRuns).set({ scanned: scannedBefore + projects.length, updatedAt: new Date() }).where(eq(schema.syncRuns.id, syncRunId));
-  return projects.length;
+  return { count: projects.length, skipSchedules: schedules.skip, skipEnvList: envList.skip, schedulesRead: schedules.read, envListRead: envList.read };
 }
 
 /** Done. When a scope had more projects than the run read, the run says so instead of claiming the whole account. */

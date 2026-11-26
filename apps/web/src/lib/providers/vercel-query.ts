@@ -1,4 +1,4 @@
-/** The sole customer-token POST endpoint: two read-only request-count query shapes. */
+/** The sole customer-token POST endpoint: read-only request-count query shapes. */
 import type { VercelScope } from "./vercel";
 import type { RunEvidence } from "@/lib/vercel-schedules";
 
@@ -39,6 +39,40 @@ export function buildErrorRateQuery(scope: VercelScope, projectId: string, since
   };
 }
 
+export function buildExternalApiQuery(scope: VercelScope, projectId: string, sinceMs: number, untilMs: number) {
+  if (!projectId || !Number.isFinite(sinceMs) || !Number.isFinite(untilMs) || sinceMs >= untilMs) throw new Error("invalid external API query");
+  return {
+    metric: "vercel.external_api_request.count",
+    scope: { type: "project", ownerId: scope.id, projectIds: [projectId] },
+    aggregation: "sum",
+    groupBy: ["request_hostname", "http_status"],
+    granularity: { minutes: 15 },
+    startTime: new Date(Math.max(sinceMs, untilMs - 15 * 60_000)).toISOString(),
+    endTime: new Date(untilMs).toISOString(),
+    limit: MAX_GROUPS,
+  };
+}
+
+export type ExternalApiHost = { host: string; total: number; byStatus: Record<string, number> };
+
+function summariseExternalApis(rows: unknown[]): ExternalApiHost[] {
+  const hosts = new Map<string, ExternalApiHost>();
+  for (const raw of rows) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const host = typeof row.request_hostname === "string" ? row.request_hostname.toLowerCase().replace(/\.$/, "") : "";
+    const statusNumber = typeof row.http_status === "string" && /^\d{3}$/.test(row.http_status) ? Number(row.http_status) : NaN;
+    const status = Number.isInteger(statusNumber) && statusNumber >= 100 && statusNumber <= 599 ? row.http_status as string : "";
+    const count = row.vercel_external_api_request_count_sum;
+    if (!host || host.length > 253 || /[\s/?#]/.test(host) || !status || typeof count !== "number" || !Number.isFinite(count) || count <= 0) continue;
+    const current = hosts.get(host) ?? { host, total: 0, byStatus: {} };
+    current.total += count;
+    current.byStatus[status] = (current.byStatus[status] ?? 0) + count;
+    hosts.set(host, current);
+  }
+  return [...hosts.values()];
+}
+
 export function summariseStatusCounts(body: unknown): { total: number; serverErrors: number } {
   let total = 0;
   let serverErrors = 0;
@@ -68,6 +102,26 @@ export async function queryErrorRate(token: string, scope: VercelScope, projectI
     const result: unknown = await response.json();
     if (!result || typeof result !== "object" || !Array.isArray((result as { data?: unknown }).data)) return { ok: false, reason: "unavailable" };
     return { ok: true, counts: summariseStatusCounts(result) };
+  } catch { return { ok: false, reason: "unavailable" }; }
+  finally { clearTimeout(timeout); }
+}
+
+export async function queryExternalApis(token: string, scope: VercelScope, projectId: string, sinceMs: number, untilMs: number): Promise<{ ok: true; hosts: ExternalApiHost[] } | { ok: false; reason: "not_readable" | "unavailable" }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const body = buildExternalApiQuery(scope, projectId, sinceMs, untilMs);
+    const url = new URL(QUERY_URL);
+    if (scope.kind === "team" && scope.id !== "scoped") url.searchParams.set("teamId", scope.id);
+    const response = await fetch(url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body), signal: controller.signal });
+    if ([401, 403, 404].includes(response.status)) return { ok: false, reason: "not_readable" };
+    if (!response.ok) return { ok: false, reason: "unavailable" };
+    const result: unknown = await response.json();
+    if (!result || typeof result !== "object") return { ok: false, reason: "unavailable" };
+    const payload = result as { summary?: unknown; data?: unknown };
+    const rows = Array.isArray(payload.summary) ? payload.summary : Array.isArray(payload.data) ? payload.data : null;
+    if (!rows) return { ok: false, reason: "unavailable" };
+    return { ok: true, hosts: summariseExternalApis(rows) };
   } catch { return { ok: false, reason: "unavailable" }; }
   finally { clearTimeout(timeout); }
 }

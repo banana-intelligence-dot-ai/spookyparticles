@@ -25,7 +25,7 @@ When your person asks how Spooky or their projects are doing:
 ## Finish setup
 
 1. Check that `SPOOKY_API_KEY` is set in your environment, or that this computer is already signed in (`sh ~/spookyparticles/scripts/spooky.sh status` answers). Never print the key. Never ask for it in chat.
-2. If neither, follow https://spookyparticles.com/setup.md. Its `sh scripts/spooky.sh start` shows the person a sign-in code; they approve it in their browser and a **read** key is saved on this computer, never in chat. A read key can look. Taking findings or recording service sign-ups needs a **write** key, which the person makes on the Agents page and exports as `SPOOKY_API_KEY` themselves. A full control key can manage keys, approve another agent's sign-in and schedule account deletion.
+2. If neither, follow https://spookyparticles.com/setup.md. Its `sh scripts/spooky.sh start` shows the person a sign-in code; they approve it in their browser and a **read** key is saved on this computer, never in chat. A read key can look. Taking findings or recording service sign-ups needs a **write** key: run `sh scripts/spooky.sh start --write`, and the person approves write access on screen. If `SPOOKY_API_KEY` was already set, unset it when the script says so to use the new saved key. Device sign-in can never grant full control. A full control key can manage keys, approve another agent's sign-in and schedule account deletion.
 3. Connect the tools. In Claude Code:
 
 ```bash

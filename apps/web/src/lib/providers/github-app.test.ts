@@ -1,6 +1,6 @@
 import { createVerify, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createAppJwt, createGithubApp, decodePrivateKey, permissionNames } from "./github-app";
+import { canReadGithubContents, createAppJwt, createGithubApp, decodePrivateKey, permissionNames } from "./github-app";
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048,
@@ -49,6 +49,15 @@ describe("permissionNames", () => {
   it("flattens and sorts", () => {
     expect(permissionNames({ metadata: "read", deployments: "read" })).toEqual(["deployments:read", "metadata:read"]);
     expect(permissionNames(null)).toEqual([]);
+  });
+});
+
+describe("canReadGithubContents", () => {
+  it("accepts read or write content permission and defaults unknown scopes to false", () => {
+    expect(canReadGithubContents(["contents:read", "metadata:read"])).toBe(true);
+    expect(canReadGithubContents(["contents:write"])).toBe(true);
+    expect(canReadGithubContents(["deployments:read", "metadata:read"])).toBe(false);
+    expect(canReadGithubContents(undefined)).toBe(false);
   });
 });
 

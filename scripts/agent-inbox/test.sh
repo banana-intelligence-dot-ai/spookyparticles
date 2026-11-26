@@ -68,14 +68,15 @@ all="$*"
 input=$(cat)
 [ -n "${SPOOKY_API_KEY:-}" ] && case "$all" in *"$SPOOKY_API_KEY"*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
 case "$all" in *sp_DEVICEkey*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
-method=GET url= project= push=false write_status=false
+method=GET url= project= push=false write_status=false output=
 while [ $# -gt 0 ]; do
   case "$1" in
     -X) method=$2; shift ;;
     --data-urlencode) case "$2" in project=*) project=${2#project=} ;; esac; shift ;;
     -K) push=true; shift ;;
     -w) write_status=true; shift ;;
-    -H|-d|-m|-o) shift ;;
+    -o) output=$2; shift ;;
+    -H|-d|-m) shift ;;
     http*) url=$1 ;;
   esac
   shift
@@ -86,6 +87,7 @@ case "$all" in *dc-SECRET-1*) echo "KEY IN ARGV" >> "$FAKE/calls" ;; esac
 case "$url" in
   */api/v1/device/start)
     echo "device start" >> "$FAKE/calls"
+    case "$input" in *'"access":"write"'*) echo "device start write" >> "$FAKE/calls" ;; esac
     [ -e "$FAKE/no-device" ] && exit 22
     echo '{"deviceCode":"dc-SECRET-1","userCode":"ABCD-EFGH","verificationUri":"https://x.example/link","verificationUriComplete":"https://x.example/link?code=ABCD-EFGH","expiresIn":600,"interval":0}'
     exit 0 ;;
@@ -104,6 +106,23 @@ expected_key=${SPOOKY_API_KEY:-}
 [ "$input" = "Authorization: Bearer $expected_key" ] || [ "$input" = "Authorization: Bearer sp_DEVICEkey-SECRET-777" ] \
   || { echo "bad auth" >> "$FAKE/calls"; exit 22; }
 file=$(printf '%s' "$project" | tr / _)
+if [ -n "$output" ]; then
+  case "$method $url" in
+    "GET "*/api/v1/setup)
+      if [ -e "$FAKE/reject-verify" ]; then
+        printf '{"error":"unauthorized"}\n' > "$output"
+        [ "$write_status" = true ] && printf '401'
+      else
+        cat "$FAKE/verify-setup.json" > "$output"
+        [ "$write_status" = true ] && printf '200'
+      fi
+      exit 0 ;;
+    "GET "*/api/v1/checkins)
+      cat "$FAKE/verify-checkins.json" > "$output"
+      [ "$write_status" = true ] && printf '200'
+      exit 0 ;;
+  esac
+fi
 case "$method $url" in
   "GET "*/api/v1/me)
     [ -e "$FAKE/reject-key" ] && exit 22
@@ -224,6 +243,44 @@ sh "$here/../spooky.sh" start >> "$FAKE/spooky-out" 2>&1 || fail "spooky start f
 grep -q 'Waiting for GitHub and Vercel' "$FAKE/spooky-out" || fail "start printed no wait progress"
 grep -q '^Vercel: synced$' "$FAKE/spooky-out" || fail "start did not print final status"
 if grep -q 'sp_CLI-SECRET' "$FAKE/spooky-out"; then fail "spooky printed the environment key"; fi
+
+# --write starts a fresh device sign-in and asks the API for write access.
+rm -f "$FAKE/keychain" "$FAKE/polls"
+: > "$FAKE/setup-polls"
+sh "$here/../spooky.sh" start --write >> "$FAKE/spooky-out" 2>&1 || fail "spooky start --write failed"
+[ "$(count 'device start write')" = 1 ] || fail "start --write did not request write access"
+grep -qx 'This shell still has the old SPOOKY_API_KEY. Run: unset SPOOKY_API_KEY' "$FAKE/spooky-out" || fail "start --write did not warn about the old environment key"
+sh "$here/../spooky.sh" help | grep -q -- '--write' || fail "spooky help omitted --write"
+
+# Verify checks the authenticated setup and check-in responses without putting the key in argv.
+cat > "$FAKE/verify-setup.json" <<'EOF'
+{"github":"synced","vercel":"synced"}
+EOF
+cat > "$FAKE/verify-checkins.json" <<'EOF'
+{"jobs":[{"name":"Nightly backup","lastPingAt":"2026-11-25T08:00:00.000Z"}]}
+EOF
+sh "$here/../spooky.sh" verify > "$FAKE/verify-out" 2>&1 || fail "spooky verify PASS failed"
+[ "$(wc -l < "$FAKE/verify-out" | tr -d ' ')" = 4 ] || fail "verify PASS did not print four lines"
+grep -qx 'Key: OK' "$FAKE/verify-out" || fail "verify did not accept the key"
+grep -qx 'Project: OK' "$FAKE/verify-out" || fail "verify did not find a project connection"
+grep -qx 'Check-in: OK' "$FAKE/verify-out" || fail "verify did not find a ping"
+grep -qx 'PASS' "$FAKE/verify-out" || fail "verify did not pass"
+
+printf '{"jobs":[]}\n' > "$FAKE/verify-checkins.json"
+if sh "$here/../spooky.sh" verify > "$FAKE/verify-out" 2>&1; then fail "verify accepted a missing check-in"; fi
+grep -q 'Check-ins for scheduled jobs.*https://spookyparticles.com/setup.md' "$FAKE/verify-out" || fail "verify did not explain a missing check-in"
+grep -qx 'FAIL: Check-in' "$FAKE/verify-out" || fail "verify named the wrong missing part"
+
+printf '{"jobs":[{"name":"Nightly backup","lastPingAt":null}]}\n' > "$FAKE/verify-checkins.json"
+if sh "$here/../spooky.sh" verify > "$FAKE/verify-out" 2>&1; then fail "verify accepted a job waiting for its first ping"; fi
+grep -qx 'Check-in: FAIL - Waiting for Nightly backup.' "$FAKE/verify-out" || fail "verify did not name the waiting job"
+
+touch "$FAKE/reject-verify"
+if sh "$here/../spooky.sh" verify > "$FAKE/verify-out" 2>&1; then fail "verify accepted a bad key"; fi
+grep -q 'sh scripts/spooky.sh start --sign-in-again' "$FAKE/verify-out" || fail "verify did not explain how to replace a bad key"
+grep -qx 'FAIL: Key' "$FAKE/verify-out" || fail "verify did not report the bad key first"
+rm -f "$FAKE/reject-verify"
+if grep -q 'sp_CLI-SECRET' "$FAKE/verify-out"; then fail "verify printed the environment key"; fi
 
 # With no environment key, status loads the fake Keychain entry and still keeps it out of output.
 unset SPOOKY_API_KEY
@@ -380,22 +437,24 @@ grep -q '.spooky/lessons.md' "$FAKE/claude-args" || fail "brief does not ask for
 # opens the link, waits for approval, saves its own key in the Keychain and runs.
 if script -q /dev/null true < /dev/null >/dev/null 2>&1; then
   in_tty() { (unset SPOOKY_API_KEY; script -q /dev/null sh "$here/spooky-fixer.sh" "$@" < /dev/null >> "$FAKE/signin-out" 2>&1); }
+  starts_before=$(count 'device start')
+  opens_before=$(count 'open https://x.example/link?code=ABCD-EFGH')
   rm -f "$FAKE/keychain" "$FAKE/polls"
   in_tty --once --budget 0 || fail "first sign-in run failed"
   grep -q 'ABCD-EFGH' "$FAKE/signin-out" || fail "sign-in code not shown"
-  [ "$(count 'open https://x.example/link?code=ABCD-EFGH')" = 1 ] || fail "sign-in link not opened"
+  [ "$(count 'open https://x.example/link?code=ABCD-EFGH')" = $((opens_before + 1)) ] || fail "sign-in link not opened"
   grep -qx 'sp_DEVICEkey-SECRET-777' "$FAKE/keychain" || fail "key not saved in the Keychain"
   grep -q 'Signed in' "$FAKE/signin-out" || fail "sign-in not confirmed"
   [ "$(count 'bad device code')" = 0 ] || fail "device code not sent"
   # Next start uses the saved key: no second sign-in.
   in_tty --once --budget 0 || fail "run with a saved key failed"
-  [ "$(count 'device start')" = 1 ] || fail "signed in again with a saved key"
+  [ "$(count 'device start')" = $((starts_before + 1)) ] || fail "signed in again with a saved key"
   # A saved key Spooky rejects is removed, and sign-in runs again.
   touch "$FAKE/reject-key"
   in_tty --once --budget 0 || true
   [ "$(count 'keychain delete')" -ge 1 ] || fail "rejected saved key kept"
   grep -q 'revoked or expired' "$FAKE/signin-out" || fail "rejected key not explained"
-  [ "$(count 'device start')" = 2 ] || fail "no new sign-in after a rejected key"
+  [ "$(count 'device start')" = $((starts_before + 2)) ] || fail "no new sign-in after a rejected key"
   rm -f "$FAKE/reject-key"
   # Denied in the browser: nothing saved, a plain message, a failing exit.
   rm -f "$FAKE/keychain" "$FAKE/polls"; touch "$FAKE/device-deny"

@@ -69,3 +69,14 @@ jobs:
             gh issue comment "$num" -R "$REPO" --body "Back at $now. The health check answers again, about $mins min after this issue opened."
             gh issue close "$num" -R "$REPO"
           fi
+
+      - name: Check morning message
+        run: |
+          hour=$(date -u +%H)
+          if [ "$hour" -ge 15 ] && [ "$hour" -le 23 ]; then
+            digest=$(jq -r '.digest // empty' body.json 2>/dev/null || true)
+            if [ "$digest" = failed ] || [ "$digest" = not_yet ]; then
+              # Log only for now: a new gate warns until it has run clean for a week.
+              echo "::warning::morning message did not go out"
+            fi
+          fi

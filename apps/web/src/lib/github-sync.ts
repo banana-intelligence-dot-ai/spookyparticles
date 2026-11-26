@@ -63,7 +63,7 @@ type DeploymentStatus = { state: string; environment_url?: string; target_url?: 
  * The repo sync itself, with a token in hand: shared by the inventory step above and by the
  * on-demand refresh an agent triggers after a push (src/lib/github-refresh.ts).
  */
-export async function syncRepoWith(t: string, input: { userId: string; accountNodeId: string; repo: RepoRef }) {
+export async function syncRepoWith(t: string, input: { userId: string; accountNodeId: string; repo: RepoRef; readHead?: boolean }) {
   const { repo, userId } = input;
   const at = new Date().toISOString();
   const externalKey = `github:repo:${repo.id}`;
@@ -110,7 +110,7 @@ export async function syncRepoWith(t: string, input: { userId: string; accountNo
   const list = await gh<Deployment[]>(t, `${base}/deployments?per_page=100`, { emptyOn: EMPTY_STATUSES, empty: [] });
   let rateRemaining = list.rateRemaining;
   // This is best effort: an empty repo or missing commit permission must not stop inventory.
-  if (repo.defaultBranch) {
+  if (input.readHead === true && repo.defaultBranch) {
     try {
       const head = await gh<{ sha: string; commit?: { committer?: { date?: string | null } | null; message?: string | null } }>(t, `${base}/commits/${encodeURIComponent(repo.defaultBranch)}`, { emptyOn: new Set([403, 404, 409]), empty: { sha: "" } });
       if (head.data.sha && head.data.commit?.committer?.date) {

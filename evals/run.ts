@@ -10,6 +10,7 @@ import {
   jobIssue,
   parseStatusFilter,
 } from "../apps/web/src/lib/checkins";
+import * as checkinsEval from "../apps/web/src/lib/checkins";
 import { jobReachesSession } from "../apps/web/src/lib/incidents";
 import { FIX_RULE, pagerWhat } from "../apps/web/src/lib/pager";
 import { fixedAfterAlert, medianFixMinutes } from "../apps/web/src/lib/fix-stats";
@@ -19,6 +20,7 @@ import {
   scheduleConnectionId,
   scheduleSyncStatus,
 } from "../apps/web/src/lib/vercel-watch";
+import * as vercelWatchEval from "../apps/web/src/lib/vercel-watch";
 
 type Case = {
   id: string;
@@ -46,6 +48,7 @@ const registry: Record<string, (input: Record<string, any>) => unknown> = {
   fixedAfterAlert: ({ catch: c }) => fixedAfterAlert(c),
   medianFixMinutes: ({ fixed }) => medianFixMinutes(fixed),
   historyChoice: ({ currentId, connections, attempts }) => historyChoice(currentId, connections, attempts),
+  noFixReason: ({ project, fixer, held }) => checkinsEval.noFixReason({ project, fixer, held }),
   jobIssue: ({ job }) => jobIssue(job),
   jobDisplayStatus: ({ job, nowAt }) => jobDisplayStatus(job, nowAt.getTime()),
   mustWaitForCheckIn: ({ job }) => mustWaitForCheckIn(job),
@@ -61,6 +64,7 @@ const registry: Record<string, (input: Record<string, any>) => unknown> = {
   },
   scheduleConnectionId: ({ prior, activeIds, syncingId }) => scheduleConnectionId(prior, new Set(activeIds), syncingId),
   scheduleSyncStatus: ({ prior, shouldPause, restart }) => scheduleSyncStatus(prior, shouldPause, restart),
+  shouldPauseMissingSchedule: ({ job, refs, schedulesKnown }) => vercelWatchEval.shouldPauseMissingSchedule(job, new Set(refs), schedulesKnown),
 };
 
 function display(value: unknown): string {

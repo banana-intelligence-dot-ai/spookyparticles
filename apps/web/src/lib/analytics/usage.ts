@@ -34,7 +34,7 @@ export function cleanArrival(input: Record<string, unknown>): Arrival {
 export const CLIENT_EVENTS = new Set(["landed", "signin_clicked", "outbound_clicked", "signed_in", "setup_prompt_copied", "move_to_vercel_clicked"]);
 
 /** The north-star funnel, in order, for the stats read. */
-export const FUNNEL = ["landed", "signin_clicked", "signed_up", "consent_granted:github", "consent_granted:gmail", "consent_granted:vercel", "agent_key_created", "reading_complete", "alert_sent"] as const;
+export const FUNNEL = ["landed", "setup_prompt_copied", "setup_md_read", "agent_signin_started", "signin_clicked", "signed_up", "consent_granted:github", "consent_granted:gmail", "consent_granted:vercel", "agent_key_created", "reading_complete", "alert_sent"] as const;
 
 export async function recordUsage(input: { event: string; userId?: string | null; arrival?: Partial<Arrival>; props?: Record<string, string | number | boolean | null> }): Promise<void> {
   try {

@@ -170,7 +170,7 @@ const SENDER_SYSTEM = `You decide what kind of sender an email domain is, for a 
 Verdicts:
 - software_vendor: a company that bills for software, hosting, infrastructure, APIs, domains, developer tools or SaaS (Vercel, Supabase, GitHub, Namecheap, Figma, Notion, OpenAI). Also payment processors sending receipts for such products.
 - consumer: shops, restaurants, delivery, consumer subscriptions (Netflix, Spotify), travel, events, health, churches, schools.
-- finance: banks, brokerages, trading apps, payroll, tax, insurance.
+- finance: banks, brokerages, investment apps, payroll, tax, insurance.
 - shipping: carriers and package tracking.
 - notifications: a product's system mail that never bills (sign-in alerts, social notifications, calendar, support desks).
 - personal: a person, a mailbox provider domain, a mailing list of people.

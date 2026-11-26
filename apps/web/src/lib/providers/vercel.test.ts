@@ -41,9 +41,41 @@ describe("listProjects schedules refusal", () => {
       return new Response(JSON.stringify({ projects: [{ id: "prj_1", name: "a" }, { id: "prj_2", name: "b" }, { id: "prj_3", name: "c" }], pagination: { next: null } }), { status: 200 });
     });
     vi.stubGlobal("fetch", fetcher);
-    const { projects } = await listProjects("token", { kind: "team", id: "team_1", slug: "team", name: "Team" });
+    const { projects, schedulesRefused } = await listProjects("token", { kind: "team", id: "team_1", slug: "team", name: "Team" });
     expect(projects.map((p) => p.schedulesKnown)).toEqual([false, false, false]);
+    expect(schedulesRefused).toBe(true);
     expect(fetcher.mock.calls.filter(([url]) => new URL(url as URL).origin === "https://vercel-schedules.com")).toHaveLength(1);
+  });
+
+  it("does not request schedules when a recent refusal says to skip them", async () => {
+    const fetcher = vi.fn(async (_url: URL) => new Response(JSON.stringify({ projects: [{ id: "prj_1", name: "a" }], pagination: { next: null } }), { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+    const { projects, schedulesRefused } = await listProjects("token", { kind: "team", id: "team_1", slug: "team", name: "Team" }, { skipSchedules: true });
+    expect(projects[0].schedulesKnown).toBe(false);
+    expect(schedulesRefused).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(String(fetcher.mock.calls[0][0])).toContain("/v10/projects");
+  });
+
+  it("keeps reading later projects when a project-specific refusal follows a success", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const scheduleProjects: string[] = [];
+    const fetcher = vi.fn(async (url: URL) => {
+      const u = new URL(url);
+      if (u.origin === "https://vercel-schedules.com") {
+        const projectId = String(u.searchParams.get("projectId"));
+        scheduleProjects.push(projectId);
+        return projectId === "prj_2"
+          ? new Response("{}", { status: 403 })
+          : new Response(JSON.stringify({ data: [], cursor: null }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ projects: [{ id: "prj_1", name: "a" }, { id: "prj_2", name: "b" }, { id: "prj_3", name: "c" }], pagination: { next: null } }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const result = await listProjects("token", { kind: "team", id: "team_1", slug: "team", name: "Team" });
+    expect(result.projects.map((project) => project.schedulesKnown)).toEqual([true, false, true]);
+    expect(result).toMatchObject({ schedulesRead: true, schedulesRefused: true });
+    expect(scheduleProjects).toEqual(["prj_1", "prj_2", "prj_3"]);
   });
 });
 
@@ -302,6 +334,29 @@ describe("getProjectChecksInput", () => {
     expect(got.protection).not.toBeNull();
     expect(got.schedulesKnown).toBe(false);
     expect(got.schedules?.map((schedule) => schedule.path)).toEqual(["/api/daily"]);
+    expect(got.schedulesRefused).toBe(true);
+    expect(got.envListRefused).toBe(true);
+  });
+
+  it("skips schedules and the env list after recent refusals", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(project), { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+    const got = await getProjectChecksInput("tok", scope, "prj_1", { skipSchedules: true, skipEnvList: true });
+    expect(got.schedulesKnown).toBe(false);
+    expect(got.env).toBeNull();
+    expect(got.schedulesRefused).toBe(false);
+    expect(got.envListRefused).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a 404 from the env list as a refusal", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(project), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [], cursor: null }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("missing", { status: 404 })));
+    const got = await getProjectChecksInput("tok", scope, "prj_1");
+    expect(got.env).toBeNull();
+    expect(got.envListRefused).toBe(true);
   });
 
   it("does not ask for env twice when the project already carries its list", async () => {

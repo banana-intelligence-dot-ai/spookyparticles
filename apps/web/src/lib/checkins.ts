@@ -233,6 +233,13 @@ export async function updateJob(userId: string, id: string, patch: { name?: stri
   if (patch.paused === false && cur.status === "paused") set.status = cur.lastPingAt ? "up" : "new";
   if (patch.retired === true) set.status = "retired";
   if (patch.retired === false && cur.status === "retired") set.status = cur.lastPingKind === "fail" ? "down" : cur.lastPingAt ? "up" : "new";
+  // Coming back from paused or retired starts the clock now: the time spent away is not a miss.
+  if ((patch.paused === false && cur.status === "paused") || (patch.retired === false && cur.status === "retired")) {
+    const schedule = patch.schedule === undefined ? cur.schedule : patch.schedule;
+    const zone = patch.timeZone === undefined ? cur.timeZone : patch.timeZone;
+    set.missCount = 0;
+    set.nextDueAt = cur.lastPingAt ? new Date(pingDueAt("ok", patch.periodMinutes ?? cur.periodMinutes, null, Date.now(), schedule, zone ?? "UTC", cur.source)) : null;
+  }
   // A new period moves the next due time from the last check-in.
   if (patch.schedule !== undefined || patch.timeZone !== undefined || patch.periodMinutes !== undefined || patch.maxRunMinutes !== undefined) {
     const schedule = patch.schedule === undefined ? cur.schedule : patch.schedule;

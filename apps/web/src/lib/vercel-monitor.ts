@@ -8,8 +8,9 @@ import { getAccessToken } from "@/lib/connections";
 import { appUrl } from "@/lib/env";
 import { byPublicName } from "@/lib/hosts";
 import { pinnedGet, resolvePublic } from "@/lib/net-safety";
+import { classifyOutsideApis } from "@/lib/outside-apis";
 import type { VercelScope } from "@/lib/providers/vercel";
-import { queryErrorRate } from "@/lib/providers/vercel-query";
+import { queryErrorRate, queryExternalApis } from "@/lib/providers/vercel-query";
 import { nextErrorRate, nextUptime, type ErrorRateState, type UptimeState } from "@/lib/vercel-health";
 import { historyChoice } from "@/lib/vercel-watch";
 import { readNodes, type SlimNode } from "@/lib/node-reads";
@@ -48,12 +49,15 @@ export async function save(p: ProjectNode, field: "errorRate" | "uptime" | "site
 
 export async function sweepServerErrors(nowMs = Date.now()): Promise<{ queried: number; alerts: number; unavailable: number }> {
   const db = getDb();
-  const [projects, connections, jobs] = await Promise.all([
-    readNodes("project", ["connection_id", "scope_id", "scope_kind", "errorRate"]),
+  const [projects, connections, jobs, domains, links] = await Promise.all([
+    readNodes("project", ["connection_id", "scope_id", "scope_kind", "production_url", "errorRate"]),
     db.select({ id: schema.connections.id, userId: schema.connections.userId, scopes: schema.connections.scopes, status: schema.connections.status, encryptedAccessToken: schema.connections.encryptedAccessToken })
       .from(schema.connections).where(and(eq(schema.connections.provider, "vercel"), eq(schema.connections.status, "active"))),
     db.select({ userId: schema.checkinJobs.userId, vercelProjectId: schema.checkinJobs.vercelProjectId, vercelConnectionId: schema.checkinJobs.vercelConnectionId, evidenceState: schema.checkinJobs.evidenceState }).from(schema.checkinJobs).where(eq(schema.checkinJobs.source, "vercel")),
+    readNodes("domain", ["redirect_to"]),
+    db.select({ fromNodeId: schema.edges.fromNodeId, toNodeId: schema.edges.toNodeId }).from(schema.edges).where(eq(schema.edges.kind, "points_to")),
   ]);
+  const ownHosts = new Map(siteTargets(projects, domains, links).map(({ p, knownHosts }) => [p.id, [...knownHosts]]));
   let queried = 0, alerts = 0, unavailable = 0;
   for (const p of projects) {
     if (!p.externalKey.startsWith("vercel:project:")) continue;
@@ -68,9 +72,16 @@ export async function sweepServerErrors(nowMs = Date.now()): Promise<{ queried: 
     if (choice.kind !== "try") continue;
     const scopeId = typeof a.scope_id === "string" ? a.scope_id : "scoped";
     const scope: VercelScope = { kind: a.scope_kind === "user" ? "user" : "team", id: scopeId, slug: "", name: "" };
+    let token = "";
+    try { token = await getAccessToken(choice.id); }
+    catch { /* handled as unavailable below */ }
     let result: Awaited<ReturnType<typeof queryErrorRate>>;
-    try { result = await queryErrorRate(await getAccessToken(choice.id), scope, projectId, nowMs - 15 * 60_000, nowMs); }
+    try { result = token ? await queryErrorRate(token, scope, projectId, nowMs - 15 * 60_000, nowMs) : { ok: false, reason: "unavailable" }; }
     catch { result = { ok: false, reason: "unavailable" }; }
+    if (result.ok) try {
+      const outside = await queryExternalApis(token, scope, projectId, nowMs - 15 * 60_000, nowMs);
+      if (outside.ok) for (const finding of classifyOutsideApis(outside.hosts, ownHosts.get(p.id) ?? [])) console.info(`outside-api would-alert ${p.name} ${finding.host} ${finding.kind} ${finding.failing}/${finding.total}`);
+    } catch { /* log-only outside API checks never interrupt the watcher */ }
     queried++;
     if (!result.ok) {
       unavailable++;

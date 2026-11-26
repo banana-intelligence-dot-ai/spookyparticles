@@ -873,7 +873,7 @@ function approveTools(actor: Actor): ToolRegistry {
       run: async (input) => viaApi(async () => ({ apiKey: await revokeApiKey(actor, input.key_id as string) })),
     }),
     approve_agent_sign_in: write({
-      description: "Approve or deny another agent's sign-in code. Only use a code your person or your own process just started. The decision cannot be undone.",
+      description: "Approve another agent's read sign-in or deny any sign-in request. Write sign-ins must be approved by a signed-in person at spookyparticles.com/link. Device sign-in can never grant full control. Only use a code your person or your own process just started. The decision cannot be undone.",
       inputSchema: { type: "object", additionalProperties: false, properties: { user_code: { type: "string", minLength: 8, maxLength: 9 }, approve: { type: "boolean" } }, required: ["user_code", "approve"] },
       validate: (input) => validate(input, ["user_code"], ["user_code", "approve"]) ?? (typeof input.approve === "boolean" ? null : "approve must be true or false"),
       run: async (input) => viaApi(() => deviceHandlers.decide(actor, input.user_code, input.approve as boolean)),

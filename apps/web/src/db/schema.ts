@@ -692,6 +692,21 @@ export const checkinPings = pgTable(
   (t) => [index("checkin_pings_job_at_idx").on(t.jobId, t.at)],
 );
 
+export const checkinStats = pgTable(
+  "checkin_stats",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id").notNull().references(() => checkinJobs.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    mainName: text("main_name").notNull(),
+    mainValue: integer("main_value").notNull(),
+    mainWeek: integer("main_week"),
+    counts: jsonb("counts").$type<Record<string, number>>().notNull().default({}),
+    receivedAt: now("received_at"),
+  },
+  (t) => [uniqueIndex("checkin_stats_job_day_uq").on(t.jobId, t.day)],
+);
+
 /** Where alerts go: an ntfy topic, a Slack or Teams webhook, or an email address. Targets are encrypted at rest. */
 export const alertChannels = pgTable(
   "alert_channels",

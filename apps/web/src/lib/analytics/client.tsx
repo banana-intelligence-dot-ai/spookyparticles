@@ -12,6 +12,7 @@
 import posthog from "posthog-js";
 import { useEffect } from "react";
 import type { AnalyticsEventName, AnalyticsEvents } from "./events";
+import { isNoTrack } from "./notrack";
 
 const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 const ARRIVAL = "sp.arrival";
@@ -49,6 +50,7 @@ function captureArrival(): Arrival {
 }
 
 function beacon(event: string, props: Record<string, string | number | boolean | null> = {}) {
+  if (isNoTrack()) return;
   const a = readArrival();
   const body = JSON.stringify({ event, ref: a.ref, utm_source: a.utm_source, utm_campaign: a.utm_campaign, path: a.path ?? window.location.pathname, props });
   try {
@@ -62,12 +64,14 @@ function beacon(event: string, props: Record<string, string | number | boolean |
 /** Report one of the client steps: signin_clicked, signed_in, setup_prompt_copied. */
 export function touch(event: "signin_clicked" | "signed_in" | "setup_prompt_copied" | "move_to_vercel_clicked", props: Record<string, string | number | boolean | null> = {}) {
   if (typeof window === "undefined") return;
+  if (isNoTrack()) return;
   beacon(event, props);
   if (KEY && started) posthog.capture(event, props);
 }
 
 export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
+    if (isNoTrack()) return;
     const arrival = captureArrival();
     try {
       if (!window.sessionStorage.getItem(LANDED)) {
@@ -108,6 +112,6 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function trackClient<E extends AnalyticsEventName>(event: E, properties: AnalyticsEvents[E]) {
-  if (!KEY || !started) return;
+  if (!KEY || !started || isNoTrack()) return;
   posthog.capture(event, properties);
 }

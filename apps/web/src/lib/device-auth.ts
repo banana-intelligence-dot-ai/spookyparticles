@@ -3,7 +3,7 @@
  *
  * 1. An agent's setup script calls start: it gets a secret deviceCode and a short userCode.
  * 2. A signed-in person or an approve-scope key checks the code and approves.
- * 3. The script polls token with its deviceCode and, once approved, receives its own read key.
+ * 3. The script polls token with its deviceCode and, once approved, receives its own key.
  *
  * Storage is the auth library's `verification` table (no migration): one row per request,
  * keyed by the hash of the deviceCode, and one row mapping the userCode to that hash. The raw
@@ -28,11 +28,14 @@ export const MIN_POLL_GAP_MS = 4000;
 export { formatUserCode, normalizeUserCode, USER_CODE_ALPHABET } from "./device-code";
 
 export type DeviceStatus = "pending" | "approved" | "denied" | "consumed";
+export type DeviceAccess = "read" | "write";
 
 export type DeviceRecord = {
   userCode: string;
   client: string;
   machine: string;
+  /** Missing on requests created before write access existed; those remain read-only. */
+  access?: DeviceAccess;
   status: DeviceStatus;
   userId?: string;
   decidedAt?: string;
@@ -83,6 +86,10 @@ export function parseMachine(input: unknown): string | null {
     .slice(0, 60)
     .trim();
   return v || null;
+}
+
+export function parseAccess(input: unknown): DeviceAccess | null {
+  return input === "read" || input === "write" ? input : null;
 }
 
 const CLIENT_LABELS: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex" };
@@ -178,17 +185,18 @@ export type DeviceStore = {
   purgeExpired(now: Date): Promise<void>;
 };
 
-export type MintedKey = { id: string; key: string; name: string; prefix: string; scopes: string[] };
+export type MintedKey = { id: string; key: string; name: string; prefix: string; scopes: string[]; expiresAt: Date | null };
 
 export type DeviceDeps = {
   store: DeviceStore;
   origin: () => string;
   now?: () => Date;
   requireActor: (req: Request, scope: "approve") => Promise<Actor>;
-  /** Insert a read key for the user. Returns the plaintext key once. */
-  mintKey: (userId: string, name: string) => Promise<MintedKey>;
+  /** Insert the requested key for the user. Returns the plaintext key once. */
+  mintKey: (userId: string, name: string, access: DeviceAccess) => Promise<MintedKey>;
+  countRecentWriteApprovals: (userId: string, since: Date) => Promise<number>;
   audit: (entry: { actor: string; userId: string; action: string; target: string; after?: unknown }) => Promise<void>;
-  track: (userId: string) => Promise<void>;
+  track: (userId: string, scopes: string[]) => Promise<void>;
   allowStart: (ip: string) => boolean;
 };
 
@@ -222,17 +230,27 @@ export function createDeviceHandlers(deps: DeviceDeps) {
     return { identifier, row, record };
   }
 
-  async function decide(actor: Actor, userCode: unknown, approve: boolean): Promise<{ status: DeviceStatus }> {
-    // Approving hands out a read key, and a key can only grant what it holds.
+  async function decide(actor: Actor, userCode: unknown, approve: boolean): Promise<{ status: DeviceStatus; agent: string; access: DeviceAccess }> {
+    // A key can only grant what it holds itself.
     if (actor.via === "api_key" && !actor.scopes.includes("read")) throw new ApiError(403, "scope_exceeds_caller", "A key can only make keys with the access it has itself");
     for (let attempt = 0; attempt < 4; attempt++) {
       const at = now();
       const { identifier, row, record } = await findByUserCode(userCode, at);
       const next = decideTransition(record, actor.userId, approve, at);
       if (!next) throw new ApiError(409, "already_decided", "This code was already approved or denied.");
+      const access = record.access ?? "read";
+      if (approve && access === "write") {
+        if (actor.via !== "session") {
+          throw new ApiError(403, "write_needs_screen", "Write access must be approved by a signed-in person at spookyparticles.com/link.");
+        }
+        const since = new Date(at.getTime() - 24 * 60 * 60 * 1000);
+        if ((await deps.countRecentWriteApprovals(actor.userId, since)) >= 10) {
+          throw new ApiError(429, "too_many_write_keys", "You have approved 10 write keys in the last 24 hours. Try again later.");
+        }
+      }
       if (await deps.store.compareAndSet(identifier, row.value, JSON.stringify(next), at)) {
-        await deps.audit({ actor: actor.label, userId: actor.userId, action: approve ? "device.approved" : "device.denied", target: `device:${record.userCode}`, after: { client: record.client, machine: record.machine } });
-        return { status: next.status };
+        await deps.audit({ actor: actor.label, userId: actor.userId, action: approve ? "device.approved" : "device.denied", target: `device:${record.userCode}`, after: { client: record.client, machine: record.machine, access } });
+        return { status: next.status, agent: clientLabel(record.client), access };
       }
     }
     throw new ApiError(409, "busy", "That didn't save. Try again.");
@@ -245,6 +263,8 @@ export function createDeviceHandlers(deps: DeviceDeps) {
         throw new ApiError(429, "rate_limited", "Too many sign-in starts from this network. Wait a few minutes.");
       }
       const body = await readJson(req);
+      const access = body.access === undefined ? "read" : parseAccess(body.access);
+      if (!access) throw new ApiError(400, "invalid_access", "access must be read or write.");
       const client = parseClient(body.client);
       if (!client) throw new ApiError(400, "invalid_client", "client must be 1 to 40 letters, digits, dots, dashes, underscores or spaces, like claude-code.");
       const machine = parseMachine(body.machine);
@@ -258,7 +278,7 @@ export function createDeviceHandlers(deps: DeviceDeps) {
       const deviceCode = generateDeviceCode();
       const hash = sha256Hex(deviceCode);
       const expiresAt = new Date(at.getTime() + DEVICE_TTL_SEC * 1000);
-      const record: DeviceRecord = { userCode, client, machine, status: "pending" };
+      const record: DeviceRecord = { userCode, client, machine, access, status: "pending" };
       await deps.store.insert([
         { identifier: `device:${hash}`, value: JSON.stringify(record), expiresAt },
         { identifier: userCodeIdentifier(userCode), value: hash, expiresAt },
@@ -306,16 +326,17 @@ export function createDeviceHandlers(deps: DeviceDeps) {
           if (!won) return tokenError("expired_token", "This sign-in expired or was already used. Start again.");
           const userId = record.userId!;
           const name = keyName(record.client, record.machine);
-          const minted = await deps.mintKey(userId, name);
+          const access = record.access ?? "read";
+          const minted = await deps.mintKey(userId, name, access);
           await deps.audit({
             actor: `user:${userId}`,
             userId,
             action: "api_key.created",
             target: `api_key:${minted.id}`,
-            after: { scopes: minted.scopes, via: "device", client: record.client, machine: record.machine },
+            after: { scopes: minted.scopes, expiresOn: minted.expiresAt ? minted.expiresAt.toISOString().slice(0, 10) : null, via: "device", client: record.client, machine: record.machine },
           });
-          await deps.track(userId);
-          return json({ key: minted.key, name: minted.name, prefix: minted.prefix, scopes: minted.scopes });
+          await deps.track(userId, minted.scopes);
+          return json({ key: minted.key, name: minted.name, prefix: minted.prefix, scopes: minted.scopes, expiresAt: minted.expiresAt });
         }
       }
     },
@@ -328,8 +349,9 @@ export function createDeviceHandlers(deps: DeviceDeps) {
       return json({
         userCode: record.userCode,
         client: record.client,
-        clientLabel: clientLabel(record.client),
+        clientLabel: record.client ? clientLabel(record.client) : "An agent",
         machine: record.machine,
+        access: record.access ?? "read",
         status: record.status === "consumed" ? "approved" : record.status,
         expiresAt: row.expiresAt.toISOString(),
       });
@@ -343,7 +365,8 @@ export function createDeviceHandlers(deps: DeviceDeps) {
       const body = await readJson(req);
       if (typeof body.approve !== "boolean") throw new ApiError(400, "invalid_request", "approve must be true or false.");
       const approve = body.approve;
-      return json(await decide(actor, body.userCode, approve));
+      const decision = await decide(actor, body.userCode, approve);
+      return json({ status: decision.status });
     },
   };
 }

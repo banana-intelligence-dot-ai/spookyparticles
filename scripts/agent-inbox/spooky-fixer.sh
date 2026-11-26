@@ -112,7 +112,7 @@ while [ "${base_url%/}" != "$base_url" ]; do base_url=${base_url%/}; done
 # --- The agent's key ------------------------------------------------------------------------
 # Order: SPOOKY_API_KEY, the clipboard flag, the key this computer saved at sign-in, then (in a
 # terminal) sign-in: Spooky shows a code, you approve it in your browser, and this computer gets
-# its own named read key. It is saved in the macOS Keychain (when that is locked, as over ssh,
+# its own named key. It is saved in the macOS Keychain (when that is locked, as over ssh,
 # or off a Mac: a file only you can read, ~/.config/spooky/agent-key). It goes to curl on
 # stdin and is never printed or logged.
 key_service=spookyparticles.com
@@ -164,7 +164,7 @@ print("" if v is None else v)' "$1" 2>/dev/null
 }
 
 key_ok() {
-  printf 'Authorization: Bearer %s\n' "$1" | curl -fsS -m 30 -o /dev/null -H @- -H "User-Agent: spooky-fixer" "$base_url/api/v1/me" 2>/dev/null
+  printf 'Authorization: Bearer %s\n' "$1" | curl -q -fsS -m 30 -o /dev/null -H @- -H "User-Agent: spooky-fixer" "$base_url/api/v1/me" 2>/dev/null
 }
 
 # Prints the new key on stdout. Returns 2 when this Spooky has no sign-in, 1 on any other failure.
@@ -176,7 +176,9 @@ sign_in() {
   fi
   si_machine=$( (scutil --get ComputerName || hostname) 2>/dev/null | head -n 1 | tr -cd 'A-Za-z0-9 ._-' | cut -c1-60)
   [ -n "$si_machine" ] || si_machine=computer
-  si_start=$(printf '{"client":"%s","machine":"%s"}' "$si_client" "$si_machine" \
+  si_access=${SPOOKY_DEVICE_ACCESS:-read}
+  case "$si_access" in read|write) ;; *) si_access=read ;; esac
+  si_start=$(printf '{"client":"%s","machine":"%s","access":"%s"}' "$si_client" "$si_machine" "$si_access" \
     | curl -fsS -m 30 -X POST -H 'Content-Type: application/json' -d @- "$base_url/api/v1/device/start" 2>/dev/null) || return 2
   si_code=$(printf '%s' "$si_start" | json_get deviceCode)
   si_user=$(printf '%s' "$si_start" | json_get userCode)
@@ -347,7 +349,7 @@ run_setup() {
     printf 'Note: ANTHROPIC_API_KEY is set in this shell. The fixer ignores it and uses your Claude login instead (add --use-api-key to use the key).\n'
   fi
 
-  if ! json=$(printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -fsS -m 60 -H @- \
+  if ! json=$(printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -q -fsS -m 60 -H @- \
       -H "User-Agent: spooky-fixer" "$base_url/api/v1/projects" 2>/dev/null); then
     printf 'Spooky did not answer. Check that the key is a Read key from the Agents page and is not revoked.\n' >&2
     exit 1
@@ -552,7 +554,7 @@ spooky() {
   method=$1
   path=$2
   project=$3
-  printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -fsS -m 60 -G -X "$method" \
+  printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -q -fsS -m 60 -G -X "$method" \
     -H @- -H "User-Agent: spooky-fixer" \
     --data-urlencode "project=$project" --data-urlencode "format=text" \
     "$base_url$path"
@@ -904,7 +906,7 @@ if [ "$once" = true ]; then
   exit 0
 fi
 # A wrong or revoked key would fail every pass in silence; say so once and stop.
-if ! printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -fsS -m 30 -o /dev/null -H @- -H "User-Agent: spooky-fixer" "$base_url/api/v1/me" 2>/dev/null; then
+if ! printf 'Authorization: Bearer %s\n' "$SPOOKY_API_KEY" | curl -q -fsS -m 30 -o /dev/null -H @- -H "User-Agent: spooky-fixer" "$base_url/api/v1/me" 2>/dev/null; then
   printf 'Spooky did not accept that key (wrong, revoked or expired). Start again without SPOOKY_API_KEY set to sign in this computer.\n' >&2
   exit 1
 fi

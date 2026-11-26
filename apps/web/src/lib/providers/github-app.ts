@@ -72,6 +72,11 @@ export function permissionNames(permissions: Record<string, string> | null | und
     .sort();
 }
 
+/** The commits endpoint is available only when the installation may read repository contents. */
+export function canReadGithubContents(scopes: readonly string[] | null | undefined): boolean {
+  return scopes?.some((scope) => scope === "contents:read" || scope === "contents:write") ?? false;
+}
+
 /** GITHUB_APP_PRIVATE_KEY is base64 of the PEM file GitHub downloads. A raw PEM also works. */
 export function decodePrivateKey(value: string): string {
   const trimmed = value.trim();

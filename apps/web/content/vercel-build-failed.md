@@ -11,14 +11,18 @@ Start with the build log, then check the causes Vercel's own guide lists.
 3. Run the same build command on your own machine. Vercel recommends this first, because it catches problems in your code or your dependencies before you deploy again. The command depends on the project, for a Next.js app it is usually `npm run build`.
 4. Fix the cause, commit, and push. A new commit starts a new build.
 
-Source: Vercel's guide to [troubleshooting build errors](https://vercel.com/docs/deployments/troubleshoot-a-build). Our guide to [reading a failed Vercel deployment](/vercel-deployment-failed) covers the same log in more detail.
+Source: Vercel's guide to [troubleshooting build errors](https://vercel.com/docs/deployments/troubleshoot-a-build). Our guide to [reading a failed Vercel deployment](/vercel-deployment-failed) covers the same log in more detail, and the [list of Vercel deployment errors](/vercel-deployment-errors) helps match the error line to a fix.
+
+If the build reaches its time or memory limit, use the [Vercel build timeout and out of memory fixes](/vercel-build-timeout-and-out-of-memory).
+
+If the build succeeds but a URL returns 404, use the [Vercel 404 NOT_FOUND fix](/vercel-404-not-found).
 
 ## What are the common reasons a Vercel build fails?
 
 Vercel's guide names these:
 
 - **A missing development dependency.** The build can fail even though a package, such as `typescript`, is listed in `devDependencies`. Vercel installs `devDependencies` by default, but if your project sets `NODE_ENV` to `production`, some package managers skip them.
-- **A module that cannot be found.** Vercel describes this as a static import that cannot find the file at the declared path.
+- **A module that cannot be found.** Vercel describes this as a static import that cannot find the file at the declared path. See [Vercel module not found](/vercel-module-not-found) for the fixes.
 - **A missing build script.** Vercel lists "Missing Build script" among its build-specific errors.
 - **A build that runs out of memory or disk.** Vercel cancels a build that exceeds its machine's limits, and prints a system report in the log when that happens.
 - **A build that runs too long.** A build can last for a maximum of 45 minutes. After that the deployment is canceled.
@@ -40,7 +44,7 @@ A build can also read stale files from the build cache. To skip it, redeploy fro
 
 ## What if the build failed but there is no build log?
 
-Some builds fail before they start, so Vercel shows the error in an overlay instead of a log. Vercel lists an invalid `vercel.json`, an Ignored Build Step, a commit from someone who is not a team member, and a Marketplace integration resource that failed to provision. Fix the named cause and redeploy.
+Some builds fail before they start, so Vercel shows the error in an overlay instead of a log. Vercel lists an invalid `vercel.json`, an Ignored Build Step, a commit from someone who is not a team member (see [Vercel commit author is required](/vercel-commit-author-is-required)), and a Marketplace integration resource that failed to provision. Fix the named cause and redeploy.
 
 ## Where does Spooky fit?
 

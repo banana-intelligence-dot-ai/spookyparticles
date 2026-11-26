@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
-import { Analytics } from "@vercel/analytics/next";
 import { AnalyticsProvider } from "@/lib/analytics/client";
+import { VercelAnalytics } from "@/lib/analytics/vercel";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,8 +25,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} h-full`}>
       <body className="min-h-full flex flex-col bg-bg text-fg">
         <AnalyticsProvider>{children}</AnalyticsProvider>
-        {/* Page views, visitors, referrers and utm tags, cookieless. Enabled per project in the Vercel dashboard. */}
-        <Analytics />
+        {/* Page views, visitors, referrers and utm tags, cookieless. Enabled per project in the Vercel dashboard. ?notrack=1 skips this browser. */}
+        <VercelAnalytics />
       </body>
     </html>
   );

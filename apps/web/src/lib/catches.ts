@@ -31,7 +31,8 @@ export const FIXED = "deploy.fixed";
 export const FIX_CONFIRMED = "fix.confirmed";
 const WINDOW_DAYS = 30;
 const WINDOW_MS = WINDOW_DAYS * 86_400_000;
-const MAX = 200;
+/** The list stops at this many; a full list may be missing some. */
+export const MAX_CATCHES = 200;
 
 export type CatchKind = "deploy" | "job" | "site" | "sitemap_page_dropped" | "sitemap_page_down" | "sitemap_unreadable" | "server_errors" | "check";
 /**
@@ -268,7 +269,7 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
   const rank: Record<CatchStatus, number> = { open: 0, waiting: 1, fixed: 2, retired: 3, ignored: 3 };
   const catches = inWindow
     .sort((a, b) => rank[a.status] - rank[b.status] || (a.fixedAt && b.fixedAt ? b.fixedAt.localeCompare(a.fixedAt) : b.caughtAt.localeCompare(a.caughtAt)))
-    .slice(0, MAX);
+    .slice(0, MAX_CATCHES);
   const median = medianFixMinutes(catches);
   const count = (...s: CatchStatus[]) => catches.filter((c) => s.includes(c.status)).length;
   return {
@@ -282,8 +283,9 @@ export function buildCatches(input: CatchInput, now: Date): Catches {
 /**
  * Write down deploy failures as they are first seen, and their fix when the same deployment is
  * next seen healthy. Quiet on failure: the chart matters less than the read that triggered it.
+ * Returns false when it could not record, for callers that must not count from a stale list.
  */
-export async function recordDeploys(userId: string, nowMs = Date.now()) {
+export async function recordDeploys(userId: string, nowMs = Date.now()): Promise<boolean> {
   try {
     const db = getDb();
     const since = new Date(nowMs - WINDOW_MS - 86_400_000);
@@ -302,7 +304,7 @@ export async function recordDeploys(userId: string, nowMs = Date.now()) {
 
     const stillFailing = new Set(failing.map((d) => d.id));
     const waiting = [...caught.entries()].filter(([key, p]) => !fixed.has(key) && typeof p.nodeId === "string" && !stillFailing.has(p.nodeId));
-    if (!waiting.length) return;
+    if (!waiting.length) return true;
     const nodes = await db.select().from(schema.nodes).where(and(eq(schema.nodes.userId, userId), inArray(schema.nodes.id, waiting.map(([, p]) => p.nodeId as string))));
     const rows = waiting.flatMap(([key, p]) => {
       const node = nodes.find((n) => n.id === p.nodeId);
@@ -312,8 +314,10 @@ export async function recordDeploys(userId: string, nowMs = Date.now()) {
       return [{ userId, name: FIXED, properties: { key, at: node.lastActivityAt.toISOString(), sha: str(attrs.commit_sha) ?? str(attrs.sha) ?? facts.sha, message: facts.message } }];
     });
     if (rows.length) await db.insert(schema.events).values(rows);
+    return true;
   } catch (err) {
     console.warn("deploy catches not recorded", err instanceof Error ? err.message : err);
+    return false;
   }
 }
 

@@ -1,0 +1,20 @@
+{
+  "about": "Lines for the @spookyparticles account on X, posted top first, one a day at most. Only the Spooky session adds a line, after checking it against what is live, and it records when and against what. A line already posted is never posted again.",
+  "lines": [
+    {
+      "text": "When a deploy fails, the Spooky Particles alert names the cause from a build log line, for Vercel and GitHub Actions.",
+      "checked": "2026-11-19",
+      "source": "https://spookyparticles.com/llms.txt, What it does today: Failed deploys"
+    },
+    {
+      "text": "Spooky Particles watches the cron jobs on your Vercel projects with no code change, and alerts you when a run is missed, errors, or comes back.",
+      "checked": "2026-11-19",
+      "source": "https://spookyparticles.com/llms.txt, What it does today: Vercel cron jobs (path crons only)"
+    },
+    {
+      "text": "Spooky Particles warns you up to 30 days before a Vercel Node.js runtime is retired or a domain bought through Vercel expires.",
+      "checked": "2026-11-19",
+      "source": "https://spookyparticles.com/llms.txt, What it does today: runtime and domain expiry notices"
+    }
+  ]
+}

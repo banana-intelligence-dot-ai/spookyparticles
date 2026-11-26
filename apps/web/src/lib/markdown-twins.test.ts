@@ -9,6 +9,7 @@ const root = path.join(__dirname, "..", "..");
 describe("markdown twins", () => {
   it("each twin is a real Markdown file starting with the page's heading, and no control page has a twin", () => {
     for (const t of MARKDOWN_TWINS) {
+      expect(t.file.startsWith("content/"), t.file).toBe(true);
       expect(existsSync(path.join(root, t.file)), t.file).toBe(true);
       expect(readFileSync(path.join(root, t.file), "utf8").startsWith("# "), t.file).toBe(true);
     }

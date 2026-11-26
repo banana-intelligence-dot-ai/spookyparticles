@@ -20,7 +20,7 @@ export type AnalyticsEvents = {
   m2_action_requested: { action: string };
   /** A new account: the first server-side funnel step after a click. */
   signed_up: { provider: string | null };
-  /** A read-only key for a coding agent was made. */
+  /** A key for a coding agent was made. */
   agent_key_created: { scopes: string; via?: "device" };
   /** An alert email went out (deploy failed, and later kinds). */
   alert_sent: { kind: string };

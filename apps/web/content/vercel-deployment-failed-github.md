@@ -35,6 +35,10 @@ Spooky Particles watches your Vercel projects, and when a production deploy fail
 
 To turn it on, give your agent [setup.md](/setup.md). The [quickstart](/docs/quickstart) has the same steps, [automate fixes](/automate-fixes) shows how a failed deploy becomes a pull request, and [VibeOps](/vibeops) is the wider practice of keeping shipped apps running.
 
+If the error says a commit author is required, see [Vercel commit author is required](/vercel-commit-author-is-required).
+
+To read Vercel logs from Claude Code yourself, see [Claude Code with Vercel](/claude-code-vercel).
+
 ## Price
 
 Free, requires your own coding agent.

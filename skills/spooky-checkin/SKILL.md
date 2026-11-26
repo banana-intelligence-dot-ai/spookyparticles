@@ -11,7 +11,7 @@ Spooky reads Vercel cron jobs and their run history on its own, with no code cha
 
 ## Requirements and network calls
 
-- `SPOOKY_API_KEY`: a Spooky Particles key, set in the environment by the person. Never ask for it in chat, print it or write it to a file. Listing jobs needs a read key. Creating a job needs a write key. If it is not set, stop and tell the person to make one on the Agents page at https://spookyparticles.com/app/agents.
+- `SPOOKY_API_KEY`: a Spooky Particles key. Never ask for it in chat, print it or write it to a file. Listing jobs needs a read key. Creating a job needs a write key. If this computer has only read access, run `sh scripts/spooky.sh start --write`; the person approves write access on screen, and the key is saved on this computer. If `SPOOKY_API_KEY` was already set, unset it when the script says so to use the new saved key.
 - Every call goes to `spookyparticles.com` over HTTPS. There are no other hosts and nothing is installed except the optional `spooky-checkin` npm package.
   - `GET https://spookyparticles.com/api/v1/checkins` (or the MCP tool `list_jobs`) reads the job list. It writes nothing.
   - `POST https://spookyparticles.com/api/v1/checkins` creates one check-in job. This writes to the person's Spooky account.

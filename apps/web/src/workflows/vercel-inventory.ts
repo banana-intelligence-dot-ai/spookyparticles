@@ -19,10 +19,19 @@ export async function vercelInventory(input: { connectionId: string; syncRunId: 
   try {
     const { userId, accounts, fingerprints } = await ensureVercelAccounts(connectionId);
     for (const { scope, nodeId } of accounts) {
-      const list = await listScopeProjects(connectionId, scope);
+      const list = await listScopeProjects(connectionId, nodeId, scope);
       truncated = truncated || list.truncated;
+      let skipSchedules = list.skipSchedules;
+      let skipEnvList = list.skipEnvList;
+      let schedulesRead = list.schedulesRead;
+      let envListRead = list.envListRead;
       for (let i = 0; i < list.projects.length; i += BATCH) {
-        projects += await syncVercelProjects({ connectionId, userId, accountNodeId: nodeId, scope, projects: list.projects.slice(i, i + BATCH), registrations: list.registrations, syncRunId, scannedBefore: projects });
+        const synced = await syncVercelProjects({ connectionId, userId, accountNodeId: nodeId, scope, projects: list.projects.slice(i, i + BATCH), registrations: list.registrations, syncRunId, scannedBefore: projects, skipSchedules, skipEnvList, schedulesRead, envListRead });
+        projects += synced.count;
+        skipSchedules = synced.skipSchedules;
+        skipEnvList = synced.skipEnvList;
+        schedulesRead = synced.schedulesRead;
+        envListRead = synced.envListRead;
       }
       // After the projects, so a charge tagged with a project can link to it. Billing moves daily, so the 5-minute watcher reads it once an hour.
       if (billing) await syncVercelBilling({ connectionId, userId, accountNodeId: nodeId, scope });

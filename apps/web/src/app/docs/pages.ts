@@ -19,7 +19,7 @@ export const DOCS_PAGES: DocsPage[] = [
     title: "Quickstart",
     description: "Sign in, give your coding agent the setup file, and see what happens next.",
     published: "2026-11-16",
-    checked: "2026-11-16",
+    checked: "2026-11-20",
   },
   {
     slug: "check-ins",

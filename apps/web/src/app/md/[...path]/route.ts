@@ -11,7 +11,8 @@ const BASE = "https://spookyparticles.com";
 export async function GET(_req: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const twin = markdownTwin(`/${(await params).path.join("/")}`);
   if (!twin) return new Response("Not found\n", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
-  return new Response(readFileSync(path.join(process.cwd(), twin.file), "utf8"), {
+  // Scoped to content/ so the build traces only that folder, not the whole project.
+  return new Response(readFileSync(path.join(process.cwd(), "content", path.relative("content", twin.file)), "utf8"), {
     status: 200,
     headers: {
       "content-type": "text/markdown; charset=utf-8",

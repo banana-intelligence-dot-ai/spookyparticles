@@ -6,8 +6,8 @@
  */
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { getInstallationToken } from "@/lib/connections";
-import { GITHUB_API, githubHeaders, type InstallationRepo } from "@/lib/providers/github-app";
+import { getConnection, getInstallationToken } from "@/lib/connections";
+import { canReadGithubContents, GITHUB_API, githubHeaders, type InstallationRepo } from "@/lib/providers/github-app";
 import { syncRepoWith } from "@/lib/github-sync";
 
 const MIN_GAP_MS = 60_000;
@@ -48,6 +48,7 @@ export async function refreshRepoQuietly(userId: string, name: string): Promise<
     if (!fullName) return "unknown";
     const found = await locateRepo(userId, fullName);
     if (!found) return "unknown";
+    const connection = await getConnection(found.connectionId);
     const token = await getInstallationToken(found.connectionId);
     const [owner, repoName] = fullName.split("/");
     const res = await fetch(`${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`, { headers: githubHeaders(token) });
@@ -56,6 +57,7 @@ export async function refreshRepoQuietly(userId: string, name: string): Promise<
     await syncRepoWith(token, {
       userId,
       accountNodeId: found.accountNodeId,
+      readHead: canReadGithubContents(connection?.scopes),
       repo: { id: r.id, fullName: r.full_name, private: r.private, archived: r.archived, htmlUrl: r.html_url, pushedAt: r.pushed_at, defaultBranch: r.default_branch, language: r.language ?? null },
     });
     return "refreshed";

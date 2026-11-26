@@ -14,7 +14,7 @@ import { getDb, schema } from "@/db";
 import { getConnection, getInstallationToken, installationProblem } from "@/lib/connections";
 import { gh, syncRepoWith, type RepoRef } from "@/lib/github-sync";
 import { upsertNode } from "@/lib/graph";
-import { getInstallation, permissionNames, type InstallationRepo } from "@/lib/providers/github-app";
+import { canReadGithubContents, getInstallation, permissionNames, type InstallationRepo } from "@/lib/providers/github-app";
 
 export type { RepoRef } from "@/lib/github-sync";
 
@@ -105,11 +105,35 @@ export async function listRepos(connectionId: string, maxPages: number) {
 type Deployment = { id: number; environment: string; sha: string; ref: string; created_at: string; creator?: { login?: string } | null };
 type DeploymentStatus = { state: string; environment_url?: string; target_url?: string; created_at: string };
 
-/** One repo: node, then the latest deployment per environment with its URL. */
-export async function syncRepo(input: { connectionId: string; userId: string; accountNodeId: string; repo: RepoRef }) {
+/**
+ * Several repos in one step, so an unchanged inventory costs one Workflow step
+ * per batch instead of one per repo. Stops before a repo when GitHub reports
+ * fewer than `rateFloor` requests left. A failed batch retries whole; syncRepoWith
+ * upserts, so a re-run is safe.
+ */
+export async function syncRepoBatch(input: {
+  connectionId: string;
+  userId: string;
+  accountNodeId: string;
+  repos: RepoRef[];
+  rateRemaining: number | null;
+  rateFloor: number;
+}) {
   "use step";
   const t = await token(input.connectionId);
-  return syncRepoWith(t, input);
+  const connection = await getConnection(input.connectionId);
+  const readHead = canReadGithubContents(connection?.scopes);
+  let rateRemaining = input.rateRemaining;
+  let done = 0;
+  let lastDone: number | null = null;
+  for (const repo of input.repos) {
+    if (rateRemaining !== null && rateRemaining < input.rateFloor) return { done, lastDone, rateRemaining, paused: true };
+    const r = await syncRepoWith(t, { userId: input.userId, accountNodeId: input.accountNodeId, repo, readHead });
+    rateRemaining = r.rateRemaining ?? rateRemaining;
+    done += 1;
+    lastDone = repo.id;
+  }
+  return { done, lastDone, rateRemaining, paused: false };
 }
 
 export async function markGithubSynced(connectionId: string, syncRunId: string, repos: number) {
@@ -148,4 +172,4 @@ export async function setGithubProgress(syncRunId: string, repos: number) {
 
 // Rate limits and transient errors are expected on large accounts.
 listRepos.maxRetries = 6;
-syncRepo.maxRetries = 6;
+syncRepoBatch.maxRetries = 6;

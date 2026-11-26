@@ -2,6 +2,18 @@
 
 A failed Vercel deploy usually leaves a build log, and the line that names the cause is often a few lines above the last error. Read it, fix what it names, and push again. Spooky can hand that line to your coding agent.
 
+If the deployment is queued or initializing instead, use the [Vercel deployment stuck fixes](/vercel-deployment-stuck).
+
+To choose where Vercel sends failure alerts, set up [Vercel deployment notifications](/vercel-deployment-notifications).
+
+For alerts on running projects, see [Vercel Alerts](/vercel-alerts).
+
+Use the [Vercel error log commands](/vercel-error-log) to inspect related build and runtime output.
+
+If a route works until the browser reloads it, follow the [page refresh 404 steps](/vercel-404-on-refresh).
+
+If the site answers 503 DEPLOYMENT_PAUSED instead, use the [deployment paused checks](/vercel-deployment-paused).
+
 ## How do I find out why my Vercel deployment failed?
 
 1. In the Vercel dashboard, open the project, then **Deployments**, and select the deployment with the error status.
@@ -30,7 +42,7 @@ Fix the named cause and redeploy.
 - **A build that runs out of memory or time.** Vercel cancels a build that exceeds its machine's memory or disk, and one that runs longer than 45 minutes.
 - **A failed integration resource.** A Marketplace integration that cannot provision stops the deployment before the build starts.
 
-If the failure is in the build step, see [Vercel build failed: causes and fixes](/vercel-build-failed). If the deploy started from a GitHub push and no build began, see [Vercel deployment failed from GitHub](/vercel-deployment-failed-github).
+To match an error line to a cause, use the [list of common Vercel deployment errors](/vercel-deployment-errors). If the failure is in the build step, see [Vercel build failed: causes and fixes](/vercel-build-failed). If the deploy started from a GitHub push and no build began, see [Vercel deployment failed from GitHub](/vercel-deployment-failed-github).
 
 ## Where does Spooky fit?
 

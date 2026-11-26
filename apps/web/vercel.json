@@ -13,5 +13,5 @@
       "master": true
     }
   },
-  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- . ../../packages ../../package.json ../../package-lock.json"
+  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- . ../../packages ../../package.json ../../package-lock.json ':(exclude,top)*.test.ts' ':(exclude,top)*.test.tsx' ':(exclude)scripts' ':(exclude)README.md' ':(exclude)AGENTS.md'"
 }

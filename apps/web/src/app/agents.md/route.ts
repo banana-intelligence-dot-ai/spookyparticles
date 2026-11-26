@@ -29,7 +29,7 @@ None. Spooky has no recordings.
 
 ## Do
 
-Every call needs the person's Spooky key, sent as \`Authorization: Bearer\`. Get one only through the steps in [setup.md](https://spookyparticles.com/setup.md), where the person approves a sign-in code. The same actions are MCP tools at \`https://spookyparticles.com/api/mcp\`.
+Every call needs the person's Spooky key, sent as \`Authorization: Bearer\`. Get one only through the steps in [setup.md](https://spookyparticles.com/setup.md), where the person approves a sign-in code and sees whether the agent requested read or write access. Write keys from device sign-in expire after 90 days; device sign-in can never grant full control. The same actions are MCP tools at \`https://spookyparticles.com/api/mcp\`.
 
 | Action | How | Mark |
 |---|---|---|

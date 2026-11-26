@@ -1,4 +1,5 @@
 "use client";
+import { touch } from "@/lib/analytics/client";
 import { useState } from "react";
 
 /**
@@ -11,11 +12,14 @@ export function PastePrompt({ prompt }: { prompt: string }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(prompt);
-      setStatus("copied");
-      setTimeout(() => setStatus("idle"), 1500);
     } catch {
+      touch("setup_prompt_copied", { ok: false });
       setStatus("failed");
+      return;
     }
+    touch("setup_prompt_copied", { ok: true });
+    setStatus("copied");
+    setTimeout(() => setStatus("idle"), 1500);
   };
   return (
     <div className="paste">

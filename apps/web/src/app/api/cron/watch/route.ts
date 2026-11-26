@@ -23,6 +23,8 @@ import { sendDigests } from "@/lib/alerts/digest";
 import { escalatePages, pagerEnabled } from "@/lib/pager";
 import { forgiveOutages, type Forgiven } from "@/lib/self-outage";
 import { escalateAgentAlerts } from "@/lib/agent-first";
+import { runXPost, type XPostResult } from "@/lib/x-posts/run";
+import { runOnboardingCheck, type OnboardingResult } from "@/lib/onboarding-watch";
 
 export async function GET(req: Request) {
   await connection();
@@ -86,6 +88,13 @@ export async function GET(req: Request) {
   // The morning digest, once a day in the digest hour.
   let digest: Awaited<ReturnType<typeof sendDigests>> = null;
   try { digest = await sendDigests(); } catch (err) { note("digest", err); }
+  // Our own product account on X: one checked line a day at most, behind a switch that ships off.
+  let xPost: XPostResult = null;
+  // Any failed pass above may leave the counts short, so that day's post falls back to a queued line.
+  try { xPost = await runXPost(Date.now(), { countable: ok && !detail }); } catch (err) { note("x post", err); }
+  // Our own onboarding check, once a day: stuck sign-ups page us through our own check-in.
+  let onboarding: OnboardingResult | null = null;
+  try { onboarding = await runOnboardingCheck(Date.now()); } catch (err) { note("onboarding", err); }
   // Promised deletions, once an hour: data from connections revoked 30 days ago, and accounts
   // whose deletion grace period has passed.
   let purged: { connections: Record<string, number>; accounts: { accounts: number; rows: number } } | null = null;
@@ -104,5 +113,5 @@ export async function GET(req: Request) {
     // A missing table (migration not applied yet) must not fail the sweep that just ran.
     console.error("[watch] heartbeat not written", (err as Error).message.slice(0, 120));
   }
-  return json({ ok, connections: rows.length, mail, jobs, outages, schedules, probes, errors, uptime, sitemaps, checks, digest, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
+  return json({ ok, connections: rows.length, mail, jobs, outages, schedules, probes, errors, uptime, sitemaps, checks, digest, xPost, onboarding, at: at.toISOString(), purged }, { status: ok ? 200 : 500 });
 }

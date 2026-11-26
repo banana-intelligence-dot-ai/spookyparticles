@@ -21,7 +21,8 @@ const COPY = {
   quote: "“spooky action at a distance”",
   quoteSource: "Einstein, 1947",
   h1: ["Fixed by the time", "you realize it’s broken."],
-  sub: "Spooky watches your Vercel apps and hands each break to your coding agent. It checks that the fix worked.",
+  sub: "When a Vercel deploy fails or a cron job stops, Spooky sends the error to your coding agent and checks the fix is live.",
+  free: "Free. Requires your own coding agent. Never deletes anything of yours.",
   watchH: "What it watches",
   watch: [
     { k: "Deploys", v: "A production build fails on Vercel." },
@@ -143,6 +144,7 @@ export default function Landing() {
               <SignInNotice />
             </Suspense>
             <WaysIn vercelEnabled={vercelEnabled} />
+            <p className="mt-4 font-mono text-[12.5px] leading-[1.5] text-fg-3">{COPY.free}</p>
           </div>
         </section>
 

@@ -169,6 +169,13 @@
       "when": 1794980014033,
       "tag": "0023_marketing_opt_in",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795129757168,
+      "tag": "0024_daily_stats",
+      "breakpoints": true
     }
   ]
 }

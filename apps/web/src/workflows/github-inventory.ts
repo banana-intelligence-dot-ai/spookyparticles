@@ -1,7 +1,8 @@
 /**
  * GitHub inventory for a GitHub App installation: the repos the user picked,
- * their deployments, environments and URLs into the graph. One step per repo so
- * a failure retries only that repo. Read-only.
+ * their deployments, environments and URLs into the graph. Repos go BATCH at a
+ * time per step: most runs change nothing, and each step is a billed Workflow
+ * event. A failure retries only its batch. Read-only.
  *
  * Rate limits: when GitHub reports fewer than RATE_FLOOR requests left, the run
  * stops, records the last repo it finished, and the next sync resumes there.
@@ -14,15 +15,15 @@ import {
   markGithubSynced,
   pauseGithubRun,
   setGithubProgress,
-  syncRepo,
+  syncRepoBatch,
 } from "./steps/github";
 
 /** Stop condition: at most this many repo pages (100 repos each). */
 const MAX_PAGES = 20;
 /** Leave this much of the installation's hourly budget unused. */
 const RATE_FLOOR = 100;
-/** Write progress every this many repos. */
-const PROGRESS_EVERY = 5;
+/** Repos per step; progress is written after each batch. */
+const BATCH = 10;
 
 export async function githubInventory(input: { connectionId: string; syncRunId: string; resumeAfterRepoId?: number | null }) {
   "use workflow";
@@ -37,16 +38,16 @@ export async function githubInventory(input: { connectionId: string; syncRunId: 
 
     let lastDone: number | null = resumeAfter;
     let rateRemaining = list.rateRemaining;
-    for (const repo of todo) {
-      if (rateRemaining !== null && rateRemaining < RATE_FLOOR) {
+    for (let i = 0; i < todo.length; i += BATCH) {
+      const b = await syncRepoBatch({ connectionId, userId, accountNodeId, repos: todo.slice(i, i + BATCH), rateRemaining, rateFloor: RATE_FLOOR });
+      rateRemaining = b.rateRemaining;
+      repos += b.done;
+      lastDone = b.lastDone ?? lastDone;
+      if (b.paused) {
         await pauseGithubRun(syncRunId, repos, lastDone === null ? null : String(lastDone));
         return { repos, paused: true };
       }
-      const r = await syncRepo({ connectionId, userId, accountNodeId, repo });
-      rateRemaining = r.rateRemaining ?? rateRemaining;
-      repos += 1;
-      lastDone = repo.id;
-      if (repos % PROGRESS_EVERY === 0) await setGithubProgress(syncRunId, repos);
+      if (i + BATCH < todo.length) await setGithubProgress(syncRunId, repos);
     }
     await markGithubSynced(connectionId, syncRunId, repos);
     return { repos, paused: false, truncated: list.truncated };
